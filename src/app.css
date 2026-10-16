@@ -1,0 +1,83 @@
+/* The site's palette: paper, ink, moss, one clay accent. */
+:root {
+	--page: #f4f3ee;
+	--surface: #fbfaf5;
+	--ink: #23281f;
+	--muted: #6d7566;
+	--accent: #a8552f;
+	--line: #dedcd0;
+	--chrome: color-mix(in oklab, var(--page) 92%, var(--ink));
+	--mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--page: #151713;
+		--surface: #1b1e19;
+		--ink: #e3e5dc;
+		--muted: #8e9585;
+		--accent: #d98a5c;
+		--line: #2c302a;
+		color-scheme: dark;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--page);
+	color: var(--ink);
+	font:
+		15px/1.4 ui-sans-serif,
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		'PingFang SC',
+		'Microsoft YaHei',
+		sans-serif;
+}
+
+input,
+select,
+textarea,
+button {
+	font: inherit;
+	color: inherit;
+	/* Form controls carry an intrinsic width that would push a narrow card wider. */
+	min-width: 0;
+	max-width: 100%;
+	padding: 0.2rem 0.45rem;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--page);
+}
+
+textarea {
+	width: 100%;
+	resize: vertical;
+}
+
+button {
+	cursor: pointer;
+	background: var(--surface);
+}
+
+button:hover:not(:disabled) {
+	border-color: var(--accent);
+}
+
+button:disabled {
+	cursor: default;
+	opacity: 0.4;
+}
+
+button.x {
+	padding: 0 0.35rem;
+	border-color: transparent;
+	background: transparent;
+	color: var(--muted);
+}

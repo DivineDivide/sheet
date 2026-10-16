@@ -1,0 +1,11 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "sheet",
+	// The personal account, pinned for the reason given in mysite/frontend/wrangler.jsonc.
+	"account_id": "d871bfcf5df5bcf72f9b147d59650e3a",
+	"compatibility_date": "2026-10-01",
+	"workers_dev": true,
+	// Assets only: every document lives in the visitor's browser, so there is no Worker
+	// code and nothing behind Access.
+	"assets": { "directory": "./dist" }
+}
