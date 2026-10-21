@@ -4,6 +4,12 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>sheet</title>
+		<!-- Before paint, so a saved dark theme never flashes light first. -->
+		<script>
+			try {
+				document.documentElement.dataset.theme = localStorage.getItem('sheet.theme') || 'system';
+			} catch {}
+		</script>
 	</head>
 	<body>
 		<div id="app"></div>

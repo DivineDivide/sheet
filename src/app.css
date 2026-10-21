@@ -1,4 +1,9 @@
-/* The site's palette: paper, ink, moss, one clay accent. */
+/*
+ * Themes are sets of the tokens below, chosen by `data-theme` on <html>. Components read
+ * only tokens, so a theme reshapes tags, track boxes and field cards without touching them.
+ */
+
+/* Light: the site's palette of paper, ink, moss and one clay accent. */
 :root {
 	--page: #f4f3ee;
 	--surface: #fbfaf5;
@@ -7,12 +12,35 @@
 	--accent: #a8552f;
 	--line: #dedcd0;
 	--chrome: color-mix(in oklab, var(--page) 92%, var(--ink));
+	--backdrop: var(--page);
+
 	--mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+	--font-body:
+		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei',
+		sans-serif;
+	--font-head: var(--font-body);
+	--label-tracking: 0;
+
+	--radius: 6px;
+	--field-bg: var(--surface);
+	--field-border: 1px solid var(--line);
+	--field-shadow: none;
+	--tag-radius: 999px;
+	--tag-clip: none;
+	--tag-bg: transparent;
+	--track-radius: 4px;
+	--track-turn: 0deg;
+	--entry-rule: var(--line);
+	--tab-mark: '';
+	/* Panels over the canvas are 85% see-through, so the sheet shows clearly behind them. */
+	--panel-bg: color-mix(in oklab, var(--surface) 15%, transparent);
 	color-scheme: light;
 }
 
+/* Dark is declared twice: once for System when the OS is dark, once when picked outright. */
 @media (prefers-color-scheme: dark) {
-	:root {
+	:root[data-theme='system'],
+	:root:not([data-theme]) {
 		--page: #151713;
 		--surface: #1b1e19;
 		--ink: #e3e5dc;
@@ -23,22 +51,65 @@
 	}
 }
 
+:root[data-theme='dark'] {
+	--page: #151713;
+	--surface: #1b1e19;
+	--ink: #e3e5dc;
+	--muted: #8e9585;
+	--accent: #d98a5c;
+	--line: #2c302a;
+	color-scheme: dark;
+}
+
+/*
+ * 唯心空洞: the rulebook's blood red (#7a2e2e, lifted to read on black), bone-coloured
+ * text and brass trim, set in a CJK serif. Tags are cut as shards, for 碎片; track boxes
+ * turn into diamonds, like the faces of a fate die.
+ */
+:root[data-theme='void'] {
+	--page: #0e0b0b;
+	--surface: #161211;
+	--ink: #e6dcc8;
+	--muted: #9a8c79;
+	--accent: #c0453a;
+	--brass: #c4a25e;
+	--line: #3a2e2a;
+	--chrome: #120e0e;
+	--backdrop: radial-gradient(ellipse 90% 55% at 50% -12%, #2b1513 0%, transparent 62%), #0b0909;
+
+	--font-body:
+		'Noto Serif TC', 'Noto Serif CJK TC', 'Source Han Serif TC', 'Songti TC', 'STSong', 'PMingLiU',
+		Georgia, serif;
+	--label-tracking: 0.16em;
+
+	--radius: 2px;
+	--field-bg: linear-gradient(180deg, #1c1615, #130f0f);
+	--field-border: 1px solid color-mix(in oklab, var(--brass) 30%, transparent);
+	--field-shadow: inset 0 0 0 3px #0e0b0b, inset 0 0 0 4px rgb(196 162 94 / 0.12);
+	--tag-radius: 0;
+	--tag-clip: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%);
+	--tag-bg: color-mix(in oklab, var(--accent) 16%, transparent);
+	--track-radius: 1px;
+	--track-turn: 45deg;
+	--entry-rule: var(--accent);
+	--tab-mark: '✦ ';
+	color-scheme: dark;
+}
+
+:root[data-theme='void'] .label {
+	color: color-mix(in oklab, var(--brass) 80%, var(--muted));
+}
+
 * {
 	box-sizing: border-box;
 }
 
 body {
 	margin: 0;
-	background: var(--page);
+	min-height: 100vh;
+	background: var(--backdrop);
 	color: var(--ink);
-	font:
-		15px/1.4 ui-sans-serif,
-		system-ui,
-		-apple-system,
-		'Segoe UI',
-		'PingFang SC',
-		'Microsoft YaHei',
-		sans-serif;
+	font: 15px/1.45 var(--font-body);
 }
 
 input,
@@ -52,7 +123,7 @@ button {
 	max-width: 100%;
 	padding: 0.2rem 0.45rem;
 	border: 1px solid var(--line);
-	border-radius: 4px;
+	border-radius: var(--radius);
 	background: var(--page);
 }
 
@@ -80,4 +151,115 @@ button.x {
 	border-color: transparent;
 	background: transparent;
 	color: var(--muted);
+}
+
+/* A round icon button: the side rails, the zoom controls, new character. */
+.dot {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 2.25rem;
+	height: 2.25rem;
+	padding: 0;
+	border: 1px solid var(--line);
+	border-radius: 50%;
+	background: var(--surface);
+	color: var(--ink);
+	box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+	/* A slight overshoot, so a press feels sprung. */
+	transition:
+		transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+		border-color 0.15s,
+		color 0.15s;
+}
+button.dot:hover:not(:disabled),
+button:hover > .dot {
+	border-color: var(--accent);
+	color: var(--accent);
+	transform: scale(1.08);
+}
+button.dot:active:not(:disabled),
+button:active > .dot {
+	transform: scale(0.92);
+}
+button.dot[aria-expanded='true'] {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.panel {
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	background: var(--panel-bg);
+}
+
+/* Rendered Markdown, on the sheet and on the share card. Global, since it is {@html}. */
+.md {
+	line-height: 1.55;
+	overflow-wrap: anywhere;
+}
+.md > :first-child {
+	margin-top: 0;
+}
+.md > :last-child {
+	margin-bottom: 0;
+}
+.md :is(p, ul, ol, blockquote, pre, table) {
+	margin: 0 0 0.6em;
+}
+.md :is(h1, h2, h3, h4, h5, h6) {
+	margin: 0.8em 0 0.3em;
+	font-family: var(--font-head);
+	font-size: 1rem;
+	letter-spacing: var(--label-tracking);
+	line-height: 1.3;
+}
+.md h1 {
+	font-size: 1.25rem;
+}
+.md h2 {
+	font-size: 1.1rem;
+}
+.md :is(ul, ol) {
+	padding-left: 1.4em;
+}
+.md blockquote {
+	padding-left: 0.75em;
+	border-left: 2px solid var(--entry-rule);
+	color: var(--muted);
+}
+.md :is(code, pre) {
+	border-radius: 3px;
+	background: color-mix(in oklab, var(--ink) 8%, transparent);
+	font-family: var(--mono);
+	font-size: 0.9em;
+}
+.md code {
+	padding: 0 0.25em;
+}
+.md pre {
+	padding: 0.5em 0.75em;
+	overflow-x: auto;
+}
+.md pre code {
+	padding: 0;
+	background: none;
+}
+.md a {
+	color: var(--accent);
+}
+.md hr {
+	margin: 0.8em 0;
+	border: none;
+	border-top: 1px solid var(--line);
+}
+.md table {
+	border-collapse: collapse;
+}
+.md :is(th, td) {
+	padding: 0.2em 0.6em;
+	border: 1px solid var(--line);
+}
+.md img {
+	max-width: 100%;
 }

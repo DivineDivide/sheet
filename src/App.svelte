@@ -1,32 +1,21 @@
 <script lang="ts">
-	import { blank, newId } from './lib/doc';
 	import { ImportError, parse, serialize } from './lib/io';
+	import { mod, plain, typing } from './lib/keys';
 	import { session } from './lib/session.svelte';
-	import CharacterCard from './components/CharacterCard.svelte';
+	import { theme, themes, type ThemeId } from './lib/theme.svelte';
 	import Clocks from './components/Clocks.svelte';
-	import Templates from './components/Templates.svelte';
+	import Keys from './components/Keys.svelte';
+	import Roster from './components/Roster.svelte';
+	import Sheet from './components/Sheet.svelte';
+	import Toast from './components/Toast.svelte';
 
 	const doc = $derived(session.doc);
 
-	let view = $state<'play' | 'templates'>('play');
-	let newName = $state('');
-	let newTemplate = $state('');
+	let current = $state('');
+	// Falls back to the first character when the open one is deleted.
+	const character = $derived(doc.characters.find((c) => c.id === current) ?? doc.characters[0]);
 	let picker: HTMLInputElement;
-
-	function addCharacter() {
-		const template = doc.templates.find((t) => t.id === newTemplate) ?? doc.templates[0];
-		const name = newName.trim() || `Character ${doc.characters.length + 1}`;
-		session.change((d) =>
-			d.characters.push({
-				id: newId(),
-				name,
-				template: template.id,
-				values: Object.fromEntries(template.fields.map((f) => [f.id, blank(f.kind)])),
-				statuses: []
-			})
-		);
-		newName = '';
-	}
+	let keys: Keys;
 
 	function exportFile() {
 		const url = URL.createObjectURL(new Blob([serialize(doc)], { type: 'application/json' }));
@@ -49,13 +38,31 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		// Inside a text box, leave undo to the browser's own text editing.
-		const inField = e.target instanceof Element && e.target.closest('input, textarea, select');
-		if (inField || !(e.metaKey || e.ctrlKey)) return;
 		const key = e.key.toLowerCase();
-		if (key === 'z' && !e.shiftKey) session.undo();
-		else if ((key === 'z' && e.shiftKey) || key === 'y') session.redo();
-		else return;
+		if (e.metaKey || e.ctrlKey) {
+			if (key === 's') exportFile();
+			else if (key === 'o') picker.click();
+			// Inside a text box, leave undo to the browser's own text editing.
+			else if (typing(e)) return;
+			else if (key === 'z' && !e.shiftKey) session.undo();
+			else if ((key === 'z' && e.shiftKey) || key === 'y') session.redo();
+			else return;
+		} else if (key === 'escape' && typing(e)) {
+			// Blurring commits the box, like Enter or a click elsewhere, and frees the single keys.
+			(e.target as HTMLElement).blur();
+		} else if (!plain(e)) {
+			return;
+		} else if (key === '?') {
+			keys.toggle();
+		} else if ((key === 'n' || key === 'b') && doc.clocks.length) {
+			session.change((d) => (d.clocks[0].now += key === 'n' ? 1 : -1));
+		} else if ((key === '[' || key === ']') && character) {
+			const all = doc.characters;
+			const i = all.findIndex((c) => c.id === character.id) + (key === ']' ? 1 : -1);
+			current = all[(i + all.length) % all.length].id;
+		} else {
+			return;
+		}
 		e.preventDefault();
 	}
 </script>
@@ -69,134 +76,101 @@
 	}}
 />
 
-<header class="bar">
-	<strong>sheet</strong>
-	<nav>
-		<button class:active={view === 'play'} onclick={() => (view = 'play')}>Play</button>
-		<button class:active={view === 'templates'} onclick={() => (view = 'templates')}
-			>Templates</button
-		>
-	</nav>
-	<div class="tools">
-		<button disabled={!session.canUndo} onclick={() => session.undo()} title="⌘Z">Undo</button>
-		<button disabled={!session.canRedo} onclick={() => session.redo()} title="⇧⌘Z">Redo</button>
-		<button onclick={exportFile}>Export</button>
-		<button onclick={() => picker.click()} title="Or drop a file anywhere on the page"
-			>Import</button
-		>
-		<input
-			bind:this={picker}
-			type="file"
-			accept="application/json,.json"
-			hidden
-			onchange={(e) => {
-				importFile(e.currentTarget.files?.[0]);
-				e.currentTarget.value = '';
-			}}
-		/>
-	</div>
-</header>
-
-{#if session.notice}
-	<p class="notice">
-		{session.notice}
-		<button class="x" aria-label="Dismiss" onclick={() => (session.notice = null)}>×</button>
-	</p>
-{/if}
-
-<main>
-	<Clocks />
-
-	{#if view === 'play'}
-		<form
-			class="add"
-			onsubmit={(e) => {
-				e.preventDefault();
-				addCharacter();
-			}}
-		>
-			<input bind:value={newName} placeholder="New character" aria-label="New character name" />
-			{#if doc.templates.length > 1}
-				<select bind:value={newTemplate} aria-label="Template">
-					{#each doc.templates as t (t.id)}
-						<option value={t.id}>{t.name}</option>
-					{/each}
-				</select>
-			{/if}
-			<button type="submit">Add</button>
-		</form>
-
-		{#if doc.characters.length}
-			<div class="party">
-				{#each doc.characters as character (character.id)}
-					<CharacterCard {character} />
+<div class="app">
+	<header class="bar">
+		<strong>sheet</strong>
+		<Roster bind:current {character} />
+		<div class="tools">
+			<select
+				value={theme.id}
+				aria-label="Theme"
+				title="Theme"
+				onchange={(e) => (theme.id = e.currentTarget.value as ThemeId)}
+			>
+				{#each themes as t (t.id)}
+					<option value={t.id}>{t.name}</option>
 				{/each}
-			</div>
+			</select>
+			<button disabled={!session.canUndo} onclick={() => session.undo()} title="{mod}Z">Undo</button
+			>
+			<button disabled={!session.canRedo} onclick={() => session.redo()} title="⇧{mod}Z"
+				>Redo</button
+			>
+			<button onclick={exportFile} title="{mod}S">Export</button>
+			<button onclick={() => picker.click()} title="{mod}O, or drop a file anywhere on the page"
+				>Import</button
+			>
+			<button
+				onclick={() => keys.toggle()}
+				aria-label="Keyboard shortcuts"
+				title="Keyboard shortcuts">?</button
+			>
+			<input
+				bind:this={picker}
+				type="file"
+				accept="application/json,.json"
+				hidden
+				onchange={(e) => {
+					importFile(e.currentTarget.files?.[0]);
+					e.currentTarget.value = '';
+				}}
+			/>
+		</div>
+	</header>
+
+	<Keys bind:this={keys} />
+
+	<Toast />
+
+	<main>
+		<Clocks />
+
+		{#if character}
+			{#key character.id}
+				<Sheet {character} />
+			{/key}
 		{:else}
 			<p class="empty">
-				No characters yet. Add one above, or shape the sheet first under Templates.
+				No characters yet. Press + at the top left to start one from a template, or blank.
 			</p>
 		{/if}
-	{:else}
-		<Templates />
-	{/if}
-</main>
+	</main>
+</div>
 
 <style>
+	/* The window, never scrolled: the sheet's canvas takes whatever the bars leave. */
+	.app {
+		display: flex;
+		flex-direction: column;
+		height: 100dvh;
+	}
 	.bar {
-		position: sticky;
-		top: 0;
-		z-index: 1;
+		z-index: 3;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem 1rem;
-		padding: 0.6rem 1rem;
+		padding: 0.5rem 1rem;
 		border-bottom: 1px solid var(--line);
 		background: var(--chrome);
 	}
 	strong {
-		font-family: var(--mono);
+		font-family: var(--font-head);
+		letter-spacing: var(--label-tracking);
 	}
-	nav,
 	.tools {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.35rem;
-	}
-	.tools {
 		margin-left: auto;
 	}
-	nav .active {
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-	.notice {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin: 0;
-		padding: 0.5rem 1rem;
-		background: color-mix(in oklab, var(--accent) 12%, var(--page));
-	}
 	main {
-		display: grid;
-		gap: 1rem;
-		padding: 1rem;
-	}
-	.add {
 		display: flex;
-		gap: 0.35rem;
-		max-width: 30rem;
-	}
-	.add input {
-		flex: 1;
-		min-width: 0;
-	}
-	.party {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+		flex-direction: column;
 		gap: 0.75rem;
-		align-items: start;
+		flex: 1;
+		min-height: 0;
+		padding: 0.75rem 1rem 1rem;
 	}
 	.empty {
 		color: var(--muted);

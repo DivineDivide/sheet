@@ -3,8 +3,8 @@
 
 import type { Box } from './layout';
 
-// Still 1: `box` is optional, so every phase-1 file is a valid document as it stands.
-export const VERSION = 1;
+// 2: layout moved from templates onto each character, in tabs, placed freely.
+export const VERSION = 2;
 
 export type Clock = { id: string; name: string; now: number };
 
@@ -22,22 +22,25 @@ export type Status = {
 	lasts?: number;
 };
 
-export const kinds = ['number', 'resource', 'track', 'text', 'tags', 'entries'] as const;
+export const kinds = ['number', 'resource', 'track', 'text', 'tags', 'entries', 'image'] as const;
 export type Kind = (typeof kinds)[number];
 
-/** `box` is where the builder put it; phase-1 files have none, and `resolve` flows those. */
-export type Field = { id: string; label: string; kind: Kind; box?: Box };
-export type Template = { id: string; name: string; fields: Field[] };
+export type Tab = { id: string; name: string };
+export type Field = { id: string; label: string; kind: Kind; tab: string; box: Box };
+/** Tabs and the fields on them: what a character is shaped like, apart from its values. */
+export type Layout = { tabs: Tab[]; fields: Field[] };
+
+/** A layout saved from a character, to start new characters from. Never edited itself. */
+export type Template = Layout & { id: string; name: string };
 
 export type Resource = { cur: number; max: number };
 /** A titled item: a role-book ability, a talent and its usages, a fragment. */
 export type Entry = { name: string; text: string };
 export type Value = number | Resource | boolean[] | string | string[] | Entry[];
 
-export type Character = {
+export type Character = Layout & {
 	id: string;
 	name: string;
-	template: string;
 	values: Record<string, Value>;
 	statuses: Status[];
 };
@@ -52,13 +55,48 @@ export type Doc = {
 export const newId = () => crypto.randomUUID();
 
 export function newDoc(): Doc {
-	const hp: Field = { id: newId(), label: 'HP', kind: 'resource' };
-	const notes: Field = { id: newId(), label: 'Notes', kind: 'text' };
+	const tab = { id: newId(), name: 'Main' };
 	return {
 		version: VERSION,
 		clocks: [{ id: newId(), name: 'Turn', now: 1 }],
-		templates: [{ id: newId(), name: 'Basic', fields: [hp, notes] }],
+		templates: [
+			{
+				id: newId(),
+				name: 'Basic',
+				tabs: [tab],
+				fields: [
+					{
+						id: newId(),
+						label: 'HP',
+						kind: 'resource',
+						tab: tab.id,
+						box: { x: 0, y: 0, w: 240, h: 88 }
+					},
+					{
+						id: newId(),
+						label: 'Notes',
+						kind: 'text',
+						tab: tab.id,
+						box: { x: 0, y: 104, w: 480, h: 160 }
+					}
+				]
+			}
+		],
 		characters: []
+	};
+}
+
+/** Copied, not shared: editing one character's layout never reshapes another. */
+export function newCharacter(name: string, from?: Layout): Character {
+	const layout: Layout = from
+		? structuredClone({ tabs: from.tabs, fields: from.fields })
+		: { tabs: [{ id: newId(), name: 'Main' }], fields: [] };
+	return {
+		id: newId(),
+		name,
+		...layout,
+		values: Object.fromEntries(layout.fields.map((f) => [f.id, blank(f.kind)])),
+		statuses: []
 	};
 }
 
@@ -71,6 +109,7 @@ export function blank(kind: Kind): Value {
 		case 'track':
 			return [false, false, false, false];
 		case 'text':
+		case 'image':
 			return '';
 		case 'tags':
 		case 'entries':
@@ -92,6 +131,7 @@ function fits(kind: Kind, v: unknown): boolean {
 		case 'track':
 			return Array.isArray(v) && v.every((b) => typeof b === 'boolean');
 		case 'text':
+		case 'image':
 			return typeof v === 'string';
 		case 'tags':
 			return Array.isArray(v) && v.every((t) => typeof t === 'string');
@@ -105,10 +145,9 @@ function fits(kind: Kind, v: unknown): boolean {
 
 /**
  * A field's value for a character, read leniently: a value missing or left over from
- * the field's previous kind reads as blank. Changing a kind in the template therefore
- * needs no migration of every character.
+ * the field's previous kind reads as blank, so changing a kind needs no migration.
  */
-export function valueOf(c: Character, f: Field): Value {
+export function valueOf(c: Pick<Character, 'values'>, f: Pick<Field, 'id' | 'kind'>): Value {
 	const v = c.values[f.id];
 	return fits(f.kind, v) ? v : blank(f.kind);
 }
@@ -124,4 +163,18 @@ export function left(s: Status, clock: Clock): number {
 export function phase(s: Status, clock: Clock): Phase {
 	if (clock.now < s.since) return 'pending';
 	return left(s, clock) <= 0 ? 'expired' : 'active';
+}
+
+/** How long a status has left, naming its clock only when there is more than one. */
+export function describe(s: Status, clocks: Clock[]): string {
+	const k = clocks.find((k) => k.id === s.clock)!;
+	const on = clocks.length > 1 ? ` · ${k.name}` : '';
+	switch (phase(s, k)) {
+		case 'pending':
+			return `from ${k.name} ${s.since}`;
+		case 'expired':
+			return `expired${on}`;
+		case 'active':
+			return s.lasts === undefined ? `until removed${on}` : `${left(s, k)} left${on}`;
+	}
 }

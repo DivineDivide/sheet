@@ -7,7 +7,10 @@
 		type Resource,
 		type Value
 	} from '../lib/doc';
+	import { markdown } from '../lib/markdown';
+	import { shrink } from '../lib/picture';
 	import { session } from '../lib/session.svelte';
+	import Prose from './Prose.svelte';
 
 	let { character, field }: { character: Character; field: Field } = $props();
 
@@ -19,6 +22,17 @@
 		});
 	}
 
+	let picker = $state<HTMLInputElement>();
+
+	async function take(file: File | undefined) {
+		if (!file?.type.startsWith('image/')) return;
+		try {
+			set(await shrink(file));
+		} catch {
+			session.notice = `${file.name} could not be read as a picture.`;
+		}
+	}
+
 	const num = (text: string, fallback: number) => {
 		const n = Number(text);
 		return text.trim() !== '' && Number.isFinite(n) ? n : fallback;
@@ -26,7 +40,7 @@
 </script>
 
 <div class="field">
-	<span class="label">{field.label}</span>
+	<div class="label md">{@html markdown(field.label)}</div>
 
 	{#if field.kind === 'number'}
 		{@const n = v as number}
@@ -81,11 +95,7 @@
 			<button class="x" aria-label="Add a box" onclick={() => set([...boxes, false])}>+</button>
 		</div>
 	{:else if field.kind === 'text'}
-		<textarea
-			class="grow"
-			value={v as string}
-			aria-label={field.label}
-			onchange={(e) => set(e.currentTarget.value)}></textarea>
+		<Prose value={v as string} label={field.label} onchange={set} />
 	{:else if field.kind === 'entries'}
 		{@const entries = v as Entry[]}
 		{@const put = (i: number, patch: Partial<Entry>) =>
@@ -94,36 +104,75 @@
 			{#each entries as entry, i (i)}
 				<li>
 					<div class="row top">
-						<!-- A textarea so a long name wraps; Enter commits rather than breaking the line. -->
-						<textarea
-							class="ename"
-							rows="1"
+						<Prose
+							line
 							value={entry.name}
-							placeholder="Name"
-							aria-label="{field.label} name"
-							onkeydown={(e) => {
-								if (e.key !== 'Enter') return;
-								e.preventDefault();
-								e.currentTarget.blur();
-							}}
-							onchange={(e) => put(i, { name: e.currentTarget.value.replace(/\n/g, ' ') })}
-						></textarea>
+							label="{field.label} name"
+							empty="Name"
+							onchange={(name) => put(i, { name })}
+						/>
 						<button
 							class="x"
 							aria-label="Remove {entry.name}"
 							onclick={() => set(entries.filter((_, j) => j !== i))}>×</button
 						>
 					</div>
-					<textarea
-						class="grow"
+					<Prose
 						value={entry.text}
-						placeholder="Description"
-						aria-label="{entry.name} description"
-						onchange={(e) => put(i, { text: e.currentTarget.value })}></textarea>
+						label="{entry.name} description"
+						empty="Description, in Markdown."
+						onchange={(text) => put(i, { text })}
+					/>
 				</li>
 			{/each}
 		</ol>
 		<button class="more" onclick={() => set([...entries, { name: '', text: '' }])}>+ Entry</button>
+	{:else if field.kind === 'image'}
+		{@const src = v as string}
+		<!-- A drop stops here: on the window it would be taken for a session file to import.
+		     Paste reaches this once it has focus, from a click or Tab. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex: focusable so a paste has somewhere to land -->
+		<div
+			class="picture"
+			role="group"
+			aria-label={field.label}
+			tabindex="0"
+			ondragover={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+			}}
+			ondrop={(e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				take(e.dataTransfer?.files[0]);
+			}}
+			onpaste={(e) => {
+				const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'));
+				if (!file) return;
+				e.preventDefault();
+				take(file);
+			}}
+		>
+			{#if src}
+				<img {src} alt={field.label} />
+				<span class="tools">
+					<button onclick={() => picker?.click()}>Replace</button>
+					<button class="x" aria-label="Remove the picture" onclick={() => set('')}>×</button>
+				</span>
+			{:else}
+				<button class="pick" onclick={() => picker?.click()}>Pick, drop or paste a picture</button>
+			{/if}
+			<input
+				bind:this={picker}
+				type="file"
+				accept="image/*"
+				hidden
+				onchange={(e) => {
+					take(e.currentTarget.files?.[0]);
+					e.currentTarget.value = '';
+				}}
+			/>
+		</div>
 	{:else if field.kind === 'tags'}
 		{@const tags = v as string[]}
 		<div class="row wrap">
@@ -153,12 +202,17 @@
 </div>
 
 <style>
+	/* Fills its box on the sheet, so a text field's box sets how much shows before it scrolls. */
 	.field {
-		display: grid;
+		display: flex;
+		flex-direction: column;
 		gap: 0.25rem;
+		height: 100%;
 	}
 	.label {
+		font-family: var(--font-head);
 		font-size: 0.75rem;
+		letter-spacing: var(--label-tracking);
 		color: var(--muted);
 	}
 	.row {
@@ -169,8 +223,10 @@
 	.wrap {
 		flex-wrap: wrap;
 	}
+	/* Room for three digits beside the browser's spinner, in a serif theme too. */
 	.short {
-		width: 6ch;
+		width: 7.5ch;
+		font-variant-numeric: tabular-nums;
 	}
 	.of {
 		color: var(--muted);
@@ -178,7 +234,10 @@
 	.box {
 		width: 1.4rem;
 		height: 1.4rem;
+		margin: 0 0.1rem;
 		padding: 0;
+		border-radius: var(--track-radius);
+		rotate: var(--track-turn);
 	}
 	.box.on {
 		background: var(--accent);
@@ -188,19 +247,15 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.15rem;
-		padding: 0.05rem 0.2rem 0.05rem 0.5rem;
+		padding: 0.05rem 0.4rem 0.05rem 0.6rem;
 		border: 1px solid var(--line);
-		border-radius: 999px;
+		border-radius: var(--tag-radius);
+		clip-path: var(--tag-clip);
+		background: var(--tag-bg);
 		font-size: 0.85rem;
 	}
 	.add {
 		width: 9ch;
-	}
-	/* Grows with its text, so a three-paragraph backstory is read, not scrolled. */
-	.grow {
-		field-sizing: content;
-		min-height: 2.8em;
-		line-height: 1.55;
 	}
 	.entries {
 		display: grid;
@@ -213,22 +268,49 @@
 		display: grid;
 		gap: 0.2rem;
 		padding-left: 0.6rem;
-		border-left: 2px solid var(--line);
+		border-left: 2px solid var(--entry-rule);
 	}
 	.row.top {
 		align-items: start;
 	}
-	.ename {
-		flex: 1;
-		width: 0;
-		field-sizing: content;
-		resize: none;
-		border-color: transparent;
-		background: transparent;
-		padding-left: 0;
-		font-weight: 600;
-	}
 	.more {
 		justify-self: start;
+	}
+	/* Fills what its box leaves under the label; the picture fits inside, uncropped. */
+	.picture {
+		position: relative;
+		display: grid;
+		flex: 1 1 0;
+		min-height: 4rem;
+		border-radius: var(--radius);
+	}
+	.picture:focus-visible {
+		outline: 1px solid var(--accent);
+	}
+	img {
+		width: 100%;
+		height: 100%;
+		min-height: 0;
+		object-fit: contain;
+	}
+	.tools {
+		position: absolute;
+		top: 0.25rem;
+		right: 0.25rem;
+		display: flex;
+		gap: 0.2rem;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+	.tools button {
+		background: var(--surface);
+	}
+	.picture:hover .tools,
+	.picture:focus-within .tools {
+		opacity: 1;
+	}
+	.pick {
+		border-style: dashed;
+		color: var(--muted);
 	}
 </style>

@@ -17,7 +17,7 @@
 </script>
 
 <section class="clocks">
-	{#each doc.clocks as clock (clock.id)}
+	{#each doc.clocks as clock, i (clock.id)}
 		<div class="clock">
 			<input
 				class="name"
@@ -28,9 +28,16 @@
 					if (name) session.change((d) => (clockOf(d, clock.id).name = name));
 				}}
 			/>
-			<button onclick={() => session.change((d) => clockOf(d, clock.id).now--)}>Back</button>
+			<button
+				title={i === 0 ? 'B' : undefined}
+				onclick={() => session.change((d) => clockOf(d, clock.id).now--)}>Back</button
+			>
 			<span class="now">{clock.now}</span>
-			<button class="next" onclick={() => session.change((d) => clockOf(d, clock.id).now++)}>
+			<button
+				class="next"
+				title={i === 0 ? 'N' : undefined}
+				onclick={() => session.change((d) => clockOf(d, clock.id).now++)}
+			>
 				Next
 			</button>
 			{#if doc.clocks.length > 1}

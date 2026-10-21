@@ -28,7 +28,11 @@ function load(): { doc: Doc; notice?: string } {
 
 const loaded = load();
 let doc = $state<Doc>(loaded.doc);
-let notice = $state<string | null>(loaded.notice ?? null);
+// Numbered, so the same text told twice still counts as a new notice.
+let told = 0;
+let notice = $state<{ text: string; n: number } | null>(
+	loaded.notice ? { text: loaded.notice, n: told } : null
+);
 let steps = $state({ undo: 0, redo: 0 });
 const history = new History<Doc>();
 
@@ -36,7 +40,15 @@ function settle() {
 	steps = { undo: history.past.length, redo: history.future.length };
 	try {
 		localStorage.setItem(KEY, JSON.stringify(doc));
-	} catch {}
+	} catch (e) {
+		// A blocked storage was told at load; a full one is new, and pictures are what fill it.
+		if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+			notice = {
+				text: "Not saved: this browser's storage is full. Export to keep this session, or remove a picture.",
+				n: ++told
+			};
+		}
+	}
 }
 
 export const session = {
@@ -44,10 +56,14 @@ export const session = {
 		return doc;
 	},
 	get notice() {
-		return notice;
+		return notice?.text ?? null;
 	},
 	set notice(text: string | null) {
-		notice = text;
+		notice = text === null ? null : { text, n: ++told };
+	},
+	/** Changes with every notice told, so a toast showing one can start over. */
+	get noticeKey() {
+		return notice?.n;
 	},
 	get canUndo() {
 		return steps.undo > 0;

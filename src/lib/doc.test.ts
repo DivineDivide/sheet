@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { blank, left, phase, valueOf, type Character, type Clock, type Status } from './doc';
+import {
+	blank,
+	left,
+	newCharacter,
+	newDoc,
+	phase,
+	valueOf,
+	type Character,
+	type Clock,
+	type Status
+} from './doc';
 
 const clock = (now: number): Clock => ({ id: 'c', name: 'Turn', now });
 const poisoned: Status = { id: 's', name: 'Poisoned', clock: 'c', since: 5, lasts: 3 };
@@ -32,29 +42,42 @@ describe('status time', () => {
 });
 
 describe('valueOf', () => {
-	const ch = (values: Character['values']): Character => ({
-		id: 'x',
-		name: 'X',
-		template: 't',
-		values,
-		statuses: []
-	});
+	const ch = (values: Character['values']) => ({ values });
 
 	it('returns a stored value of the right kind', () => {
-		expect(
-			valueOf(ch({ f: { cur: 3, max: 8 } }), { id: 'f', label: 'HP', kind: 'resource' })
-		).toEqual({ cur: 3, max: 8 });
+		expect(valueOf(ch({ f: { cur: 3, max: 8 } }), { id: 'f', kind: 'resource' })).toEqual({
+			cur: 3,
+			max: 8
+		});
 	});
 
 	it('reads a value left over from another kind as blank', () => {
-		expect(valueOf(ch({ f: 'old text' }), { id: 'f', label: 'HP', kind: 'number' })).toBe(0);
-		expect(valueOf(ch({}), { id: 'f', label: 'Dice', kind: 'track' })).toEqual(blank('track'));
+		expect(valueOf(ch({ f: 'old text' }), { id: 'f', kind: 'number' })).toBe(0);
+		expect(valueOf(ch({}), { id: 'f', kind: 'track' })).toEqual(blank('track'));
 	});
 
 	it('tells entries from tags', () => {
-		const book = { id: 'f', label: '角色書', kind: 'entries' } as const;
+		const book = { id: 'f', kind: 'entries' } as const;
 		const entries = [{ name: '天才', text: '你覺醒出才能。' }];
 		expect(valueOf(ch({ f: entries }), book)).toEqual(entries);
 		expect(valueOf(ch({ f: ['祈禱', '即興'] }), book)).toEqual([]);
+	});
+});
+
+describe('newCharacter', () => {
+	it('copies the template, so reshaping the character leaves the template alone', () => {
+		const template = newDoc().templates[0];
+		const c = newCharacter('Ash', template);
+		c.fields[0].box.x = 400;
+		c.tabs[0].name = 'Combat';
+		expect(template.fields[0].box.x).toBe(0);
+		expect(template.tabs[0].name).toBe('Main');
+		expect(Object.keys(c.values)).toEqual(template.fields.map((f) => f.id));
+	});
+
+	it('starts blank, with one empty tab', () => {
+		const c = newCharacter('Ash');
+		expect(c.tabs).toHaveLength(1);
+		expect(c.fields).toEqual([]);
 	});
 });
