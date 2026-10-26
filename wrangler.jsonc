@@ -3,9 +3,32 @@
 	"name": "sheet",
 	// The personal account, pinned for the reason given in mysite/frontend/wrangler.jsonc.
 	"account_id": "d871bfcf5df5bcf72f9b147d59650e3a",
+	"main": "./worker/index.ts",
 	"compatibility_date": "2026-10-01",
 	"workers_dev": true,
-	// Assets only: every document lives in the visitor's browser, so there is no Worker
-	// code and nothing behind Access.
-	"assets": { "directory": "./dist" }
+	"observability": { "enabled": true },
+	// Not secrets: the team domain is public and the AUD names the Access app on `/gm`
+	// ("sheet GM"). Both are pinned so only this Access organisation can sign a token we
+	// accept.
+	"vars": {
+		"TEAM_DOMAIN": "https://divinedivide.cloudflareaccess.com",
+		"POLICY_AUD": "8635a4147d3b3d5f96eb736b501c62762aa405abb5cec055156f8f0487450349"
+	},
+	"assets": {
+		// `/r/<token>` and `/gm` are pages of the one app.
+		"not_found_handling": "single-page-application",
+		"run_worker_first": ["/api/*", "/gm/api/*"]
+	},
+	"durable_objects": {
+		"bindings": [
+			{ "name": "ROOM", "class_name": "Room" },
+			{ "name": "REGISTRY", "class_name": "Registry" }
+		]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room", "Registry"] }],
+	// Access does not run locally. This stubs a GM, so the code path is never "no token,
+	// assume it's fine".
+	"access": {
+		"dev": { "aud": "sheet-dev", "identity": { "email": "gm@localhost" } }
+	}
 }

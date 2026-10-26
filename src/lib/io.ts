@@ -24,6 +24,11 @@ export function parse(text: string): Doc {
 	} catch {
 		throw new ImportError('not a JSON file');
 	}
+	return validate(data);
+}
+
+/** `parse` after JSON: what a room runs over its doc after every change. */
+export function validate(data: unknown): Doc {
 	if (!isObj(data)) throw new ImportError('not a sheet document');
 	if (data.version === 1) return migrate(checkV1(data));
 	if (data.version !== VERSION) {

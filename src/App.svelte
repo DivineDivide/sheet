@@ -78,9 +78,16 @@
 
 <div class="app">
 	<header class="bar">
-		<strong>sheet</strong>
+		<strong>{session.name}</strong>
 		<Roster bind:current {character} />
 		<div class="tools">
+			{#if session.status !== 'open'}
+				<span class="status" role="status">
+					{session.status === 'missing'
+						? 'This room was deleted'
+						: `Offline${session.unsent ? ` · ${session.unsent} unsent` : ''}`}
+				</span>
+			{/if}
 			<select
 				value={theme.id}
 				aria-label="Theme"
@@ -163,6 +170,11 @@
 		flex-wrap: wrap;
 		gap: 0.35rem;
 		margin-left: auto;
+	}
+	.status {
+		align-self: center;
+		margin-right: 0.5rem;
+		color: var(--accent);
 	}
 	main {
 		display: flex;

@@ -2,20 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A character sheet with clocks and statuses that runs entirely in the browser. The plan
-and its phases are in `notes/trpg/plan-sheet.md`; phases 1 and 2 are built.
+A character sheet with clocks and statuses, shared live by everyone in a room. The plan
+and its phases are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built.
 
 ## Commands
 
 Run from `trpg/sheet/`:
 
 ```bash
-npm run dev                       # :7476; the root launch.json's `sheet` preview runs this
+npm run dev                       # :7476, the Worker and its rooms included; launch.json's `sheet`
 npm test                          # vitest, over src/lib
 npx vitest run src/lib/doc.test.ts -t expires   # a single test
-npm run check                     # svelte-check: types in .ts and .svelte alike
+npm run check                     # wrangler types, svelte-check, then tsc over worker/
 npm run lint                      # prettier --check; `npm run format` rewrites
-npm run deploy                    # build + wrangler deploy: assets only, goes live
+npm run deploy                    # build + wrangler deploy: goes live
 ```
 
 ## Architecture
@@ -26,10 +26,24 @@ npm run deploy                    # build + wrangler deploy: assets only, goes l
   layout saved from a character and is never edited; `newCharacter` copies it. A status is
   a stamp: it stores the clock reading when it was applied, and `left` / `phase` derive the
   rest, so advancing a clock rewrites nothing and stepping back is exact.
+- **Rooms** — every session lives in a room at `/r/<token>`, and the link is the only
+  key. `worker/room.ts` is one SQLite Durable Object per room, storing each character
+  as a row of its own, plus rows for clocks, templates and the character order. Players
+  join by link alone; `/gm` (make, list and delete rooms) is behind a path-scoped Access
+  app, and `worker/identity.ts` checks its JWT. `/` lists the rooms this browser has
+  opened. Never put Worker-level Access on this Worker: it refuses WebSocket upgrades.
+- **`src/lib/sync.ts`** — edits travel as ops on paths of ids (`set`, `del`, `order`),
+  never array positions, and the room applies changes in arrival order, so the later
+  edit to a path wins and no locks are needed. `Replica` keeps the room's confirmed doc
+  and this client's unconfirmed changes; what shows is always the one with the other on
+  top, which the randomised convergence test checks. The room runs `validate` after
+  every change and rejects one that breaks the doc; the client then takes it back.
 - **`src/lib/session.svelte.ts`** — the one store. Every edit goes through
-  `session.change(fn)`, which snapshots for undo (`history.ts`), applies `fn` to the live
-  doc and autosaves to `localStorage` under `sheet.doc`. Mutating `session.doc` directly
-  skips both.
+  `session.change(fn)`, which diffs snapshots taken around `fn` into ops and sends them.
+  Mutating `session.doc` directly skips that. Undo sends the reverse of this client's
+  own step, minus any path someone else has changed since. Write only when an edit is
+  finished (on blur, change or release), never per keystroke or drag frame: each change
+  is a row written, and the free plan allows 100,000 a day.
 - **`src/lib/io.ts`** — export and import. `parse` refuses bad structure or dangling
   tab/clock references whole. Version-1 files are checked as written, then `v1.ts`
   migrates them: each character gets its own copy of its template's layout on one tab,
@@ -67,8 +81,9 @@ npm run deploy                    # build + wrangler deploy: assets only, goes l
   what makes the `{@html}` safe for an imported file, so keep it. The styles are global
   (`.md` in `app.css`): scoped ones miss `{@html}`.
 - **`src/lib/picture.ts`** — an image field's value is a data URL inside the document, so
-  `shrink` caps a picture at 1024px as WebP (JPEG in Safari) before it is stored. A full
-  `localStorage` is told as a notice rather than dropped silently.
+  `shrink` caps a picture at 1024px as WebP (JPEG in Safari) before it is stored. A
+  character row has a 2MB limit, and a change that would overflow it is rejected with
+  a notice.
 - **Copy image** — `Sheet` mounts `ShareCard` off screen, draws it with `html-to-image`
   and puts the PNG on the clipboard, or downloads it where that is refused. The card keeps
   every box's x and width but grows it to its whole value; `settle` then moves down only
@@ -76,4 +91,5 @@ npm run deploy                    # build + wrangler deploy: assets only, goes l
   never finishes in a hidden tab.
 
 Bump `VERSION` in `doc.ts` for any change to the document's shape, and teach `parse` to
-migrate the old one. Adding an optional property needs neither.
+migrate the old one. Rooms already store the old shape too, so `Room.load` must migrate
+it as well. Adding an optional property needs neither.

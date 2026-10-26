@@ -1,5 +1,5 @@
-// A picture is stored in the document as a data URL, and the whole document lives in
-// localStorage, about 5MB in all, so each one is shrunk on the way in.
+// A picture is stored in the document as a data URL, and a room keeps each character in
+// one row of at most 2MB, so each one is shrunk on the way in.
 const LONGEST = 1024;
 
 export async function shrink(file: Blob): Promise<string> {

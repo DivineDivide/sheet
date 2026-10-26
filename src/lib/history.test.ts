@@ -6,20 +6,20 @@ describe('History', () => {
 		const h = new History<number>();
 		h.record(1);
 		h.record(2);
-		expect(h.undo(3)).toBe(2);
-		expect(h.undo(2)).toBe(1);
-		expect(h.undo(1)).toBeUndefined();
-		expect(h.redo(1)).toBe(2);
-		expect(h.redo(2)).toBe(3);
-		expect(h.redo(3)).toBeUndefined();
+		expect(h.undo()).toBe(2);
+		expect(h.undo()).toBe(1);
+		expect(h.undo()).toBeUndefined();
+		expect(h.redo()).toBe(1);
+		expect(h.redo()).toBe(2);
+		expect(h.redo()).toBeUndefined();
 	});
 
 	it('drops the redo branch on a new change', () => {
 		const h = new History<number>();
 		h.record(1);
-		h.undo(2);
-		h.record(1);
-		expect(h.redo(5)).toBeUndefined();
+		h.undo();
+		h.record(2);
+		expect(h.redo()).toBeUndefined();
 	});
 
 	it('forgets the oldest step past its limit', () => {
@@ -27,8 +27,8 @@ describe('History', () => {
 		h.record(1);
 		h.record(2);
 		h.record(3);
-		expect(h.undo(4)).toBe(3);
-		expect(h.undo(3)).toBe(2);
-		expect(h.undo(2)).toBeUndefined();
+		expect(h.undo()).toBe(3);
+		expect(h.undo()).toBe(2);
+		expect(h.undo()).toBeUndefined();
 	});
 });

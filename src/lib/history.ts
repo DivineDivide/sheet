@@ -1,26 +1,25 @@
-/** Undo and redo over whole snapshots: the document is small, so no inverses needed. */
+/** Undo and redo over steps, each holding what a change did and what takes it back. */
 export class History<T> {
 	past: T[] = [];
 	future: T[] = [];
 
 	constructor(private limit = 100) {}
 
-	/** Call with the state as it was just before a change. */
-	record(before: T) {
-		this.past.push(before);
+	record(step: T) {
+		this.past.push(step);
 		if (this.past.length > this.limit) this.past.shift();
 		this.future = [];
 	}
 
-	undo(current: T): T | undefined {
-		const prev = this.past.pop();
-		if (prev !== undefined) this.future.push(current);
-		return prev;
+	undo(): T | undefined {
+		const step = this.past.pop();
+		if (step !== undefined) this.future.push(step);
+		return step;
 	}
 
-	redo(current: T): T | undefined {
-		const next = this.future.pop();
-		if (next !== undefined) this.past.push(current);
-		return next;
+	redo(): T | undefined {
+		const step = this.future.pop();
+		if (step !== undefined) this.past.push(step);
+		return step;
 	}
 }
