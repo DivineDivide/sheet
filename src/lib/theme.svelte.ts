@@ -5,7 +5,7 @@ export const themes = [
 	{ id: 'system', name: 'System' },
 	{ id: 'light', name: 'Light' },
 	{ id: 'dark', name: 'Dark' },
-	{ id: 'void', name: '唯心空洞' }
+	{ id: 'void', name: 'Grimoire' }
 ] as const;
 export type ThemeId = (typeof themes)[number]['id'];
 

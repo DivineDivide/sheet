@@ -73,9 +73,9 @@
 }
 
 /*
- * 唯心空洞: the rulebook's blood red (#7a2e2e, lifted to read on black), bone-coloured
- * text and brass trim, set in a CJK serif. Tags are cut as shards, for 碎片; track boxes
- * turn into diamonds, like the faces of a fate die.
+ * Grimoire, first made for the 唯心空洞 rulebook: its blood red (#7a2e2e, lifted to read on
+ * black), bone-coloured text and brass trim, set in a CJK serif. Tags are cut as shards;
+ * track boxes turn into diamonds, like the faces of a fate die.
  */
 :root[data-theme='void'] {
 	--page: #0e0b0b;
