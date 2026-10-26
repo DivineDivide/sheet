@@ -5,6 +5,7 @@ import {
 	newCharacter,
 	newDoc,
 	phase,
+	uniqueLabel,
 	valueOf,
 	type Character,
 	type Clock,
@@ -79,5 +80,18 @@ describe('newCharacter', () => {
 		const c = newCharacter('Ash');
 		expect(c.tabs).toHaveLength(1);
 		expect(c.fields).toEqual([]);
+	});
+});
+
+describe('uniqueLabel', () => {
+	const fields = [
+		{ id: 'a', label: 'HP' },
+		{ id: 'b', label: 'hp 2' }
+	];
+
+	it('numbers a label another field has, ignoring case', () => {
+		expect(uniqueLabel('Luck', fields)).toBe('Luck');
+		expect(uniqueLabel('hp', fields)).toBe('hp 3');
+		expect(uniqueLabel('HP', fields, 'a')).toBe('HP');
 	});
 });

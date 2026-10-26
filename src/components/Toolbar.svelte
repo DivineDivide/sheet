@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { kinds, type Character, type Field, type Kind } from '../lib/doc';
+	import { kinds, uniqueLabel, type Character, type Field, type Kind, type When } from '../lib/doc';
+	import { compileLine, nameOf, names as namesOf } from '../lib/formula';
 	import { mod } from '../lib/keys';
+	import { session } from '../lib/session.svelte';
 	import { ui, type Panel } from '../lib/ui.svelte';
+	import { ruled, sheetOf } from '../lib/rules';
 	import Columns from './Columns.svelte';
 	import FormulaInput from './FormulaInput.svelte';
 	import Icon from './Icon.svelte';
 	import { hints } from './Palette.svelte';
+	import Rules from './Rules.svelte';
 	import Statuses from './Statuses.svelte';
 
 	let {
@@ -42,6 +46,22 @@
 	});
 
 	let templateName = $state('');
+
+	const known = $derived(namesOf(sheetOf(session.doc, character)));
+	const whens = $derived<{ when: When; text: string }[]>([
+		...character.fields
+			.filter((f) => f.kind === 'button')
+			.map((b) => ({ when: { press: b.id }, text: `${b.label} pressed` })),
+		...session.doc.clocks.map((k) => ({ when: { tick: k.id }, text: `${k.name} ticks` }))
+	]);
+	function fresh(f: Field) {
+		const text = `${nameOf(f)} ${f.kind === 'text' ? '= ""' : '+= 1'}`;
+		try {
+			return compileLine(text, known, 'character');
+		} catch {
+			return text;
+		}
+	}
 </script>
 
 <aside class="rail">
@@ -68,7 +88,13 @@
 							value={field.label}
 							onchange={(e) => {
 								const text = e.currentTarget.value.trim();
-								if (text) editField(field.id, (f) => (f.label = text));
+								if (!text) return;
+								const label = uniqueLabel(text, character.fields, field.id);
+								if (label !== text) {
+									session.notice = `Another field is labelled ${text}, so this one is ${label}.`;
+									e.currentTarget.value = label;
+								}
+								editField(field.id, (f) => (f.label = label));
 							}}
 						/>
 					</label>
@@ -89,6 +115,27 @@
 						{/key}
 					{:else if field.kind === 'table'}
 						<Columns {field} {editField} />
+					{/if}
+					{#if ruled.includes(field.kind)}
+						<span class="muted">Rules</span>
+						{#key field.id}
+							<Rules
+								rules={field.rules ?? []}
+								names={known}
+								{whens}
+								on="character"
+								fresh={fresh(field)}
+								onchange={(rules) => {
+									editField(field.id, (f) => {
+										f.rules = rules.length ? rules : undefined;
+									});
+								}}
+							/>
+						{/key}
+						<p class="muted">
+							When a button is pressed or a clock ticks, and its condition holds, a rule runs its
+							lines in order. It can change any field here, as in HP -= 1d6.
+						</p>
 					{/if}
 					{#if character.tabs.length > 1}
 						<label>

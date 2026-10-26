@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A character sheet with clocks and statuses, shared live by everyone in a room. The plan
 and its phases are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built.
 Formulas, tables and Excel import followed, planned in
-`notes/trpg/plan-sheet-formulas-import.md`.
+`notes/trpg/plan-sheet-formulas-import.md`, then buttons, rules and status presets, in
+`notes/trpg/plan-sheet-rules.md`.
 
 ## Commands
 
@@ -57,9 +58,27 @@ npm run deploy                    # build + wrangler deploy: goes live
   shown with labels (`compile` / `render`), so a rename breaks nothing; `@` takes a UUID
   exactly, so `@id-1` keeps its minus. Results are computed wherever they show and never
   stored, so they cost no rows written. A table column is `Table[Column]`, stored by column
-  id. `highlight` colours the editor and must never throw on a half-typed formula.
+  id. `highlight` colours the editor and must never throw on a half-typed formula. Clocks
+  are named like fields and stored by id. A status is always named, never stored as an id,
+  since it comes and goes, and reads as its stacks. Field labels are unique within a
+  character (`uniqueLabel`), so a label names one field on any tab.
+- **`src/lib/rules.ts`** — when a button is pressed or a clock ticks, rules run: each is a
+  formula condition and lines like `HP -= 1d6`, and lives on what it changes (a field, a
+  status from a preset, or a clock, whose rules change only clocks), never on the button.
+  The room runs them: a client sends an act (`press`, `tick` or `back`, naming the reading
+  it saw), and `Room.act` calls `fire` with its own dice, so a press counts once and nobody
+  rolls again. `fire` tests every condition before any rule's lines run, takes a rule that
+  fails part-way back whole, and logs each event. It returns the ops and the ops that take
+  them back, which the presser's ⌘Z sends as an ordinary edit. A tick's log line keeps
+  both, so Back takes the last tick to this reading back, its rules' effects with it. No
+  rule sets off another event, so every event ends. Dice roll only in rules: a formula
+  field that rolls shows #VALUE!. Its spec is the map-step cooldown and the poison preset.
 - **Tables** — a `table` field's columns live on the field and its rows, each with an id,
   are the character's value, so rows and cells sync one by one through the keyed-list diff.
+- **Presets and the log** — `doc.presets` are statuses to apply again and again, with rules
+  written with labels; `applyPreset` binds them to a character's fields. `doc.log` holds the
+  last 50 events. Clients cannot write it, since it is not among `isChange`'s roots. Both
+  are rows of their own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically
   so only someone importing downloads it, into plain data. `src/lib/excel.ts` then decides
   by rules, from shape and bold alone, which cells make which field. It lists every cell no
@@ -79,9 +98,10 @@ npm run deploy                    # build + wrangler deploy: goes live
   document. `index.html` applies the saved one before paint. Themes are token sets in
   `app.css`, and components read only tokens, so a theme can reshape tags or track boxes
   without editing them.
-- **`src/components/`** — `App` holds the top bar, where `Roster` shows three characters
-  at a time and a + that opens the new-character popup, with a `Preview` of each
-  template's first tab. `Sheet` holds tabs, the stage and the edit-mode gestures. Over the
+- **`src/components/`** — `CodeInput` is the coloured, completing box for formulas, rule
+  conditions and lines; `Rules` edits a list of rules with it. `App` holds the top bar,
+  where `Roster` shows three characters at a time and a + that opens the new-character
+  popup, with a `Preview` of each template's first tab. `Sheet` holds tabs, the stage and the edit-mode gestures. Over the
   stage float `Palette` (left: kinds to drag in) and `Toolbar` (right: inspector, statuses,
   save as template), as round icons whose panels are 85% see-through (`--panel-bg`).
   Gestures listen on the window, because a drag from the palette is released over the

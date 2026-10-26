@@ -5,6 +5,7 @@
 import {
 	newCharacter,
 	newId,
+	uniqueLabel,
 	type Character,
 	type Column,
 	type Entry,
@@ -398,12 +399,13 @@ export function fromBook(book: Book, pictures: string[]): Imported {
 		values
 	};
 
+	fields.forEach((f, i) => f.label && (f.label = uniqueLabel(f.label, fields.slice(0, i))));
 	const checks: Imported['checks'] = [];
 	formulas.sort((a, b) => a.order - b.order || reading(a.block, b.block));
 	for (const p of formulas) {
 		p.field.formula = translate(p.block.formula!, p.sheet, targets, tables);
 		const shown = render(p.field.formula, fields);
-		if (!p.field.label) p.field.label = shown.slice(0, 40);
+		if (!p.field.label) p.field.label = uniqueLabel(shown.slice(0, 40), fields);
 		const ours = show(result(character, p.field.id));
 		const cached = p.block.value;
 		checks.push({

@@ -2,11 +2,21 @@
 // downloads, and what an undo step snapshots.
 
 import type { Box } from './layout';
+import type { Op } from './sync';
 
 // 2: layout moved from templates onto each character, in tabs, placed freely.
 export const VERSION = 2;
 
-export type Clock = { id: string; name: string; now: number };
+/** What sets a rule off: a button on the same character pressed, or a clock ticking. */
+export type When = { press: string } | { tick: string };
+/**
+ * When something happens, if `if` holds, each line of `then` runs in order, as
+ * `HP -= 1d6`. Stored with `@<id>` references, as a formula is; `rules.ts` runs them.
+ */
+export type Rule = { id: string; when: When; if?: string; then: string[] };
+
+/** A clock's rules change only clocks. */
+export type Clock = { id: string; name: string; now: number; rules?: Rule[] };
 
 /**
  * A stamp, not a countdown: `since` is the clock's reading when the status went on, and
@@ -20,6 +30,30 @@ export type Status = {
 	since: number;
 	/** Absent means it lasts until removed. */
 	lasts?: number;
+	/** What its name reads as in a formula; at 0 it has run out. */
+	stacks?: number;
+	rules?: Rule[];
+	/** The preset it was applied from. */
+	preset?: string;
+};
+
+/** A status to apply again and again. Its rules name fields by label, to suit any character. */
+export type Preset = {
+	id: string;
+	name: string;
+	clock: string;
+	lasts?: number;
+	stacks?: number;
+	rules: Rule[];
+};
+
+/** What the room did for a press or a tick, as everyone reads it. Only the room writes it. */
+export type LogLine = {
+	id: string;
+	at: number;
+	text: string;
+	/** A tick's effects, so Back can take them back. */
+	tick?: { clock: string; to: number; ops: Op[]; undo: Op[] };
 };
 
 export const kinds = [
@@ -27,6 +61,7 @@ export const kinds = [
 	'resource',
 	'track',
 	'formula',
+	'button',
 	'text',
 	'tags',
 	'entries',
@@ -55,6 +90,7 @@ export type Field = {
 	formula?: string;
 	/** A table field's columns. Its rows are the character's value. */
 	columns?: Column[];
+	rules?: Rule[];
 };
 /** Tabs and the fields on them: what a character is shaped like, apart from its values. */
 export type Layout = { tabs: Tab[]; fields: Field[] };
@@ -81,6 +117,8 @@ export type Doc = {
 	clocks: Clock[];
 	templates: Template[];
 	characters: Character[];
+	presets?: Preset[];
+	log?: LogLine[];
 };
 
 export const newId = () => crypto.randomUUID();
@@ -113,7 +151,8 @@ export function newDoc(): Doc {
 				]
 			}
 		],
-		characters: []
+		characters: [],
+		presets: []
 	};
 }
 
@@ -131,6 +170,18 @@ export function newCharacter(name: string, from?: Layout): Character {
 	};
 }
 
+/** `label`, numbered when another field has it, so a formula's label names one field. */
+export function uniqueLabel(label: string, fields: Pick<Field, 'id' | 'label'>[], self?: string) {
+	const taken = new Set(
+		fields.filter((f) => f.id !== self).map((f) => f.label.trim().toLowerCase())
+	);
+	if (!taken.has(label.trim().toLowerCase())) return label;
+	const base = label.trim().replace(/\s+\d+$/, '');
+	let n = 2;
+	while (taken.has(`${base} ${n}`.toLowerCase())) n++;
+	return `${base} ${n}`;
+}
+
 export function blank(kind: Kind): Value {
 	switch (kind) {
 		case 'number':
@@ -142,6 +193,7 @@ export function blank(kind: Kind): Value {
 		case 'text':
 		case 'image':
 		case 'formula':
+		case 'button':
 			return '';
 		case 'tags':
 		case 'entries':
@@ -166,6 +218,7 @@ function fits(kind: Kind, v: unknown): boolean {
 		case 'text':
 		case 'image':
 		case 'formula':
+		case 'button':
 			return typeof v === 'string';
 		case 'tags':
 			return Array.isArray(v) && v.every((t) => typeof t === 'string');
@@ -201,7 +254,12 @@ export function left(s: Status, clock: Clock): number {
 /** Pending when the clock has been stepped back to before the status went on. */
 export function phase(s: Status, clock: Clock): Phase {
 	if (clock.now < s.since) return 'pending';
-	return left(s, clock) <= 0 ? 'expired' : 'active';
+	return left(s, clock) <= 0 || (s.stacks ?? 1) <= 0 ? 'expired' : 'active';
+}
+
+/** What a status's name reads as: its stacks, or 1 without any, while it is on; else 0. */
+export function strength(s: Status, clock: Clock | undefined): number {
+	return !clock || phase(s, clock) === 'active' ? (s.stacks ?? 1) : 0;
 }
 
 /** How long a status has left, naming its clock only when there is more than one. */

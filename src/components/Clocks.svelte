@@ -1,6 +1,10 @@
 <script lang="ts">
-	import { newId, phase, type Doc } from '../lib/doc';
+	import { newId, phase, type Clock, type Doc } from '../lib/doc';
+	import { nameOf, names } from '../lib/formula';
+	import { sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
+	import Log from './Log.svelte';
+	import Rules from './Rules.svelte';
 
 	const doc = $derived(session.doc);
 	const inUse = (id: string) => doc.characters.some((c) => c.statuses.some((s) => s.clock === id));
@@ -14,6 +18,14 @@
 	);
 
 	const clockOf = (d: Doc, id: string) => d.clocks.find((k) => k.id === id)!;
+	const offline = $derived(session.status === 'open' ? null : 'Waiting for the room to come back');
+	const known = $derived(names(sheetOf(doc)));
+	// A clock's rule most often follows another clock, as rounds follow turns.
+	const whensFor = (k: Clock) =>
+		[...doc.clocks.filter((o) => o.id !== k.id), k].map((o) => ({
+			when: { tick: o.id },
+			text: `${o.name} ticks`
+		}));
 </script>
 
 <section class="clocks">
@@ -28,18 +40,45 @@
 					if (name) session.change((d) => (clockOf(d, clock.id).name = name));
 				}}
 			/>
+			<!-- The room moves clocks, so their rules run once; Back takes their effects back too. -->
 			<button
-				title={i === 0 ? 'B' : undefined}
-				onclick={() => session.change((d) => clockOf(d, clock.id).now--)}>Back</button
+				title={offline ?? (i === 0 ? 'B' : undefined)}
+				disabled={!!offline}
+				onclick={() => session.act({ back: { clock: clock.id, at: clock.now } })}>Back</button
 			>
 			<span class="now">{clock.now}</span>
 			<button
 				class="next"
-				title={i === 0 ? 'N' : undefined}
-				onclick={() => session.change((d) => clockOf(d, clock.id).now++)}
+				title={offline ?? (i === 0 ? 'N' : undefined)}
+				disabled={!!offline}
+				onclick={() => session.act({ tick: { clock: clock.id, at: clock.now } })}
 			>
 				Next
 			</button>
+			<button
+				class="small"
+				popovertarget="clock-rules-{clock.id}"
+				title="Rules that change clocks when one ticks"
+				>Rules{clock.rules?.length ? ` ${clock.rules.length}` : ''}</button
+			>
+			<div id="clock-rules-{clock.id}" class="pop" popover>
+				<p class="muted">
+					When a clock ticks, change clocks: as Round += 1 if MOD(Turn, 4) = 0. A clock moved by a
+					rule does not run its own rules.
+				</p>
+				<Rules
+					rules={clock.rules ?? []}
+					names={known}
+					whens={whensFor(clock)}
+					on="clocks"
+					fresh={`${nameOf({ label: clock.name })} += 1`}
+					onchange={(rules) => {
+						session.change((d) => {
+							clockOf(d, clock.id).rules = rules.length ? rules : undefined;
+						});
+					}}
+				/>
+			</div>
 			{#if doc.clocks.length > 1}
 				<button
 					class="x"
@@ -71,6 +110,7 @@
 	>
 		Clear expired{expired ? ` (${expired})` : ''}
 	</button>
+	<Log />
 </section>
 
 <style>
@@ -104,5 +144,31 @@
 	.next {
 		border-color: var(--accent);
 		color: var(--accent);
+	}
+	.small {
+		padding: 0.05rem 0.4rem;
+		font-size: 0.8rem;
+	}
+	.pop {
+		position: fixed;
+		inset: 7.5rem auto auto 1rem;
+		width: min(22rem, calc(100vw - 2rem));
+		max-height: 70vh;
+		margin: 0;
+		padding: 0.75rem;
+		overflow: auto;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		color: var(--ink);
+	}
+	.pop:popover-open {
+		display: grid;
+		gap: 0.4rem;
+	}
+	.muted {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--muted);
 	}
 </style>

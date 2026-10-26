@@ -1,4 +1,5 @@
 import { VERSION, columnKinds, kinds, type Doc } from './doc';
+import { isChange } from './sync';
 import { migrate, type V1Doc } from './v1';
 
 export class ImportError extends Error {}
@@ -10,6 +11,16 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isBox = (b: unknown) => isObj(b) && [b.x, b.y, b.w, b.h].every(isNum);
+const okRule = (r: unknown) =>
+	isObj(r) &&
+	isStr(r.id) &&
+	isObj(r.when) &&
+	(isStr(r.when.press) || isStr(r.when.tick)) &&
+	(r.if === undefined || isStr(r.if)) &&
+	Array.isArray(r.then) &&
+	r.then.every(isStr);
+/** Rules are only checked for shape: one naming a deleted button or clock never fires. */
+const okRules = (v: unknown) => v === undefined || (Array.isArray(v) && v.every(okRule));
 
 /**
  * Parses an exported document, refusing anything whose structure or references are
@@ -57,14 +68,53 @@ export function validate(data: unknown): Doc {
 		checkLayout(ch, `"${ch.name}"`);
 		checkStatuses(ch, clockIds);
 	}
+	checkPresets(data);
+	checkLog(data);
 	return data as Doc;
+}
+
+function checkPresets(data: Record<string, unknown>) {
+	if (data.presets === undefined) return;
+	if (!Array.isArray(data.presets)) throw new ImportError('the status presets are malformed');
+	for (const p of data.presets) {
+		const ok =
+			isObj(p) &&
+			isStr(p.id) &&
+			isStr(p.name) &&
+			isStr(p.clock) &&
+			(p.lasts === undefined || isNum(p.lasts)) &&
+			(p.stacks === undefined || isNum(p.stacks)) &&
+			Array.isArray(p.rules) &&
+			okRules(p.rules);
+		if (!ok) throw new ImportError('a status preset is malformed');
+	}
+}
+
+function checkLog(data: Record<string, unknown>) {
+	if (data.log === undefined) return;
+	const ok =
+		Array.isArray(data.log) &&
+		data.log.every(
+			(l) =>
+				isObj(l) &&
+				isStr(l.id) &&
+				isNum(l.at) &&
+				isStr(l.text) &&
+				(l.tick === undefined ||
+					(isObj(l.tick) &&
+						isStr(l.tick.clock) &&
+						isNum(l.tick.to) &&
+						isChange({ id: l.id, ops: l.tick.ops }) &&
+						isChange({ id: l.id, ops: l.tick.undo })))
+		);
+	if (!ok) throw new ImportError('the log is malformed');
 }
 
 function checkClocks(data: Record<string, unknown>): Set<string> {
 	if (!Array.isArray(data.clocks)) throw new ImportError('missing clocks');
 	const ids = new Set<string>();
 	for (const c of data.clocks) {
-		if (!isObj(c) || !isStr(c.id) || !isStr(c.name) || !isNum(c.now)) {
+		if (!isObj(c) || !isStr(c.id) || !isStr(c.name) || !isNum(c.now) || !okRules(c.rules)) {
 			throw new ImportError('a clock is malformed');
 		}
 		ids.add(c.id);
@@ -104,6 +154,7 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		if (f.columns !== undefined && !(Array.isArray(f.columns) && f.columns.every(okColumn))) {
 			throw new ImportError(`"${f.label}" on ${name} has malformed columns`);
 		}
+		if (!okRules(f.rules)) throw new ImportError(`"${f.label}" on ${name} has malformed rules`);
 	}
 }
 
@@ -115,6 +166,13 @@ function checkStatuses(ch: Record<string, unknown>, clockIds: Set<string>) {
 		}
 		if (s.lasts !== undefined && !isNum(s.lasts)) {
 			throw new ImportError(`a status on "${ch.name}" has a bad duration`);
+		}
+		if (
+			(s.stacks !== undefined && !isNum(s.stacks)) ||
+			(s.preset !== undefined && !isStr(s.preset)) ||
+			!okRules(s.rules)
+		) {
+			throw new ImportError(`a status on "${ch.name}" is malformed`);
 		}
 		if (!isStr(s.clock) || !clockIds.has(s.clock)) {
 			throw new ImportError(`a status on "${ch.name}" runs on a clock not in the file`);

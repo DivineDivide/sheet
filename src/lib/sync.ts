@@ -17,6 +17,8 @@ export type Down =
 	| { t: 'ack'; id: string }
 	| { t: 'reject'; id: string; reason: string }
 	| ({ t: 'change' } & Change)
+	/** To whoever asked for a press or tick: what it did, and how to take it back. */
+	| { t: 'done'; id: string; ops: Op[]; undo: Op[]; why?: string }
 	| { t: 'gone' };
 
 type Obj = Record<string, unknown>;
@@ -230,7 +232,8 @@ export class Replica<D> {
 	}
 }
 
-const ROOTS = ['clocks', 'templates', 'characters'];
+// The log is not here: only the room writes it.
+const ROOTS = ['clocks', 'templates', 'characters', 'presets'];
 const UNSAFE = ['__proto__', 'prototype', 'constructor'];
 
 /**

@@ -64,6 +64,20 @@ describe('parse', () => {
 		).toThrow(/columns/);
 	});
 
+	it('takes rules, stacks and presets, and refuses a malformed rule', () => {
+		const ok = mangle((d) => {
+			const tick = { tick: d.clocks[0].id };
+			d.characters[0].fields[0].rules = [{ id: 'r', when: tick, if: 'TRUE', then: ['HP -= 1'] }];
+			d.characters[0].statuses[0].stacks = 3;
+			d.presets = [{ id: 'p', name: 'Poison', clock: d.clocks[0].id, rules: [] }];
+		});
+		expect(parse(ok).presets).toHaveLength(1);
+		const bad = mangle((d) => (d.characters[0].fields[0].rules = [{ id: 'r', then: 'HP -= 1' }]));
+		expect(() => parse(bad)).toThrow(/malformed rules/);
+		const log = mangle((d) => (d.log = [{ id: 'l', at: 1, text: 'x', tick: { ops: 'no' } }]));
+		expect(() => parse(log)).toThrow(/log/);
+	});
+
 	it('refuses an unknown field kind', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/

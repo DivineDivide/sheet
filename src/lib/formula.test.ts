@@ -3,8 +3,12 @@ import { blank, type Field, type Kind, type Row, type Value } from './doc';
 import {
 	FormulaError,
 	compile,
+	compileLine,
+	evaluate,
 	highlight,
+	names,
 	parse,
+	parseLine,
 	render,
 	result,
 	show,
@@ -427,6 +431,41 @@ describe('highlight', () => {
 describe('parse', () => {
 	it('takes ids, labels and an optional =', () => {
 		expect(parse('=@abc-1+2')).toMatchObject({ t: 'bin', op: '+' });
-		expect(parse('[a b][c]')).toEqual({ t: 'name', s: 'a b' });
+		expect(parse('[a b][c]')).toEqual({ t: 'name', s: 'a b', col: 'c' });
+	});
+});
+
+describe('what rules add', () => {
+	const s = sheet(['HP', 'resource', { cur: 5, max: 8 }], ['Odds', 'formula'], ['Notes', 'text']);
+	const turn = { id: 'k', name: 'Turn', now: 3 };
+	const poison = { id: 'p', name: 'Poison', clock: 'k', since: 1, stacks: 4 };
+	const all = { ...s, clocks: [turn], statuses: [poison], presets: [{ name: 'Stun' }] };
+	const known = names(all);
+
+	it('reads clocks by name, and statuses by name as their stacks', () => {
+		const stored = compile('Turn * 10 + Poison + Stun', known);
+		expect(stored).toBe('@k * 10 + Poison + Stun');
+		expect(render(stored, known)).toBe('Turn * 10 + Poison + Stun');
+		const out = { ...s.fields[1], formula: stored };
+		expect(result({ ...all, fields: [s.fields[0], out, s.fields[2]] }, out.id)).toBe(34);
+	});
+
+	it('rolls dice only in rules', () => {
+		expect(code('1d6+1')).toBe('#VALUE!');
+		const faces = [2, 5];
+		expect(evaluate(parse('2d6+1'), s, () => faces.shift()!)).toBe(8);
+		expect(highlight('2d6', []).map((p) => p.paint)).toEqual(['num']);
+	});
+
+	it('reads a line: what it changes, then =, += or -=', () => {
+		expect(parseLine('HP -= 1d6')).toMatchObject({ target: { t: 'name', s: 'HP' }, op: '-=' });
+		expect(compileLine('HP.max += 2', known, 'character')).toBe('@f0.max += 2');
+		expect(compileLine('Poison = 0', known, 'character')).toBe('Poison = 0');
+		expect(() => parseLine('HP - = 1')).toThrow(/expected =, \+= or -=/);
+		expect(() => compileLine('Odds = 1', known, 'character')).toThrow(/can't be changed/);
+		expect(() => compileLine('Notes += "x"', known, 'character')).toThrow(/takes only =/);
+		expect(() => compileLine('Turn += 1', known, 'character')).toThrow(/presses Next/);
+		expect(() => compileLine('HP = 1', known, 'clocks')).toThrow(/not a clock/);
+		expect(() => compileLine('Nobody = 1', known, 'character')).toThrow(/nothing is called/);
 	});
 });

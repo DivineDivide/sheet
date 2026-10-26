@@ -9,16 +9,26 @@
 		type Row,
 		type Value
 	} from '../lib/doc';
-	import { isErr, render, result, show } from '../lib/formula';
+	import { isErr, names, render, result, show } from '../lib/formula';
 	import { markdown } from '../lib/markdown';
 	import { shrink } from '../lib/picture';
+	import { ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
 	import Prose from './Prose.svelte';
 
 	let { character, field }: { character: Character; field: Field } = $props();
 
 	const v = $derived(valueOf(character, field));
-	const out = $derived(field.kind === 'formula' ? result(character, field.id) : null);
+	const sheet = $derived(sheetOf(session.doc, character));
+	const out = $derived(field.kind === 'formula' ? result(sheet, field.id) : null);
+	// Presses go to the room, which runs the rules, so a button waits while it is away.
+	const why = $derived(
+		field.kind !== 'button'
+			? true
+			: session.status === 'open'
+				? ready(session.doc, character, field.id)
+				: 'Waiting for the room to come back.'
+	);
 
 	function set(next: Value) {
 		session.change((d) => {
@@ -44,9 +54,17 @@
 </script>
 
 <div class="field">
-	<div class="label md">{@html markdown(field.label)}</div>
+	{#if field.kind !== 'button'}<div class="label md">{@html markdown(field.label)}</div>{/if}
 
-	{#if field.kind === 'number'}
+	{#if field.kind === 'button'}
+		<button
+			class="press md"
+			disabled={why !== true}
+			onclick={() => session.act({ press: { character: character.id, field: field.id } })}
+			>{@html markdown(field.label)}</button
+		>
+		{#if why !== true}<span class="none">{why}</span>{/if}
+	{:else if field.kind === 'number'}
 		{@const n = v as number}
 		<input
 			class="short"
@@ -103,8 +121,7 @@
 			<output
 				class="big"
 				class:err={isErr(out)}
-				title={isErr(out) ? out.why : `=${render(field.formula, character.fields)}`}
-				>{show(out)}</output
+				title={isErr(out) ? out.why : `=${render(field.formula, names(sheet))}`}>{show(out)}</output
 			>
 		{:else}
 			<span class="none">No formula yet. Set one in Edit layout.</span>
@@ -293,6 +310,16 @@
 		flex-direction: column;
 		gap: 0.25rem;
 		height: 100%;
+	}
+	.press {
+		flex: 1;
+		min-height: 2.5rem;
+		border-color: var(--accent);
+		color: var(--accent);
+		font-weight: 600;
+	}
+	.press:disabled {
+		opacity: 0.45;
 	}
 	.label {
 		font-family: var(--font-head);

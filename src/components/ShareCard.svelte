@@ -6,6 +6,7 @@
 		valueOf,
 		type Character,
 		type Clock,
+		type Doc,
 		type Entry,
 		type Field,
 		type Resource,
@@ -17,7 +18,11 @@
 
 	// What gets pasted into a chat: every tab, every value in full. Each box keeps its place
 	// and width from the sheet but grows to its whole value, because an image cannot scroll.
-	let { character, clocks }: { character: Character; clocks: Clock[] } = $props();
+	let {
+		character,
+		clocks,
+		presets
+	}: { character: Character; clocks: Clock[]; presets: Doc['presets'] } = $props();
 
 	const statuses = $derived(
 		character.statuses.filter(
@@ -30,7 +35,11 @@
 	);
 	const sections = $derived(
 		character.tabs
-			.map((tab) => ({ tab, fields: character.fields.filter((f) => f.tab === tab.id) }))
+			// A button has nothing to show in a picture.
+			.map((tab) => ({
+				tab,
+				fields: character.fields.filter((f) => f.tab === tab.id && f.kind !== 'button')
+			}))
 			.filter((s) => s.fields.length)
 	);
 	// The sheet runs left of 0,0 too; the card starts at its leftmost field.
@@ -64,7 +73,11 @@
 	{#if statuses.length}
 		<ul class="statuses">
 			{#each statuses as s (s.id)}
-				<li><b>{s.name}</b><span>{describe(s, clocks)}</span></li>
+				<li>
+					<b>{s.name}{s.stacks !== undefined ? ` ${s.stacks}` : ''}</b><span
+						>{describe(s, clocks)}</span
+					>
+				</li>
 			{/each}
 		</ul>
 	{/if}
@@ -96,7 +109,7 @@
 								></span></span
 							>
 						{:else if f.kind === 'formula'}
-							<span class="big">{show(result(character, f.id))}</span>
+							<span class="big">{show(result({ ...character, clocks, presets }, f.id))}</span>
 						{:else if f.kind === 'track'}
 							{@const boxes = v as boolean[]}
 							<span class="track">

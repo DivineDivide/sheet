@@ -1,18 +1,34 @@
 <script lang="ts" module>
 	import type { Field, Value } from '../lib/doc';
+	import type { Name } from '../lib/formula';
 
 	// Shared by every sheet and kept off the system clipboard, so a field copied from one
 	// character pastes onto another, and in Safari, which sends no copy event without a selection.
 	// A formula travels with labels, so it reads the same-named fields where it is pasted.
-	let clip: { field: Field; value: Value; formula?: string } | null = null;
+	// Rules travel as stored, with the names they were written against.
+	let clip: {
+		field: Field;
+		value: Value;
+		formula?: string;
+		from: { character: string; names: Name[] };
+	} | null = null;
 </script>
 
 <script lang="ts">
 	import { toBlob } from 'html-to-image';
 	import { tick } from 'svelte';
-	import { blank, newId, valueOf, type Character, type Doc, type Kind } from '../lib/doc';
+	import {
+		blank,
+		newId,
+		uniqueLabel,
+		valueOf,
+		type Character,
+		type Doc,
+		type Kind
+	} from '../lib/doc';
 	import type { Attachment } from 'svelte/attachments';
-	import { FormulaError, compile, render as withLabels } from '../lib/formula';
+	import { FormulaError, compile, names, render as withLabels } from '../lib/formula';
+	import { rebind, sheetOf } from '../lib/rules';
 	import { free, mod } from '../lib/keys';
 	import { SNAP, clamp, defaultSize, readingOrder, type Box } from '../lib/layout';
 	import { session } from '../lib/session.svelte';
@@ -85,7 +101,7 @@
 		// Without a drop point, in the middle of what is on screen.
 		const box = clamp(at ?? { x: view.x - size.w / 2, y: view.y - size.h / 2, ...size });
 		edit((c) => {
-			c.fields.push({ id, label: `New ${kind}`, kind, tab: tab.id, box });
+			c.fields.push({ id, label: uniqueLabel(`New ${kind}`, c.fields), kind, tab: tab.id, box });
 			// A table starts with a column, so it has rows to add.
 			if (kind === 'table')
 				c.fields.at(-1)!.columns = [{ id: newId(), name: 'Name', kind: 'text' }];
@@ -103,20 +119,22 @@
 	}
 
 	function copy(f: Field) {
+		const known = $state.snapshot(names(sheetOf(session.doc, character))) as Name[];
 		clip = {
 			field: $state.snapshot(f),
 			value: $state.snapshot(valueOf(character, f)),
-			formula: f.formula && withLabels(f.formula, character.fields)
+			formula: f.formula && withLabels(f.formula, known),
+			from: { character: character.id, names: known }
 		};
 		session.notice = `Copied ${f.label}. ${mod}V pastes it in Edit layout, on any character.`;
 	}
 
-	function paste({ field: from, value, formula }: NonNullable<typeof clip>) {
+	function paste({ field: from, value, formula, from: source }: NonNullable<typeof clip>) {
 		const id = newId();
 		edit((c) => {
 			let stored = from.formula;
 			try {
-				if (formula) stored = compile(formula, c.fields);
+				if (formula) stored = compile(formula, names(sheetOf(session.doc, c)));
 			} catch (e) {
 				if (!(e instanceof FormulaError)) throw e;
 			}
@@ -126,7 +144,16 @@
 			while (taken.some((b) => b.x === box.x && b.y === box.y)) {
 				box = { ...box, x: box.x + 2 * SNAP, y: box.y + 2 * SNAP };
 			}
-			c.fields.push({ ...from, id, tab: tab.id, box: clamp(box), formula: stored });
+			const label = uniqueLabel(from.label, c.fields);
+			const field: Field = { ...from, id, label, tab: tab.id, box: clamp(box), formula: stored };
+			if (from.rules) {
+				const here = source.character === c.id;
+				const target = here
+					? null
+					: names(sheetOf(session.doc, { ...c, fields: [...c.fields, field] }));
+				field.rules = rebind(from.rules, { id: from.id, names: source.names }, field, target);
+			}
+			c.fields.push(field);
 			c.values[id] = structuredClone(value);
 		});
 		selected = id;
@@ -544,7 +571,7 @@
 
 {#if sharing}
 	<div class="offstage" aria-hidden="true" bind:this={card}>
-		<ShareCard {character} clocks={session.doc.clocks} />
+		<ShareCard {character} clocks={session.doc.clocks} presets={session.doc.presets} />
 	</div>
 {/if}
 

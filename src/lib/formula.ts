@@ -1,8 +1,21 @@
 // Excel's formula language over one character's fields. A formula is stored with `@<id>`
 // references and shown with labels, so renaming a field breaks nothing. Its result is
-// computed wherever it shows and never stored: a room keeps only the formula.
+// computed wherever it shows and never stored: a room keeps only the formula. Rules add
+// dice and lines that change a field, as `HP -= 1d6`.
 
-import { valueOf, type Character, type Entry, type Field, type Resource, type Row } from './doc';
+import {
+	strength,
+	valueOf,
+	type Character,
+	type Clock,
+	type Column,
+	type Entry,
+	type Field,
+	type Kind,
+	type Preset,
+	type Resource,
+	type Row
+} from './doc';
 
 export type Code =
 	'#DIV/0!' | '#N/A' | '#NAME?' | '#NULL!' | '#NUM!' | '#REF!' | '#VALUE!' | '#CYCLE!' | '#ERROR!';
@@ -13,7 +26,17 @@ export type Val = Scalar | Scalar[];
 
 export class FormulaError extends Error {}
 
-type Sheet = Pick<Character, 'fields' | 'values'>;
+/** What a formula reads: a character's fields and, when given, its statuses and the clocks. */
+export type Sheet = Pick<Character, 'fields' | 'values'> & {
+	statuses?: Character['statuses'];
+	clocks?: Clock[];
+	/** Status names that read 0 on a character without that status. */
+	presets?: Pick<Preset, 'name'>[];
+};
+
+/** Rolls one die, from 1 to `sides`. */
+export type Roll = (sides: number) => number;
+export type Rolled = { dice: string; got: number[] };
 
 const E = (err: Code, why?: string): Err => ({ err, why });
 export const isErr = (v: unknown): v is Err =>
@@ -26,6 +49,7 @@ type Lexeme =
 	| { k: 'str'; v: string }
 	| { k: 'err'; v: Code }
 	| { k: 'bool'; v: boolean }
+	| { k: 'dice'; n: number; sides: number }
 	| { k: 'fn'; s: string }
 	| { k: 'ref'; id: string; prop?: string; col?: string }
 	| { k: 'name'; s: string; prop?: string; col?: string }
@@ -36,6 +60,7 @@ type Tok = Lexeme & { at: number; end: number };
 // A label is written bare when it is one run of none of these; otherwise in [brackets].
 const WORD = /^[^\s+\-*/^&=<>%(),"[\]{}.:;!@#']+/;
 const NUM = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i;
+const DICE = /^(\d+)d(\d+)(?![\w.])/i;
 // Dots allowed, for Excel's `_xlfn.CONCAT(` and `FLOOR.MATH(`.
 const FN = /^[A-Za-z_][A-Za-z0-9_.]*(?=\s*\()/;
 const ERR = /^#(DIV\/0!|N\/A|NAME\?|NULL!|NUM!|REF!|VALUE!|CYCLE!|ERROR!)/i;
@@ -45,7 +70,8 @@ const OPS = ['<=', '>=', '<>', '+', '-', '*', '/', '^', '&', '=', '<', '>', '%',
 const REF =
 	/^@(?:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})|(\w+)|\{([^}]*)\})/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const refText = (id: string) => (REF.exec(`@${id}`)?.[0] === `@${id}` ? `@${id}` : `@{${id}}`);
+export const refText = (id: string) =>
+	REF.exec(`@${id}`)?.[0] === `@${id}` ? `@${id}` : `@{${id}}`;
 const NUMERIC = /^\s*[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?\s*$/i;
 
 /** `loose` never throws: what cannot be read becomes `bad`, for colouring a half-typed formula. */
@@ -79,6 +105,8 @@ function lex(src: string, loose = false): Tok[] {
 				else v += rest[j++];
 			}
 			push({ k: 'str', v }, j + 1);
+		} else if ((m = DICE.exec(rest))) {
+			push({ k: 'dice', n: Number(m[1]), sides: Number(m[2]) }, m[0].length);
 		} else if ((m = NUM.exec(rest))) {
 			push({ k: 'num', v: Number(m[0]) }, m[0].length);
 		} else if ((m = ERR.exec(rest))) {
@@ -128,7 +156,8 @@ function lex(src: string, loose = false): Tok[] {
 export type Node =
 	| { t: 'lit'; v: Scalar }
 	| { t: 'ref'; id: string; prop?: string; col?: string }
-	| { t: 'name'; s: string }
+	| { t: 'name'; s: string; prop?: string; col?: string }
+	| { t: 'dice'; n: number; sides: number }
 	| { t: 'un'; op: '-' | '+' | '%'; a: Node }
 	| { t: 'bin'; op: string; a: Node; b: Node }
 	| { t: 'call'; fn: string; args: Node[] };
@@ -179,7 +208,9 @@ export function parse(text: string): Node {
 			case 'ref':
 				return { t: 'ref', id: t.id, prop: t.prop, col: t.col };
 			case 'name':
-				return { t: 'name', s: t.s };
+				return { t: 'name', s: t.s, prop: t.prop, col: t.col };
+			case 'dice':
+				return { t: 'dice', n: t.n, sides: t.sides };
 			case 'fn':
 				return call(t.s);
 			case 'op':
@@ -247,7 +278,7 @@ function one(v: Val): Scalar {
 
 const list = (v: Val): Scalar[] => (Array.isArray(v) ? v : [v]);
 
-function num(v: Val): number | Err {
+export function num(v: Val): number | Err {
 	const s = one(v);
 	if (s === null) return 0;
 	if (typeof s === 'number') return s;
@@ -261,7 +292,7 @@ function num(v: Val): number | Err {
 /** Excel turns a number into text with at most 15 significant digits. */
 const fmt = (n: number) => String(Number(n.toPrecision(15))).toUpperCase();
 
-function str(v: Val): string | Err {
+export function str(v: Val): string | Err {
 	const s = one(v);
 	if (s === null) return '';
 	if (typeof s === 'number') return fmt(s);
@@ -269,7 +300,7 @@ function str(v: Val): string | Err {
 	return s;
 }
 
-function bool(v: Val): boolean | Err {
+export function bool(v: Val): boolean | Err {
 	const s = one(v);
 	if (s === null) return false;
 	if (typeof s === 'number') return s !== 0;
@@ -707,16 +738,31 @@ export const functions = Object.keys(FNS).sort();
 
 // ---- evaluating ------------------------------------------------------------------------
 
-type Ctx = { sheet: Sheet; stack: string[]; memo: Map<string, Val> };
+type Ctx = {
+	sheet: Sheet;
+	stack: string[];
+	memo: Map<string, Val>;
+	roll?: Roll;
+	rolled?: Rolled[];
+};
 
 function ev(n: Node, ctx: Ctx): Val {
 	switch (n.t) {
 		case 'lit':
 			return n.v;
 		case 'name':
-			return E('#NAME?', `no field is labelled "${n.s}"`);
+			return byName(n, ctx);
 		case 'ref':
 			return read(n, ctx);
+		case 'dice': {
+			if (!ctx.roll) return E('#VALUE!', 'dice roll only in rules');
+			if (n.n < 1 || n.n > 100 || n.sides < 1 || n.sides > 1000) {
+				return E('#NUM!', `${n.n}d${n.sides} is too many dice or faces`);
+			}
+			const got = Array.from({ length: n.n }, () => ctx.roll!(n.sides));
+			ctx.rolled?.push({ dice: `${n.n}d${n.sides}`, got });
+			return got.reduce((a, b) => a + b, 0);
+		}
 		case 'un': {
 			if (n.op === '+') return ev(n.a, ctx);
 			const x = num(ev(n.a, ctx));
@@ -736,9 +782,15 @@ function ev(n: Node, ctx: Ctx): Val {
 	}
 }
 
-function read(n: Extract<Node, { t: 'ref' }>, ctx: Ctx): Val {
+function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 	const f = ctx.sheet.fields.find((x) => x.id === n.id);
-	if (!f) return E('#REF!', 'reads a field that was deleted');
+	if (!f) {
+		const k = ctx.sheet.clocks?.find((x) => x.id === n.id);
+		if (!k) return E('#REF!', 'reads a field that was deleted');
+		return n.prop || n.col !== undefined
+			? E('#VALUE!', `${k.name} is a clock: only its reading`)
+			: k.now;
+	}
 	const prop = n.prop?.toLowerCase();
 	const none = E('#VALUE!', `${f.label} has no .${n.prop}`);
 	const v = valueOf(ctx.sheet, f);
@@ -778,7 +830,44 @@ function read(n: Extract<Node, { t: 'ref' }>, ctx: Ctx): Val {
 			return run(f, ctx);
 		case 'image':
 			return E('#VALUE!', 'a picture has no value');
+		case 'button':
+			return E('#VALUE!', 'a button has no value');
 	}
+}
+
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** The status a name means: an active one first, since the same name may be on twice. */
+export function statusNamed(sheet: Sheet, name: string) {
+	const all = (sheet.statuses ?? []).filter((s) => same(s.name, name));
+	const clock = (s: { clock: string }) => sheet.clocks?.find((k) => k.id === s.clock);
+	return all.find((s) => strength(s, clock(s)) > 0) ?? all[0];
+}
+
+/**
+ * A name stored as typed: a status, which comes and goes and so is never an id, or a
+ * field or clock named since the formula was written.
+ */
+function byName(n: Extract<Node, { t: 'name' }>, ctx: Ctx): Val {
+	const { fields, clocks = [], presets = [] } = ctx.sheet;
+	const f = fields.find((x) => same(x.label, n.s));
+	if (f) {
+		const col = n.col && (f.columns?.find((c) => same(c.name, n.col!))?.id ?? n.col);
+		return read({ id: f.id, prop: n.prop, col: col ?? undefined }, ctx);
+	}
+	const k = clocks.find((x) => same(x.name, n.s));
+	if (k) return read({ id: k.id, prop: n.prop, col: n.col }, ctx);
+	const s = statusNamed(ctx.sheet, n.s);
+	if (!s && !presets.some((p) => same(p.name, n.s))) {
+		return E('#NAME?', `no field is labelled "${n.s}"`);
+	}
+	if (n.prop || n.col !== undefined) return E('#VALUE!', `${n.s} is a status: only its stacks`);
+	return s
+		? strength(
+				s,
+				clocks.find((x) => x.id === s.clock)
+			)
+		: 0;
 }
 
 const parsed = new Map<string, Node | FormulaError>();
@@ -807,8 +896,9 @@ function run(f: Field, ctx: Ctx): Val {
 	ctx.stack.push(f.id);
 	let v: Val;
 	try {
-		// A formula that reads a blank shows 0, as Excel's does.
-		v = ev(compiled(f.formula), ctx) ?? 0;
+		// A formula that reads a blank shows 0, as Excel's does. Its dice never roll, even
+		// read from a rule, or it would change every time it shows.
+		v = ev(compiled(f.formula), ctx.roll ? { ...ctx, roll: undefined } : ctx) ?? 0;
 	} catch (e) {
 		if (!(e instanceof FormulaError)) throw e;
 		v = E('#ERROR!', e.message);
@@ -817,6 +907,18 @@ function run(f: Field, ctx: Ctx): Val {
 	ctx.memo.set(f.id, v);
 	return v;
 }
+
+/** A parsed formula's value. Dice roll only when `roll` is given, as in a rule. */
+export function evaluate(n: Node, sheet: Sheet, roll?: Roll, rolled?: Rolled[]): Val {
+	return ev(n, { sheet, stack: [], memo: new Map(), roll, rolled });
+}
+
+/** Whether a formula rolls dice, and so cannot be known before it runs. */
+export const rolls = (n: Node): boolean =>
+	n.t === 'dice' ||
+	(n.t === 'un' && rolls(n.a)) ||
+	(n.t === 'bin' && (rolls(n.a) || rolls(n.b))) ||
+	(n.t === 'call' && n.args.some(rolls));
 
 /** A formula field's result; blank while it has no formula. */
 export function result(sheet: Sheet, id: string): Val {
@@ -836,6 +938,29 @@ export function show(v: Val): string {
 
 // ---- labels in, ids out ----------------------------------------------------------------
 
+/** Something a formula can name. A status keeps its name when stored, since it comes and goes. */
+export type Name = {
+	id: string;
+	label: string;
+	kind?: Kind | 'clock' | 'status';
+	columns?: Column[];
+};
+
+/** All a character's formulas can name: its fields, the clocks, and statuses the room knows. */
+export function names(sheet: Sheet): Name[] {
+	const out: Name[] = [
+		...sheet.fields,
+		...(sheet.clocks ?? []).map((k) => ({ id: k.id, label: k.name, kind: 'clock' as const }))
+	];
+	const taken = new Set(out.map((x) => x.label.trim().toLowerCase()));
+	for (const { name } of [...(sheet.statuses ?? []), ...(sheet.presets ?? [])]) {
+		const k = name.trim().toLowerCase();
+		if (k && !taken.has(k)) out.push({ id: '', label: name, kind: 'status' });
+		taken.add(k);
+	}
+	return out;
+}
+
 /** How a field is written in a formula: its label, bracketed unless it reads as one word. */
 export function nameOf(f: Pick<Field, 'label'>): string {
 	const s = f.label.trim();
@@ -847,15 +972,24 @@ export function nameOf(f: Pick<Field, 'label'>): string {
  * What someone typed, with each label swapped for its field's id. A label no field has is
  * kept, and shows #NAME? until one does. Throws `FormulaError` when it cannot be read.
  */
-export function compile(text: string, fields: Field[]): string {
-	const src = strip(text);
+export function compile(text: string, names: Name[]): string {
+	const out = swap(strip(text), names);
+	parse(out);
+	return out;
+}
+
+function swap(src: string, names: Name[]): string {
 	let out = '';
 	let last = 0;
 	for (const t of lex(src)) {
 		if (t.k !== 'name') continue;
-		const hits = fields.filter((f) => f.label.trim().toLowerCase() === t.s.toLowerCase());
+		const hits = names.filter((f) => f.kind !== 'status' && same(f.label, t.s));
 		if (hits.length > 1) {
-			throw new FormulaError(`${hits.length} fields are labelled "${t.s}": rename all but one`);
+			throw new FormulaError(
+				hits.some((h) => h.kind === 'clock')
+					? `a field and a clock are both called "${t.s}": rename one`
+					: `${hits.length} fields are labelled "${t.s}": rename all but one`
+			);
 		}
 		if (!hits.length) continue;
 		const col =
@@ -865,13 +999,97 @@ export function compile(text: string, fields: Field[]): string {
 		}`;
 		last = t.end;
 	}
-	out += src.slice(last);
-	parse(out);
+	return out + src.slice(last);
+}
+
+export type Line = {
+	target: Extract<Node, { t: 'ref' }> | Extract<Node, { t: 'name' }>;
+	op: '=' | '+=' | '-=';
+	expr: Node;
+};
+
+/** Reads a rule's line: what it changes, then =, += or -=, then a formula. */
+export function parseLine(text: string): Line {
+	const src = text.trim();
+	const [t, a, b] = lex(src);
+	if (t?.k !== 'ref' && t?.k !== 'name') {
+		throw new FormulaError('a line starts with what it changes, as in HP -= 1');
+	}
+	let op: Line['op'] = '=';
+	let end: number;
+	if (a?.k === 'op' && a.s === '=') end = a.end;
+	else if (
+		a?.k === 'op' &&
+		(a.s === '+' || a.s === '-') &&
+		b?.k === 'op' &&
+		b.s === '=' &&
+		b.at === a.end
+	) {
+		op = a.s === '+' ? '+=' : '-=';
+		end = b.end;
+	} else throw new FormulaError(`expected =, += or -= after "${src.slice(t.at, t.end)}"`);
+	const target: Line['target'] =
+		t.k === 'ref'
+			? { t: 'ref', id: t.id, prop: t.prop, col: t.col }
+			: { t: 'name', s: t.s, prop: t.prop, col: t.col };
+	return { target, op, expr: parse(src.slice(end)) };
+}
+
+/** Why a rule cannot change something of this kind, or null when it can. */
+export function unwritable(
+	kind: Name['kind'],
+	prop: string | undefined,
+	op: Line['op'],
+	on: 'character' | 'clocks'
+): string | null {
+	const p = prop?.toLowerCase();
+	if (on === 'clocks') {
+		if (kind !== 'clock') return "is not a clock, and a clock's rules change only clocks";
+		return p ? `has no .${prop}` : null;
+	}
+	switch (kind) {
+		case 'clock':
+			return 'moves only when someone presses Next';
+		case 'number':
+		case 'status':
+			return p ? `has no .${prop}` : null;
+		case 'resource':
+			return !p || p === 'cur' || p === 'max' ? null : `has no .${prop}`;
+		case 'track':
+			return !p || p === 'max' ? null : `has no .${prop}`;
+		case 'text':
+			return p ? `has no .${prop}` : op === '=' ? null : 'takes only =';
+		default:
+			return "can't be changed by a rule";
+	}
+}
+
+/**
+ * A line as typed, with labels swapped for ids. Refused when it cannot be read or changes
+ * what a rule cannot: on a clock, only clocks; otherwise anything but a clock.
+ */
+export function compileLine(text: string, names: Name[], on: 'character' | 'clocks'): string {
+	const out = swap(text.trim(), names);
+	const { target, op } = parseLine(out);
+	const who =
+		target.t === 'ref'
+			? names.find((x) => x.id === target.id)
+			: names.find((x) => x.kind === 'status' && same(x.label, target.s));
+	if (!who) {
+		throw new FormulaError(
+			target.t === 'ref' ? 'it changes a field that was deleted' : `nothing is called "${target.s}"`
+		);
+	}
+	const why =
+		target.col !== undefined
+			? "can't be changed by a rule"
+			: unwritable(who.kind, target.prop, op, on);
+	if (why) throw new FormulaError(`${who.label} ${why}`);
 	return out;
 }
 
 /** The stored form, with current labels; a deleted field shows as #REF!, as in Excel. */
-export function render(stored: string, fields: Field[]): string {
+export function render(stored: string, fields: Name[]): string {
 	let toks: Tok[];
 	try {
 		toks = lex(stored);
@@ -896,7 +1114,7 @@ export function render(stored: string, fields: Field[]): string {
 }
 
 /** Labels and functions that could finish the name typed just before `caret`. */
-export function suggest(text: string, caret: number, fields: Field[]) {
+export function suggest(text: string, caret: number, fields: Name[]) {
 	const before = text.slice(0, caret);
 	const none = { from: caret, options: [] as string[] };
 	if ((before.match(/"/g)?.length ?? 0) % 2) return none;
@@ -935,7 +1153,7 @@ export type Paint =
  * A formula as typed, cut into pieces to colour. A label or function this sheet does not
  * have is `unknown`, so a typo shows before it is saved; parentheses carry their depth.
  */
-export function highlight(text: string, fields: Field[]) {
+export function highlight(text: string, fields: Name[]) {
 	const out: { text: string; paint: Paint; depth?: number }[] = [];
 	const labels = new Set(fields.map((f) => f.label.trim().toLowerCase()));
 	let last = 0;
@@ -958,7 +1176,14 @@ export function highlight(text: string, fields: Field[]) {
 					: t.k === 'ref'
 						? fields.some((f) => f.id === t.id)
 						: true;
-		const paint = t.k === 'fn' ? 'fn' : t.k === 'name' || t.k === 'ref' ? 'field' : t.k;
+		const paint =
+			t.k === 'fn'
+				? 'fn'
+				: t.k === 'name' || t.k === 'ref'
+					? 'field'
+					: t.k === 'dice'
+						? 'num'
+						: t.k;
 		out.push({ text: piece, paint: known ? paint : 'unknown' });
 	}
 	if (last < text.length) out.push({ text: text.slice(last), paint: 'plain' });

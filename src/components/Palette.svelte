@@ -6,6 +6,7 @@
 		resource: 'current / max, with − and +',
 		track: 'a row of boxes to tick',
 		formula: 'worked out from other fields, as in Excel',
+		button: "press it to run fields' rules",
 		text: 'free text, in Markdown',
 		tags: 'a list of short labels',
 		entries: 'titled items, described in Markdown',

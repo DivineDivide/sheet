@@ -1,5 +1,6 @@
 import { newId, type Doc } from './doc';
 import { History } from './history';
+import type { Act } from './rules';
 import { Replica, apply, diff, revert, type Down, type Op } from './sync';
 
 const VISITS = 'sheet.rooms';
@@ -76,6 +77,12 @@ function receive(m: Down) {
 		replica!.ack(m.id);
 	} else if (m.t === 'change') {
 		replica!.remote(m.ops, doc!);
+	} else if (m.t === 'done') {
+		replica!.remote(m.ops, doc!);
+		// Its effects are this client's to undo; the log line stays.
+		const f = m.ops.filter((op) => op.p[0] !== 'log');
+		if (f.length) history.record({ f, i: m.undo });
+		if (m.why) notice = { text: m.why[0].toUpperCase() + m.why.slice(1) + '.', n: ++told };
 	} else if (m.t === 'gone') {
 		status = 'missing';
 		const ws = socket;
@@ -160,12 +167,22 @@ export const session = {
 		history.record({ f, i: diff(after, before) });
 		send(f);
 	},
+	/** A press, tick or step back, which the room runs; ⌘Z then takes it back like an edit. */
+	act(a: Act) {
+		if (socket?.readyState !== WebSocket.OPEN) {
+			this.notice = 'Presses and clocks wait for the room, which is not connected.';
+			return;
+		}
+		socket.send(JSON.stringify({ id: newId(), act: a }));
+	},
 	/** An imported file, as one change: everyone gets it, and Undo puts the room back. */
 	replace(next: Doc) {
 		this.change((d) => {
 			d.clocks = next.clocks;
 			d.templates = next.templates;
 			d.characters = next.characters;
+			// Older files have none; a list must stay for a preset to be added to it.
+			d.presets = next.presets ?? [];
 		});
 	},
 	/** Takes back this client's own last edit, wherever nobody has changed it since. */

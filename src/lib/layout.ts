@@ -13,6 +13,7 @@ const sizes: Record<Kind, Pick<Box, 'w' | 'h'>> = {
 	resource: { w: 240, h: 88 },
 	track: { w: 240, h: 88 },
 	formula: { w: 160, h: 88 },
+	button: { w: 160, h: 88 },
 	text: { w: 480, h: 160 },
 	tags: { w: 480, h: 104 },
 	entries: { w: 480, h: 240 },

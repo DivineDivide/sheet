@@ -55,7 +55,10 @@
 		} else if (key === '?') {
 			keys.toggle();
 		} else if ((key === 'n' || key === 'b') && doc.clocks.length) {
-			session.change((d) => (d.clocks[0].now += key === 'n' ? 1 : -1));
+			const k = doc.clocks[0];
+			session.act(
+				key === 'n' ? { tick: { clock: k.id, at: k.now } } : { back: { clock: k.id, at: k.now } }
+			);
 		} else if ((key === '[' || key === ']') && character) {
 			const all = doc.characters;
 			const i = all.findIndex((c) => c.id === character.id) + (key === ']' ? 1 : -1);

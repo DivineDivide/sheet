@@ -1,9 +1,21 @@
 import { DurableObject } from 'cloudflare:workers';
 import { VERSION, type Doc } from '../src/lib/doc';
 import { ImportError, validate } from '../src/lib/io';
+import { fire, isAct, type Act, type Done } from '../src/lib/rules';
 import { apply, isChange, type Down, type Op } from '../src/lib/sync';
 
 const send = (ws: WebSocket, m: Down) => ws.send(JSON.stringify(m));
+
+/** Dice are rolled here, never in a browser that could roll again. */
+const roll = (sides: number) => 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % sides);
+
+function reasonOf(e: unknown): string {
+	if (e instanceof ImportError) return e.message;
+	console.error('change refused', e);
+	return /TOOBIG|too big/i.test(String(e))
+		? 'a character grew too large to store; pictures take the most room'
+		: 'the room could not store it';
+}
 
 /**
  * The rows a change rewrites. Each character is a row of its own, so an edit writes one
@@ -52,7 +64,10 @@ export class Room extends DurableObject<Env> {
 			version: VERSION,
 			clocks: parts.get('clocks'),
 			templates: parts.get('templates'),
-			characters: (parts.get('characters') as string[]).map((id) => parts.get(`c:${id}`))
+			characters: (parts.get('characters') as string[]).map((id) => parts.get(`c:${id}`)),
+			// Rooms made before presets have neither row.
+			presets: parts.get('presets') ?? [],
+			...(parts.has('log') && { log: parts.get('log') })
 		};
 	}
 
@@ -64,7 +79,7 @@ export class Room extends DurableObject<Env> {
 					? doc.characters.map((c) => c.id)
 					: key.startsWith('c:')
 						? doc.characters.find((c) => c.id === key.slice(2))
-						: doc[key as 'clocks' | 'templates'];
+						: doc[key as 'clocks' | 'templates' | 'presets' | 'log'];
 			if (value === undefined) sql.exec('DELETE FROM part WHERE key = ?', key);
 			else {
 				sql.exec(
@@ -88,7 +103,8 @@ export class Room extends DurableObject<Env> {
 			]) {
 				sql.exec('INSERT INTO meta VALUES (?, ?)', k, v);
 			}
-			const keys = ['clocks', 'templates', 'characters', ...doc.characters.map((c) => `c:${c.id}`)];
+			const keys = ['clocks', 'templates', 'characters', 'presets', 'log'];
+			keys.push(...doc.characters.map((c) => `c:${c.id}`));
 			this.save(doc, keys);
 		});
 		this.doc = doc;
@@ -122,6 +138,7 @@ export class Room extends DurableObject<Env> {
 		} catch {
 			return;
 		}
+		if (isAct(change)) return this.act(ws, change.id, change.act);
 		if (!isChange(change)) {
 			const id = (change as { id?: unknown })?.id;
 			if (typeof id === 'string') send(ws, { t: 'reject', id, reason: 'it was malformed' });
@@ -137,20 +154,36 @@ export class Room extends DurableObject<Env> {
 		} catch (e) {
 			// The doc in memory took a change its rows refused, so it is read back.
 			this.doc = null;
-			if (!(e instanceof ImportError)) console.error('change refused', e);
-			const reason =
-				e instanceof ImportError
-					? e.message
-					: /TOOBIG|too big/i.test(String(e))
-						? 'a character grew too large to store; pictures take the most room'
-						: 'the room could not store it';
-			return send(ws, { t: 'reject', id: change.id, reason });
+			return send(ws, { t: 'reject', id: change.id, reason: reasonOf(e) });
 		}
 
 		this.seen.add(change.id);
 		if (this.seen.size > 256) this.seen.delete(this.seen.values().next().value!);
 		send(ws, { t: 'ack', id: change.id });
-		const out = JSON.stringify({ t: 'change', ...change } satisfies Down);
+		this.others(ws, { t: 'change', ...change });
+	}
+
+	/**
+	 * A press, tick or step back, run here so it counts once. Not deduplicated: a client
+	 * never sends one twice, and forgets it when the socket drops.
+	 */
+	private act(ws: WebSocket, id: string, act: Act) {
+		const doc = (this.doc ??= this.load());
+		let done: Done;
+		try {
+			done = fire(doc, act, roll);
+			validate(doc);
+			this.ctx.storage.transactionSync(() => this.save(doc, touched(done.ops)));
+		} catch (e) {
+			this.doc = null;
+			return send(ws, { t: 'done', id, ops: [], undo: [], why: reasonOf(e) });
+		}
+		send(ws, { t: 'done', id, ...done });
+		if (done.ops.length) this.others(ws, { t: 'change', id, ops: done.ops });
+	}
+
+	private others(ws: WebSocket, m: Down) {
+		const out = JSON.stringify(m);
 		for (const other of this.ctx.getWebSockets()) {
 			if (other === ws) continue;
 			try {
