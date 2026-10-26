@@ -8,8 +8,10 @@
 		type Clock,
 		type Entry,
 		type Field,
-		type Resource
+		type Resource,
+		type Row
 	} from '../lib/doc';
+	import { result, show } from '../lib/formula';
 	import { bounds, settle } from '../lib/layout';
 	import { markdown } from '../lib/markdown';
 
@@ -93,6 +95,8 @@
 								><span style:width="{Math.min(100, Math.max(0, (r.cur / (r.max || 1)) * 100))}%"
 								></span></span
 							>
+						{:else if f.kind === 'formula'}
+							<span class="big">{show(result(character, f.id))}</span>
 						{:else if f.kind === 'track'}
 							{@const boxes = v as boolean[]}
 							<span class="track">
@@ -113,6 +117,26 @@
 								<span class="tags">
 									{#each tags as tag, j (j)}<span class="tag">{tag}</span>{/each}
 								</span>
+							{:else}<span class="none">—</span>{/if}
+						{:else if f.kind === 'table'}
+							{@const rows = v as Row[]}
+							{#if rows.length && f.columns?.length}
+								<table class="grid">
+									<thead>
+										<tr
+											>{#each f.columns as c (c.id)}<th>{c.name}</th>{/each}</tr
+										>
+									</thead>
+									<tbody>
+										{#each rows as r (r.id)}
+											<tr>
+												{#each f.columns as c (c.id)}
+													<td class="md">{@html markdown(String(r.cells[c.id] ?? ''))}</td>
+												{/each}
+											</tr>
+										{/each}
+									</tbody>
+								</table>
 							{:else}<span class="none">—</span>{/if}
 						{:else if f.kind === 'entries'}
 							{@const entries = v as Entry[]}
@@ -286,6 +310,22 @@
 	}
 	.title {
 		font-weight: 600;
+	}
+	.grid {
+		border-collapse: collapse;
+		font-size: 0.9rem;
+	}
+	.grid th {
+		padding: 2px 6px;
+		border-bottom: 1px solid var(--line);
+		font-weight: normal;
+		text-align: left;
+		color: var(--muted);
+	}
+	.grid td {
+		padding: 2px 6px;
+		border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent);
+		vertical-align: top;
 	}
 	.pic {
 		flex: 1;

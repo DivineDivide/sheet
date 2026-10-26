@@ -4,6 +4,7 @@
 	import { scale } from 'svelte/transition';
 	import { newCharacter, phase, type Character } from '../lib/doc';
 	import { session } from '../lib/session.svelte';
+	import ExcelImport from './ExcelImport.svelte';
 	import Icon from './Icon.svelte';
 	import Preview from './Preview.svelte';
 
@@ -27,15 +28,19 @@
 			return clock && phase(s, clock) === 'active';
 		}).length;
 
+	/** Adds a made character, as one change, so Undo takes it back. */
+	function place(c: Character) {
+		session.change((d) => d.characters.push(c));
+		current = c.id;
+		dialog.close();
+	}
+
 	function create(templateId: string) {
 		const template = doc.templates.find((t) => t.id === templateId);
 		const name = newName.trim() || `Character ${doc.characters.length + 1}`;
-		const c = newCharacter(name, template && $state.snapshot(template));
-		session.change((d) => d.characters.push(c));
-		current = c.id;
+		place(newCharacter(name, template && $state.snapshot(template)));
 		from = templateId;
 		newName = '';
-		dialog.close();
 	}
 
 	function edges() {
@@ -137,6 +142,7 @@
 				</div>
 			{/each}
 		</div>
+		<ExcelImport onadd={place} />
 	</div>
 </dialog>
 

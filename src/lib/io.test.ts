@@ -50,6 +50,20 @@ describe('parse', () => {
 		).toThrow(/bad position/);
 	});
 
+	it('refuses a formula that is not text', () => {
+		expect(() => parse(mangle((d) => (d.characters[0].fields[0].formula = 3)))).toThrow(/formula/);
+	});
+
+	it('refuses a table column of an unknown kind', () => {
+		expect(() =>
+			parse(
+				mangle(
+					(d) => (d.characters[0].fields[0].columns = [{ id: 'c', name: 'Dice', kind: 'dice' }])
+				)
+			)
+		).toThrow(/columns/);
+	});
+
 	it('refuses an unknown field kind', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/

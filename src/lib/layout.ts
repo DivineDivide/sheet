@@ -12,9 +12,11 @@ const sizes: Record<Kind, Pick<Box, 'w' | 'h'>> = {
 	number: { w: 160, h: 88 },
 	resource: { w: 240, h: 88 },
 	track: { w: 240, h: 88 },
+	formula: { w: 160, h: 88 },
 	text: { w: 480, h: 160 },
 	tags: { w: 480, h: 104 },
 	entries: { w: 480, h: 240 },
+	table: { w: 560, h: 240 },
 	image: { w: 240, h: 240 }
 };
 export const defaultSize = (kind: Kind) => sizes[kind];

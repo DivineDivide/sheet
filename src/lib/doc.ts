@@ -22,11 +22,40 @@ export type Status = {
 	lasts?: number;
 };
 
-export const kinds = ['number', 'resource', 'track', 'text', 'tags', 'entries', 'image'] as const;
+export const kinds = [
+	'number',
+	'resource',
+	'track',
+	'formula',
+	'text',
+	'tags',
+	'entries',
+	'table',
+	'image'
+] as const;
 export type Kind = (typeof kinds)[number];
 
+export const columnKinds = ['text', 'number', 'choice'] as const;
+export type Column = {
+	id: string;
+	name: string;
+	kind: (typeof columnKinds)[number];
+	/** What a choice column offers, as Excel's dropdown lists do. */
+	choices?: string[];
+};
+
 export type Tab = { id: string; name: string };
-export type Field = { id: string; label: string; kind: Kind; tab: string; box: Box };
+export type Field = {
+	id: string;
+	label: string;
+	kind: Kind;
+	tab: string;
+	box: Box;
+	/** A formula field's expression, stored with `@<id>` references; see `formula.ts`. */
+	formula?: string;
+	/** A table field's columns. Its rows are the character's value. */
+	columns?: Column[];
+};
 /** Tabs and the fields on them: what a character is shaped like, apart from its values. */
 export type Layout = { tabs: Tab[]; fields: Field[] };
 
@@ -36,7 +65,9 @@ export type Template = Layout & { id: string; name: string };
 export type Resource = { cur: number; max: number };
 /** A titled item: a role-book ability, a talent and its usages, a fragment. */
 export type Entry = { name: string; text: string };
-export type Value = number | Resource | boolean[] | string | string[] | Entry[];
+/** A table row, with ids so rows and cells sync one by one. A blank cell is absent. */
+export type Row = { id: string; cells: Record<string, string | number> };
+export type Value = number | Resource | boolean[] | string | string[] | Entry[] | Row[];
 
 export type Character = Layout & {
 	id: string;
@@ -110,9 +141,11 @@ export function blank(kind: Kind): Value {
 			return [false, false, false, false];
 		case 'text':
 		case 'image':
+		case 'formula':
 			return '';
 		case 'tags':
 		case 'entries':
+		case 'table':
 			return [];
 	}
 }
@@ -132,6 +165,7 @@ function fits(kind: Kind, v: unknown): boolean {
 			return Array.isArray(v) && v.every((b) => typeof b === 'boolean');
 		case 'text':
 		case 'image':
+		case 'formula':
 			return typeof v === 'string';
 		case 'tags':
 			return Array.isArray(v) && v.every((t) => typeof t === 'string');
@@ -139,6 +173,11 @@ function fits(kind: Kind, v: unknown): boolean {
 			return (
 				Array.isArray(v) &&
 				v.every((e) => typeof e?.name === 'string' && typeof e?.text === 'string')
+			);
+		case 'table':
+			return (
+				Array.isArray(v) &&
+				v.every((r) => typeof r?.id === 'string' && typeof r.cells === 'object' && r.cells !== null)
 			);
 	}
 }

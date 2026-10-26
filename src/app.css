@@ -32,6 +32,11 @@
 	--track-turn: 0deg;
 	--entry-rule: var(--line);
 	--tab-mark: '';
+	/* A formula's parts, in the editor: functions, field labels, numbers, quoted text. */
+	--code-fn: var(--accent);
+	--code-field: #4f6f2c;
+	--code-num: #2f5d86;
+	--code-str: #7a5b14;
 	/* Panels over the canvas are 85% see-through, so the sheet shows clearly behind them. */
 	--panel-bg: color-mix(in oklab, var(--surface) 15%, transparent);
 	color-scheme: light;
@@ -47,6 +52,9 @@
 		--muted: #8e9585;
 		--accent: #d98a5c;
 		--line: #2c302a;
+		--code-field: #a3c46e;
+		--code-num: #82b4dc;
+		--code-str: #d6b866;
 		color-scheme: dark;
 	}
 }
@@ -58,6 +66,9 @@
 	--muted: #8e9585;
 	--accent: #d98a5c;
 	--line: #2c302a;
+	--code-field: #a3c46e;
+	--code-num: #82b4dc;
+	--code-str: #d6b866;
 	color-scheme: dark;
 }
 
@@ -93,6 +104,9 @@
 	--track-turn: 45deg;
 	--entry-rule: var(--accent);
 	--tab-mark: '✦ ';
+	--code-field: var(--brass);
+	--code-num: #9db4c2;
+	--code-str: #a7b48c;
 	color-scheme: dark;
 }
 

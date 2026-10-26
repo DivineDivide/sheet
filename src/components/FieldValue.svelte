@@ -1,12 +1,15 @@
 <script lang="ts">
 	import {
+		newId,
 		valueOf,
 		type Character,
 		type Entry,
 		type Field,
 		type Resource,
+		type Row,
 		type Value
 	} from '../lib/doc';
+	import { isErr, render, result, show } from '../lib/formula';
 	import { markdown } from '../lib/markdown';
 	import { shrink } from '../lib/picture';
 	import { session } from '../lib/session.svelte';
@@ -15,6 +18,7 @@
 	let { character, field }: { character: Character; field: Field } = $props();
 
 	const v = $derived(valueOf(character, field));
+	const out = $derived(field.kind === 'formula' ? result(character, field.id) : null);
 
 	function set(next: Value) {
 		session.change((d) => {
@@ -94,6 +98,17 @@
 			>
 			<button class="x" aria-label="Add a box" onclick={() => set([...boxes, false])}>+</button>
 		</div>
+	{:else if field.kind === 'formula'}
+		{#if field.formula?.trim()}
+			<output
+				class="big"
+				class:err={isErr(out)}
+				title={isErr(out) ? out.why : `=${render(field.formula, character.fields)}`}
+				>{show(out)}</output
+			>
+		{:else}
+			<span class="none">No formula yet. Set one in Edit layout.</span>
+		{/if}
 	{:else if field.kind === 'text'}
 		<Prose value={v as string} label={field.label} onchange={set} />
 	{:else if field.kind === 'entries'}
@@ -127,6 +142,76 @@
 			{/each}
 		</ol>
 		<button class="more" onclick={() => set([...entries, { name: '', text: '' }])}>+ Entry</button>
+	{:else if field.kind === 'table'}
+		{@const rows = v as Row[]}
+		{@const cols = field.columns ?? []}
+		{@const put = (row: Row, col: string, cell: string | number) => {
+			const cells = { ...row.cells, [col]: cell };
+			if (cell === '') delete cells[col];
+			set(rows.map((r) => (r.id === row.id ? { ...r, cells } : r)));
+		}}
+		{#if cols.length}
+			<table class="grid">
+				<thead>
+					<tr>
+						{#each cols as c (c.id)}<th>{c.name}</th>{/each}
+						<th aria-label="Remove"></th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each rows as row (row.id)}
+						<tr>
+							{#each cols as c (c.id)}
+								{@const cell = row.cells[c.id] ?? ''}
+								<td>
+									{#if c.kind === 'choice'}
+										<select
+											value={String(cell)}
+											aria-label={c.name}
+											onchange={(e) => put(row, c.id, e.currentTarget.value)}
+										>
+											<option value=""></option>
+											{#each c.choices ?? [] as o (o)}<option>{o}</option>{/each}
+											<!-- A value from before the choices changed still shows. -->
+											{#if cell !== '' && !c.choices?.includes(String(cell))}<option>{cell}</option
+												>{/if}
+										</select>
+									{:else if c.kind === 'number'}
+										<input
+											class="short"
+											type="number"
+											value={cell}
+											aria-label={c.name}
+											onchange={(e) => {
+												const t = e.currentTarget.value;
+												put(row, c.id, t.trim() === '' ? '' : num(t, Number(cell) || 0));
+											}}
+										/>
+									{:else}
+										<Prose
+											value={String(cell)}
+											label={c.name}
+											empty=""
+											onchange={(t) => put(row, c.id, t)}
+										/>
+									{/if}
+								</td>
+							{/each}
+							<td>
+								<button
+									class="x"
+									aria-label="Remove this row"
+									onclick={() => set(rows.filter((r) => r.id !== row.id))}>×</button
+								>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			<button class="more" onclick={() => set([...rows, { id: newId(), cells: {} }])}>+ Row</button>
+		{:else}
+			<span class="none">No columns yet. Add them in Edit layout.</span>
+		{/if}
 	{:else if field.kind === 'image'}
 		{@const src = v as string}
 		<!-- A drop stops here: on the window it would be taken for a session file to import.
@@ -231,6 +316,17 @@
 	.of {
 		color: var(--muted);
 	}
+	.big {
+		font-size: 1.4rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.err {
+		color: var(--accent);
+	}
+	.none {
+		font-size: 0.85rem;
+		color: var(--muted);
+	}
 	.box {
 		width: 1.4rem;
 		height: 1.4rem;
@@ -275,6 +371,40 @@
 	}
 	.more {
 		justify-self: start;
+	}
+	.grid {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.9rem;
+	}
+	.grid th {
+		padding: 0.15rem 0.3rem;
+		border-bottom: 1px solid var(--line);
+		font-family: var(--font-head);
+		font-size: 0.75rem;
+		font-weight: normal;
+		letter-spacing: var(--label-tracking);
+		text-align: left;
+		color: var(--muted);
+	}
+	.grid td {
+		padding: 0.1rem 0.15rem;
+		border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent);
+		vertical-align: top;
+	}
+	.grid td:last-child,
+	.grid th:last-child {
+		width: 1.5rem;
+	}
+	/* A cell of text is one line until it holds more. */
+	.grid :global(.grow) {
+		min-height: 1.6em;
+	}
+	/* Wide enough for the chosen word, however the table shares out its width. */
+	.grid select {
+		width: 100%;
+		min-width: 5.5em;
+		field-sizing: content;
 	}
 	/* Fills what its box leaves under the label; the picture fits inside, uncropped. */
 	.picture {

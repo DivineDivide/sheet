@@ -5,9 +5,11 @@
 		number: 'a single value',
 		resource: 'current / max, with − and +',
 		track: 'a row of boxes to tick',
+		formula: 'worked out from other fields, as in Excel',
 		text: 'free text, in Markdown',
 		tags: 'a list of short labels',
 		entries: 'titled items, described in Markdown',
+		table: 'rows under named columns, with choices',
 		image: 'a picture: pick, drop or paste one'
 	};
 </script>

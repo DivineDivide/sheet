@@ -1,4 +1,4 @@
-import { VERSION, kinds, type Doc } from './doc';
+import { VERSION, columnKinds, kinds, type Doc } from './doc';
 import { migrate, type V1Doc } from './v1';
 
 export class ImportError extends Error {}
@@ -91,6 +91,18 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		if (!isBox(f.box)) throw new ImportError(`"${f.label}" on ${name} has a bad position`);
 		if (!isStr(f.tab) || !tabIds.has(f.tab)) {
 			throw new ImportError(`"${f.label}" on ${name} sits on a tab that is not there`);
+		}
+		if (f.formula !== undefined && !isStr(f.formula)) {
+			throw new ImportError(`"${f.label}" on ${name} has a formula that is not text`);
+		}
+		const okColumn = (c: unknown) =>
+			isObj(c) &&
+			isStr(c.id) &&
+			isStr(c.name) &&
+			columnKinds.includes(c.kind as never) &&
+			(c.choices === undefined || (Array.isArray(c.choices) && c.choices.every(isStr)));
+		if (f.columns !== undefined && !(Array.isArray(f.columns) && f.columns.every(okColumn))) {
+			throw new ImportError(`"${f.label}" on ${name} has malformed columns`);
 		}
 	}
 }

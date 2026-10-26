@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A character sheet with clocks and statuses, shared live by everyone in a room. The plan
 and its phases are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built.
+Formulas, tables and Excel import followed, planned in
+`notes/trpg/plan-sheet-formulas-import.md`.
 
 ## Commands
 
@@ -50,6 +52,19 @@ npm run deploy                    # build + wrangler deploy: goes live
   and the old 12-column grid becomes a 672px sheet. Field values are read through
   `valueOf`, which treats a value of the wrong kind as blank, so changing a field's kind
   needs no migration.
+- **`src/lib/formula.ts`** — Excel's formula language over one character's fields, with
+  its quirks on purpose (each is a test). A formula is stored with `@<id>` references and
+  shown with labels (`compile` / `render`), so a rename breaks nothing; `@` takes a UUID
+  exactly, so `@id-1` keeps its minus. Results are computed wherever they show and never
+  stored, so they cost no rows written. A table column is `Table[Column]`, stored by column
+  id. `highlight` colours the editor and must never throw on a half-typed formula.
+- **Tables** — a `table` field's columns live on the field and its rows, each with an id,
+  are the character's value, so rows and cells sync one by one through the keyed-list diff.
+- **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically
+  so only someone importing downloads it, into plain data. `src/lib/excel.ts` then decides
+  by rules, from shape and bold alone, which cells make which field. It lists every cell no
+  field took and checks each translated formula against Excel's saved result. Its tests
+  build a made-up card in ExcelJS. Never commit a player's real card.
 - **`src/lib/layout.ts`** — a field's `box` is pixels on its tab, snapped to 8 by `clamp`,
   which every write goes through. A tab runs on in every direction from 0,0, so boxes may
   be negative; layouts made before that sit right of and below 0,0, unmoved. Boxes may

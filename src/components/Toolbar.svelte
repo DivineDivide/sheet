@@ -3,6 +3,8 @@
 	import { kinds, type Character, type Field, type Kind } from '../lib/doc';
 	import { mod } from '../lib/keys';
 	import { ui, type Panel } from '../lib/ui.svelte';
+	import Columns from './Columns.svelte';
+	import FormulaInput from './FormulaInput.svelte';
 	import Icon from './Icon.svelte';
 	import { hints } from './Palette.svelte';
 	import Statuses from './Statuses.svelte';
@@ -81,6 +83,13 @@
 							{/each}
 						</select>
 					</label>
+					{#if field.kind === 'formula'}
+						{#key field.id}
+							<FormulaInput {character} {field} {editField} />
+						{/key}
+					{:else if field.kind === 'table'}
+						<Columns {field} {editField} />
+					{/if}
 					{#if character.tabs.length > 1}
 						<label>
 							<span class="muted">Tab</span>
