@@ -6,12 +6,28 @@
 	// character pastes onto another, and in Safari, which sends no copy event without a selection.
 	// A formula travels with labels, so it reads the same-named fields where it is pasted.
 	// Rules travel as stored, with the names they were written against.
-	let clip: {
+	type Clip = {
 		field: Field;
 		value: Value;
 		formula?: string;
 		from: { character: string; names: Name[] };
-	} | null = null;
+	};
+	// Kept in this browser too, so a copy survives a reload and pastes in another tab or room.
+	const CLIP = 'sheet.clip';
+	let clip: Clip | null = null;
+	function keep(c: Clip) {
+		clip = c;
+		try {
+			localStorage.setItem(CLIP, JSON.stringify(c));
+		} catch {}
+	}
+	function kept(): Clip | null {
+		try {
+			return JSON.parse(localStorage.getItem(CLIP) ?? 'null') ?? clip;
+		} catch {
+			return clip;
+		}
+	}
 </script>
 
 <script lang="ts">
@@ -148,16 +164,16 @@
 
 	function copy(f: Field) {
 		const known = $state.snapshot(names(sheetOf(session.doc, character))) as Name[];
-		clip = {
+		keep({
 			field: $state.snapshot(f),
 			value: $state.snapshot(valueOf(character, f)),
 			formula: f.formula && withLabels(f.formula, known),
 			from: { character: character.id, names: known }
-		};
+		});
 		session.notice = `Copied ${f.label}. ${mod}V pastes it in Edit layout, on any character.`;
 	}
 
-	function paste({ field: from, value, formula, from: source }: NonNullable<typeof clip>) {
+	function paste({ field: from, value, formula, from: source }: Clip) {
 		const id = newId();
 		edit((c) => {
 			let stored = from.formula;
@@ -403,7 +419,7 @@
 		const f = laying && field?.tab === tab.id ? field : undefined;
 		if (e.metaKey || e.ctrlKey) {
 			if (key === 'c' && f) copy(f);
-			else if (key === 'v' && laying && clip) paste(clip);
+			else if (key === 'v' && laying && kept()) paste(kept()!);
 			else return;
 		} else if (key === 'e') {
 			if (!stacked && !drafting) toggleEditing();
