@@ -1,8 +1,17 @@
 import { DurableObject } from 'cloudflare:workers';
+import { forAgent } from '../src/lib/agent/chat';
 import { VERSION, type Doc } from '../src/lib/doc';
 import { ImportError, validate } from '../src/lib/io';
 import { fire, isAct, type Act, type Done } from '../src/lib/rules';
-import { apply, isChange, type Down, type Op } from '../src/lib/sync';
+import {
+	apply,
+	isChange,
+	isPropose,
+	isSettle,
+	type Down,
+	type Op,
+	type Proposal
+} from '../src/lib/sync';
 import { upgrade } from '../src/lib/v2';
 
 const send = (ws: WebSocket, m: Down) => ws.send(JSON.stringify(m));
@@ -119,6 +128,12 @@ export class Room extends DurableObject<Env> {
 		this.doc = doc;
 	}
 
+	/** The room as the chat's agent gets it, or null for a link no GM made. */
+	async snapshot(): Promise<Doc | null> {
+		if (this.name() === null) return null;
+		return forAgent((this.doc ??= this.load()));
+	}
+
 	async destroy() {
 		// Said in a message as well: a close code alone is lost by `vite dev`'s socket proxy.
 		for (const ws of this.ctx.getWebSockets()) {
@@ -137,7 +152,35 @@ export class Room extends DurableObject<Env> {
 		const { 0: client, 1: server } = new WebSocketPair();
 		this.ctx.acceptWebSocket(server);
 		send(server, { t: 'hello', name, doc: (this.doc ??= this.load()) });
+		send(server, { t: 'proposals', list: this.proposals() });
 		return new Response(null, { status: 101, webSocket: client });
+	}
+
+	/** Rooms made before proposals have no table for them until the first is sent. */
+	private proposals(): Proposal[] {
+		try {
+			return this.ctx.storage.sql
+				.exec('SELECT json FROM proposal ORDER BY at')
+				.toArray()
+				.map((r) => JSON.parse(String(r.json)));
+		} catch {
+			return [];
+		}
+	}
+
+	private propose(p: Proposal) {
+		const sql = this.ctx.storage.sql;
+		sql.exec('CREATE TABLE IF NOT EXISTS proposal (id TEXT PRIMARY KEY, at INTEGER, json TEXT)');
+		sql.exec('INSERT OR REPLACE INTO proposal VALUES (?, ?, ?)', p.id, p.at, JSON.stringify(p));
+		this.all({ t: 'proposals', list: this.proposals() });
+	}
+
+	/** Only forgets it: a GM's client applies the change itself, as one of its own edits. */
+	private settle(id: string, ok: boolean) {
+		if (!this.proposals().some((p) => p.id === id)) return;
+		this.ctx.storage.sql.exec('DELETE FROM proposal WHERE id = ?', id);
+		this.all({ t: 'settled', id, ok });
+		this.all({ t: 'proposals', list: this.proposals() });
 	}
 
 	async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
@@ -148,6 +191,10 @@ export class Room extends DurableObject<Env> {
 			return;
 		}
 		if (isAct(change)) return this.act(ws, change.id, change.act);
+		if (isPropose(change)) {
+			return this.propose({ id: change.id, ...change.propose, at: Date.now() });
+		}
+		if (isSettle(change)) return this.settle(change.settle.proposal, change.settle.ok);
 		if (!isChange(change)) {
 			const id = (change as { id?: unknown })?.id;
 			if (typeof id === 'string') send(ws, { t: 'reject', id, reason: 'it was malformed' });
@@ -191,7 +238,7 @@ export class Room extends DurableObject<Env> {
 		if (done.ops.length) this.others(ws, { t: 'change', id, ops: done.ops });
 	}
 
-	private others(ws: WebSocket, m: Down) {
+	private others(ws: WebSocket | null, m: Down) {
 		const out = JSON.stringify(m);
 		for (const other of this.ctx.getWebSockets()) {
 			if (other === ws) continue;
@@ -199,6 +246,10 @@ export class Room extends DurableObject<Env> {
 				other.send(out);
 			} catch {}
 		}
+	}
+
+	private all(m: Down) {
+		this.others(null, m);
 	}
 
 	async webSocketClose(ws: WebSocket, code: number) {

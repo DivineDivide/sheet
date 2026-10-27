@@ -74,6 +74,18 @@ npm run deploy                    # build + wrangler deploy: goes live
   rule sets off another event, so every event ends. Dice roll only in rules: a formula
   field that rolls shows #VALUE!. Its spec is the map-step cooldown and poison, a rule on
   the Statuses table.
+- **`src/lib/agent/`** — the chat's draft tools, from `notes/trpg/plan-sheet-agent.md`.
+  `view.ts` shows a room as text by names and labels, never ids, with boxes in 16px dots;
+  `tools.ts` changes a draft of the room through the editor's own checks (`uniqueLabel`,
+  `clamp`, `compile`), and `runTool` takes a failed or invalid call back whole. A tool's
+  error is for the model to read, so say what is wrong and what is there instead.
+  `chat.ts` is one prompt's loop. `worker/agent.ts` is one Durable Object per room that
+  calls Claude and keeps each chat's draft for a day. No call may leave from where Claude
+  isn't offered (`worker/regions.ts`): the endpoint checks the asker's country first, and
+  the object checks its own. In the browser, `client.svelte.ts` holds the chat, and
+  `session.draft` shows its draft in place of the room, holding edits back until it is
+  applied or discarded. A page opened from `/gm` (`?gm`) is a GM's once `/gm/api/me`
+  answers; a player's Apply is a proposal, which the `Room` keeps until a GM settles it.
 - **Tables** — a `table` field's columns live on the field and its rows, each with an id,
   are the character's value, so rows and cells sync one by one through the keyed-list diff.
   A column holds any kind a cell can (`columnKinds`), read through `cellOf` as `valueOf`

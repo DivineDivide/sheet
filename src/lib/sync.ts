@@ -10,6 +10,8 @@ export type Op =
 	| { k: 'del'; p: Path }
 	| { k: 'order'; p: Path; ids: string[] };
 export type Change = { id: string; ops: Op[] };
+/** A player's draft, kept by the room until a GM applies it or turns it down. */
+export type Proposal = Change & { asked: string; at: number };
 
 /** What the room sends: the doc on connect, then confirmations, others' changes, or its end. */
 export type Down =
@@ -19,6 +21,9 @@ export type Down =
 	| ({ t: 'change' } & Change)
 	/** To whoever asked for a press or tick: what it did, and how to take it back. */
 	| { t: 'done'; id: string; ops: Op[]; undo: Op[]; why?: string }
+	/** Every proposal waiting, to everyone, on connect and whenever the list changes. */
+	| { t: 'proposals'; list: Proposal[] }
+	| { t: 'settled'; id: string; ok: boolean }
 	| { t: 'gone' };
 
 type Obj = Record<string, unknown>;
@@ -253,5 +258,25 @@ export function isChange(v: unknown): v is Change {
 			(op.k === 'order'
 				? Array.isArray(op.ids) && op.ids.every((id) => typeof id === 'string')
 				: (op.k === 'set' || op.k === 'del') && op.p.length >= 2)
+	);
+}
+
+/** Checks a draft a client sends for a GM: changes as a client may send them, and the asking. */
+export function isPropose(v: unknown): v is { id: string; propose: { ops: Op[]; asked: string } } {
+	if (!isObj(v) || !isObj(v.propose)) return false;
+	const { ops, asked } = v.propose;
+	return typeof asked === 'string' && asked.length <= 2000 && isChange({ id: v.id, ops });
+}
+
+/** Checks a proposal applied (`ok`) or turned down, by a GM or withdrawn by its sender. */
+export function isSettle(
+	v: unknown
+): v is { id: string; settle: { proposal: string; ok: boolean } } {
+	return (
+		isObj(v) &&
+		typeof v.id === 'string' &&
+		isObj(v.settle) &&
+		typeof v.settle.proposal === 'string' &&
+		typeof v.settle.ok === 'boolean'
 	);
 }

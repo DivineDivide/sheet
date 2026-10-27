@@ -1,8 +1,13 @@
 <script lang="ts">
+	import { changes } from './lib/agent/changes';
+	import { chat } from './lib/agent/client.svelte';
+	import type { Doc } from './lib/doc';
 	import { ImportError, parse, serialize } from './lib/io';
 	import { mod, plain, typing } from './lib/keys';
 	import { session } from './lib/session.svelte';
 	import { theme, themes, type ThemeId } from './lib/theme.svelte';
+	import { ui } from './lib/ui.svelte';
+	import Chat from './components/Chat.svelte';
 	import Clocks from './components/Clocks.svelte';
 	import Keys from './components/Keys.svelte';
 	import Roster from './components/Roster.svelte';
@@ -10,6 +15,15 @@
 	import Toast from './components/Toast.svelte';
 
 	const doc = $derived(session.doc);
+	// A player's drafts, for a GM to apply or turn down, each with its changes in words.
+	const asks = $derived(
+		session.gm
+			? session.proposals.map((p) => ({
+					...p,
+					lines: changes($state.snapshot(session.room) as Doc, p.ops).lines
+				}))
+			: []
+	);
 
 	let current = $state('');
 	// Falls back to the first character when the open one is deleted.
@@ -132,6 +146,48 @@
 
 	<Toast />
 
+	{#if chat.changes}
+		<div class="draft" role="region" aria-label="Claude's draft">
+			<details>
+				<summary>
+					Claude's draft: {chat.changes.lines.length}
+					{chat.changes.lines.length === 1 ? 'change' : 'changes'}
+				</summary>
+				<ul>
+					{#each chat.changes.lines as line, i (i)}<li>{line}</li>{/each}
+				</ul>
+			</details>
+			{#if chat.waiting}
+				<span class="muted">Waiting for the GM…</span>
+				<button onclick={() => chat.withdraw()}>Take back</button>
+			{:else}
+				<button class="primary" disabled={chat.busy} onclick={() => chat.apply()}
+					>{session.gm ? 'Apply' : 'Send to the GM'}</button
+				>
+			{/if}
+			<button disabled={chat.busy} onclick={() => chat.discard()}>Discard</button>
+		</div>
+	{/if}
+	{#each asks as p (p.id)}
+		<div class="draft" role="region" aria-label="A player's draft">
+			<details>
+				<summary>A player's draft: {p.asked.split('\n')[0]}</summary>
+				{#if p.asked.includes('\n')}<p class="asked">{p.asked}</p>{/if}
+				<ul>
+					{#each p.lines as line, i (i)}<li>{line}</li>{/each}
+				</ul>
+			</details>
+			<button
+				class="primary"
+				onclick={() => {
+					session.land(p.ops);
+					session.settle(p.id, true);
+				}}>Apply</button
+			>
+			<button onclick={() => session.settle(p.id, false)}>Turn down</button>
+		</div>
+	{/each}
+
 	<main>
 		<Clocks />
 
@@ -141,9 +197,12 @@
 			{/key}
 		{:else}
 			<p class="empty">
-				No characters yet. Press + at the top left to start one from a template, or blank.
+				No characters yet. Press + at the top left to start one from a template, or blank, or
+				<button class="link" onclick={() => (ui.panel = 'chat')}>ask the chat</button>.
 			</p>
 		{/if}
+
+		{#if ui.panel === 'chat'}<Chat />{/if}
 	</main>
 </div>
 
@@ -180,6 +239,7 @@
 		color: var(--accent);
 	}
 	main {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
@@ -188,6 +248,45 @@
 		padding: 0.75rem 1rem 1rem;
 	}
 	.empty {
+		color: var(--muted);
+	}
+	.link {
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--accent);
+		text-decoration: underline;
+	}
+	.draft {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.35rem 0.75rem;
+		padding: 0.4rem 1rem;
+		border-bottom: 1px solid var(--accent);
+		background: color-mix(in oklab, var(--accent) 10%, var(--chrome));
+	}
+	.draft details {
+		flex: 1;
+		min-width: 12rem;
+	}
+	.draft summary {
+		cursor: pointer;
+	}
+	.draft ul {
+		margin: 0.3rem 0 0;
+		padding-left: 1.2rem;
+	}
+	.asked {
+		margin: 0.3rem 0 0;
+		color: var(--muted);
+		white-space: pre-wrap;
+	}
+	.primary {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.muted {
 		color: var(--muted);
 	}
 </style>

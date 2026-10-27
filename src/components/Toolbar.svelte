@@ -35,8 +35,8 @@
 		saveTemplate: (name: string) => void;
 	} = $props();
 
-	const names: Record<Panel, string> = { field: 'Selected field', template: 'Save as template' };
-	const open = $derived(ui.panel);
+	const names = { field: 'Selected field', template: 'Save as template' };
+	const open = $derived(ui.panel === 'chat' ? null : ui.panel);
 	const toggle = (p: Panel) => (ui.panel = open === p ? null : p);
 
 	// Selecting a field brings its inspector up, even after it was closed.

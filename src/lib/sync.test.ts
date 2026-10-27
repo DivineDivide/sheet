@@ -6,6 +6,8 @@ import {
 	diff,
 	equal,
 	isChange,
+	isPropose,
+	isSettle,
 	revert,
 	type Change,
 	type Down,
@@ -276,6 +278,19 @@ describe('revert', () => {
 		const back = revert(now, f, i);
 		for (const op of back) apply(now, op);
 		expect(now.characters.map((c) => c.name)).toEqual(['Ann', 'theirs']);
+	});
+});
+
+describe('isPropose and isSettle', () => {
+	it('take a draft with what was asked, and an answer to one', () => {
+		const ops = [{ k: 'set', p: ['clocks', 'k1', 'name'], v: 'Round' }];
+		expect(isPropose({ id: 'x', propose: { ops, asked: 'Rename Turn' } })).toBe(true);
+		expect(isPropose({ id: 'x', propose: { ops } })).toBe(false);
+		expect(
+			isPropose({ id: 'x', propose: { ops: [{ k: 'set', p: ['log'], v: [] }], asked: '' } })
+		).toBe(false);
+		expect(isSettle({ id: 'y', settle: { proposal: 'x', ok: true } })).toBe(true);
+		expect(isSettle({ id: 'y', settle: { proposal: 'x' } })).toBe(false);
 	});
 });
 

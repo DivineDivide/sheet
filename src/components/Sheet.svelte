@@ -29,6 +29,7 @@
 		type Kind
 	} from '../lib/doc';
 	import type { Attachment } from 'svelte/attachments';
+	import { chat } from '../lib/agent/client.svelte';
 	import { FormulaError, compile, names, render as withLabels } from '../lib/formula';
 	import { rebind, sheetOf } from '../lib/rules';
 	import { free, mod } from '../lib/keys';
@@ -68,7 +69,9 @@
 	const tab = $derived(character.tabs.find((t) => t.id === tabId) ?? character.tabs[0]);
 	const onTab = $derived(character.fields.filter((f) => f.tab === tab.id));
 	const stacked = $derived(vw > 0 && vw < NARROW);
-	const laying = $derived(editing && !stacked);
+	// A draft is only looked at: it is edited through the chat, until applied or discarded.
+	const drafting = $derived(session.draft !== null);
+	const laying = $derived(editing && !stacked && !drafting);
 	const field = $derived(character.fields.find((f) => f.id === selected));
 	const column = $derived(
 		picked && picked.field === field?.id
@@ -403,7 +406,7 @@
 			else if (key === 'v' && laying && clip) paste(clip);
 			else return;
 		} else if (key === 'e') {
-			if (!stacked) toggleEditing();
+			if (!stacked && !drafting) toggleEditing();
 		} else if (key === 'escape' && editing) {
 			// `field`, not `selected`: an undone paste leaves `selected` naming no field.
 			if (!field) editing = false;
@@ -437,7 +440,7 @@
 <svelte:window {onkeydown} />
 
 <div class="sheet">
-	<header>
+	<header inert={drafting || undefined}>
 		<input
 			class="name"
 			value={character.name}
@@ -531,6 +534,7 @@
 			{/if}
 			<div
 				class="world"
+				inert={drafting || undefined}
 				style:transform={stacked ? undefined : `translate(${ox}px, ${oy}px) scale(${view.z})`}
 			>
 				{#if laying}<span class="origin" aria-hidden="true"></span>{/if}
@@ -542,6 +546,7 @@
 						class:selected={laying && selected === f.id}
 						class:target={drop?.field === f.id}
 						class:dragging={drag?.id === f.id}
+						class:changed={chat.changes?.fields.has(f.id)}
 						data-table={f.kind === 'table' ? f.id : undefined}
 						style:--x="{b.x}px"
 						style:--y="{b.y}px"
@@ -598,8 +603,8 @@
 		{#if laying}
 			<Toolbar {character} {field} {column} {editField} {remove} {saveTemplate} />
 		{/if}
-		{#if !stacked}
-			<div class="zoom" role="group" aria-label="Zoom">
+		<div class="zoom" role="group" aria-label="Zoom and chat">
+			{#if !stacked}
 				<button class="dot" aria-label="Zoom out" title="Zoom out (−)" onclick={() => zoomBy(0.8)}
 					><Icon name="minus" /></button
 				>
@@ -618,8 +623,16 @@
 					title="0,0 at 100% (⇧0)"
 					onclick={() => look(HOME)}><Icon name="home" /></button
 				>
-			</div>
-		{/if}
+			{/if}
+			<button
+				class="dot"
+				aria-label="Chat"
+				title="Ask Claude to change the room"
+				aria-expanded={ui.panel === 'chat'}
+				onclick={() => (ui.panel = ui.panel === 'chat' ? null : 'chat')}
+				><Icon name="chat" /></button
+			>
+		</div>
 	</div>
 </div>
 
@@ -774,6 +787,10 @@
 		outline: none;
 		border-color: var(--accent);
 		box-shadow: 0 0 0 1px var(--accent);
+	}
+	.slot.changed {
+		outline: 2px dashed var(--accent);
+		outline-offset: 2px;
 	}
 	.slot.dragging {
 		z-index: 2;

@@ -1,7 +1,7 @@
 import { newId, type Doc } from './doc';
 import { History } from './history';
 import type { Act } from './rules';
-import { Replica, apply, diff, revert, type Down, type Op } from './sync';
+import { Replica, apply, diff, revert, type Down, type Op, type Proposal } from './sync';
 
 const VISITS = 'sheet.rooms';
 export type Visit = { token: string; name: string; at: number };
@@ -34,6 +34,18 @@ let status = $state<Status>('connecting');
 let told = 0;
 let notice = $state<{ text: string; n: number } | null>(null);
 let counts = $state({ undo: 0, redo: 0, unsent: 0 });
+let gm = $state(false);
+// Raw: ops are applied with `structuredClone`, which a state proxy would make throw.
+let proposals = $state.raw<Proposal[]>([]);
+let onSettled: (id: string, ok: boolean) => void = () => {};
+/** A chat's draft, as changes to the room: shown instead of the room until it is settled. */
+let draft = $state.raw<Op[] | null>(null);
+const shown = $derived.by(() => {
+	if (!draft || !doc) return null;
+	const d = $state.snapshot(doc) as Doc;
+	for (const op of draft) apply(d, op);
+	return d;
+});
 const history = new History<Step>();
 let replica: Replica<Doc> | null = null;
 let socket: WebSocket | null = null;
@@ -83,6 +95,10 @@ function receive(m: Down) {
 		const f = m.ops.filter((op) => op.p[0] !== 'log');
 		if (f.length) history.record({ f, i: m.undo });
 		if (m.why) notice = { text: m.why[0].toUpperCase() + m.why.slice(1) + '.', n: ++told };
+	} else if (m.t === 'proposals') {
+		proposals = m.list;
+	} else if (m.t === 'settled') {
+		onSettled(m.id, m.ok);
 	} else if (m.t === 'gone') {
 		status = 'missing';
 		const ws = socket;
@@ -94,6 +110,33 @@ function receive(m: Down) {
 		notice = { text: `Not saved: ${m.reason}. Your change was taken back.`, n: ++told };
 	}
 	settle();
+}
+
+/** Sends a message that is not an edit: one the room only passes on, so it waits for nothing. */
+function tell(m: object): boolean {
+	if (socket?.readyState !== WebSocket.OPEN) {
+		notice = { text: 'The room is not connected. Try again in a moment.', n: ++told };
+		return false;
+	}
+	socket.send(JSON.stringify(m));
+	return true;
+}
+
+/** Edits wait while a draft is shown, so nobody edits what isn't the room. */
+function held(): boolean {
+	if (draft) notice = { text: "This is Claude's draft. Apply or discard it first.", n: ++told };
+	return draft !== null;
+}
+
+function commit(fn: (d: Doc) => void) {
+	if (!doc) return;
+	const before = $state.snapshot(doc) as Doc;
+	fn(doc);
+	const after = $state.snapshot(doc) as Doc;
+	const f = diff(before, after);
+	if (!f.length) return;
+	history.record({ f, i: diff(after, before) });
+	send(f);
 }
 
 async function connect() {
@@ -117,12 +160,52 @@ export const session = {
 	get ready() {
 		return doc !== null;
 	},
-	/** Read only once `ready`: the room's doc, with this client's unconfirmed edits on top. */
+	/**
+	 * Read only once `ready`: the room's doc, with this client's unconfirmed edits on top,
+	 * or the draft made from it while one is shown.
+	 */
 	get doc(): Doc {
+		return shown ?? doc!;
+	},
+	/** The room itself, even while a draft is shown. */
+	get room(): Doc {
 		return doc!;
+	},
+	get token() {
+		return token;
 	},
 	get name() {
 		return name;
+	},
+	/** Whether this page was opened from `/gm` by a GM signed in there. */
+	get gm() {
+		return gm;
+	},
+	get proposals() {
+		return proposals;
+	},
+	get draft() {
+		return draft;
+	},
+	set draft(ops: Op[] | null) {
+		draft = ops;
+	},
+	/** Applies a draft's changes to the room as one edit of this client's, which ⌘Z takes back. */
+	land(ops: Op[]) {
+		commit((d) => {
+			for (const op of ops) apply(d, op);
+		});
+	},
+	/** Sends a draft to the GM; returns its id, or null when the room isn't connected. */
+	propose(ops: Op[], asked: string): string | null {
+		const id = newId();
+		return tell({ id, propose: { ops, asked } }) ? id : null;
+	},
+	settle(proposal: string, ok: boolean) {
+		tell({ id: newId(), settle: { proposal, ok } });
+	},
+	set onSettled(fn: (id: string, ok: boolean) => void) {
+		onSettled = fn;
 	},
 	get status() {
 		return status;
@@ -150,6 +233,12 @@ export const session = {
 	open(room: string) {
 		token = room;
 		connect();
+		// Without a sign-in, Access answers with a redirect, which `manual` leaves unfollowed.
+		if (new URLSearchParams(location.search).has('gm')) {
+			fetch('/gm/api/me', { redirect: 'manual' })
+				.then((r) => (gm = r.ok))
+				.catch(() => {});
+		}
 		// Answered by the room's runtime without waking it.
 		setInterval(() => socket?.readyState === WebSocket.OPEN && socket.send('ping'), 30_000);
 		addEventListener('beforeunload', (e) => {
@@ -158,17 +247,11 @@ export const session = {
 	},
 	/** Every edit goes through here, so each is one undo step and reaches the room at once. */
 	change(fn: (d: Doc) => void) {
-		if (!doc) return;
-		const before = $state.snapshot(doc) as Doc;
-		fn(doc);
-		const after = $state.snapshot(doc) as Doc;
-		const f = diff(before, after);
-		if (!f.length) return;
-		history.record({ f, i: diff(after, before) });
-		send(f);
+		if (!held()) commit(fn);
 	},
 	/** A press, tick or step back, which the room runs; ⌘Z then takes it back like an edit. */
 	act(a: Act) {
+		if (held()) return;
 		if (socket?.readyState !== WebSocket.OPEN) {
 			this.notice = 'Presses and clocks wait for the room, which is not connected.';
 			return;
@@ -185,11 +268,13 @@ export const session = {
 	},
 	/** Takes back this client's own last edit, wherever nobody has changed it since. */
 	undo() {
+		if (held()) return;
 		const step = history.undo();
 		if (step) play(revert(doc, step.f, step.i));
 		settle();
 	},
 	redo() {
+		if (held()) return;
 		const step = history.redo();
 		if (step) play(revert(doc, step.i, step.f));
 		settle();

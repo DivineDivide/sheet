@@ -5,6 +5,8 @@
 	"account_id": "d871bfcf5df5bcf72f9b147d59650e3a",
 	"main": "./worker/index.ts",
 	"compatibility_date": "2026-10-01",
+	// The Anthropic SDK imports Node built-ins, which Workers provides only with this flag.
+	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": true,
 	"observability": { "enabled": true },
 	// Not secrets: the team domain is public and the AUD names the Access app on `/gm`
@@ -22,10 +24,14 @@
 	"durable_objects": {
 		"bindings": [
 			{ "name": "ROOM", "class_name": "Room" },
-			{ "name": "REGISTRY", "class_name": "Registry" }
+			{ "name": "REGISTRY", "class_name": "Registry" },
+			{ "name": "AGENT", "class_name": "Agent" }
 		]
 	},
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room", "Registry"] }],
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["Room", "Registry"] },
+		{ "tag": "v2", "new_sqlite_classes": ["Agent"] }
+	],
 	// Access does not run locally. This stubs a GM, so the code path is never "no token,
 	// assume it's fine".
 	"access": {

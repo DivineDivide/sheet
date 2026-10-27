@@ -106,7 +106,8 @@
 		<ul>
 			{#each rooms as r (r.token)}
 				<li>
-					<a href="/r/{r.token}">{r.name}</a>
+					<!-- `?gm` makes the page ask Access who it is, so its Apply needs no approval. -->
+					<a href="/r/{r.token}?gm">{r.name}</a>
 					<span class="muted">{r.creator} · {new Date(r.created).toLocaleDateString()}</span>
 					<span class="actions">
 						<button onclick={() => copy(r)}>{copied === r.token ? 'Copied' : 'Copy link'}</button>
