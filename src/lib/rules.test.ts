@@ -12,7 +12,7 @@ import {
 	type When
 } from './doc';
 import { names, rowNames } from './formula';
-import { LOG, compileRule, fire, isAct, ready, rebind, sheetOf, type Act } from './rules';
+import { LOG, compileRule, fire, hint, isAct, ready, rebind, sheetOf, type Act } from './rules';
 import { apply, equal } from './sync';
 
 const box = { x: 0, y: 0, w: 96, h: 56 };
@@ -79,6 +79,13 @@ describe('map steps: a skill usable once every 4 steps', () => {
 	it('says a button nothing listens to does nothing', () => {
 		const idle = add(c, 'Idle', 'button');
 		expect(ready(doc, c, idle.id)).toMatch(/No rule listens/);
+	});
+
+	it('hints what a press does, a line a rule, then why it cannot be pressed', () => {
+		expect(hint(doc, c, step.id, true)).toBe('Charge += 1\nSteps += 1');
+		expect(hint(doc, c, use.id, 'Waiting for the room to come back.')).toBe(
+			'Charge = 0 (if Charge = Charge.max)\nWaiting for the room to come back.'
+		);
 	});
 });
 

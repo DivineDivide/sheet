@@ -4,7 +4,8 @@ import type { Field, Kind } from './doc';
 // snap to SNAP so edges line up without a column grid.
 export const SNAP = 8;
 export const GAP = 16;
-export const MIN = { w: 96, h: 56 };
+/** 3×3 of the sheet's 16px dots. */
+export const MIN = { w: 48, h: 48 };
 
 export type Box = { x: number; y: number; w: number; h: number };
 

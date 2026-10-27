@@ -16,7 +16,10 @@ import {
 	type Value
 } from './doc';
 import { render, result, show } from './formula';
-import { MIN, clamp, settle } from './layout';
+import { clamp, settle } from './layout';
+
+/** Room for a label over a line of its value, smaller than a field may be dragged to. */
+const FIT = { w: 96, h: 56 };
 
 /** Rows and columns count from 1 and include both ends, as in Excel. */
 export type Range = { r0: number; c0: number; r1: number; c1: number };
@@ -117,7 +120,7 @@ export function fromBook(book: Book, pictures: string[]): Imported {
 				for (let c = b.at.c0; c <= b.at.c1; c++) at.set(`${r},${c}`, b);
 		const cellAt = (r: number, c: number) => at.get(`${r},${c}`);
 
-		const add = (kind: Kind, label: string, range: Range, value: Value, grow = MIN.h) => {
+		const add = (kind: Kind, label: string, range: Range, value: Value, grow = FIT.h) => {
 			const field: Field = {
 				id: newId(),
 				label,
@@ -441,7 +444,7 @@ function place(sheet: XSheet, drafts: Draft[]) {
 		d.field.box = {
 			x: x(d.at.c0) - ox,
 			y: y(d.at.r0) - oy,
-			w: Math.max(MIN.w, x(d.at.c1 + 1) - x(d.at.c0) - 8),
+			w: Math.max(FIT.w, x(d.at.c1 + 1) - x(d.at.c0) - 8),
 			h: y(d.at.r1 + 1) - y(d.at.r0) - 8
 		};
 	}

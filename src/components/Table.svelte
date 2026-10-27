@@ -20,8 +20,9 @@
 		type Row
 	} from '../lib/doc';
 	import { cellResult, isErr, show } from '../lib/formula';
-	import { ready, sheetOf } from '../lib/rules';
+	import { hint, ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
+	import { tip } from '../lib/tip';
 	import Icon from './Icon.svelte';
 	import Prose from './Prose.svelte';
 
@@ -241,7 +242,7 @@
 								<button
 									class="press"
 									disabled={why !== true}
-									title={why === true ? undefined : why}
+									{@attach tip(hint(session.doc, character, c.id, why, { table: field, row }))}
 									onclick={() =>
 										session.act({
 											press: { character: character.id, field: field.id, column: c.id, row: row.id }

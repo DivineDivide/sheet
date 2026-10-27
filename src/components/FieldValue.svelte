@@ -11,8 +11,9 @@
 	import { isErr, names, render, result, show } from '../lib/formula';
 	import { markdown } from '../lib/markdown';
 	import { shrink } from '../lib/picture';
-	import { ready, sheetOf } from '../lib/rules';
+	import { hint, ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
+	import { tip } from '../lib/tip';
 	import Prose from './Prose.svelte';
 	import Table from './Table.svelte';
 
@@ -68,7 +69,10 @@
 	};
 </script>
 
-<div class="field">
+<div
+	class="field"
+	{@attach tip(field.kind === 'button' ? hint(session.doc, character, field.id, why) : '')}
+>
 	{#if field.kind !== 'button'}<div class="label md">{@html markdown(field.label)}</div>{/if}
 
 	{#if field.kind === 'button'}
@@ -78,16 +82,19 @@
 			onclick={() => session.act({ press: { character: character.id, field: field.id } })}
 			>{@html markdown(field.label)}</button
 		>
-		{#if why !== true}<span class="none">{why}</span>{/if}
 	{:else if field.kind === 'number'}
 		{@const n = v as number}
-		<input
-			class="short"
-			type="number"
-			value={n}
-			aria-label={field.label}
-			onchange={(e) => set(num(e.currentTarget.value, n))}
-		/>
+		<div class="row">
+			<button aria-label="{field.label} down" onclick={() => set(n - 1)}>−</button>
+			<input
+				class="short"
+				type="number"
+				value={n}
+				aria-label={field.label}
+				onchange={(e) => set(num(e.currentTarget.value, n))}
+			/>
+			<button aria-label="{field.label} up" onclick={() => set(n + 1)}>+</button>
+		</div>
 	{:else if field.kind === 'resource'}
 		{@const r = v as Resource}
 		<div class="row">
@@ -258,12 +265,19 @@
 		gap: 0.25rem;
 		height: 100%;
 	}
+	/* Fills its box, down to the 3×3 smallest, and clips a label too long for it. */
 	.press {
 		flex: 1;
-		min-height: 2.5rem;
+		min-height: min(2.5rem, 100%);
+		padding: 0.2rem;
+		overflow: hidden;
 		border-color: var(--accent);
 		color: var(--accent);
 		font-weight: 600;
+	}
+	/* Stacked on a narrow screen no box sets its height, so it stays tall enough to tap. */
+	:global(.stacked) .press {
+		min-height: 2.5rem;
 	}
 	.press:disabled {
 		opacity: 0.45;
@@ -282,7 +296,7 @@
 	.wrap {
 		flex-wrap: wrap;
 	}
-	/* Room for three digits beside the browser's spinner, in a serif theme too. */
+	/* Room for three digits, in a serif theme too. */
 	.short {
 		width: 7.5ch;
 		font-variant-numeric: tabular-nums;

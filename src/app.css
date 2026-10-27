@@ -141,9 +141,117 @@ button {
 	background: var(--page);
 }
 
+/* Text grows with what is typed, and a field's box sets the rest, so no corner to drag. */
 textarea {
 	width: 100%;
-	resize: vertical;
+	resize: none;
+}
+
+:focus-visible {
+	outline: 1px solid var(--accent);
+	outline-offset: 1px;
+}
+:where(input, select, textarea):focus-visible {
+	outline: none;
+	border-color: var(--accent);
+}
+
+/* Stepped with − and +, or the arrow keys, instead of the system's spinner. */
+input[type='number'] {
+	appearance: textfield;
+}
+input::-webkit-inner-spin-button,
+input::-webkit-outer-spin-button {
+	appearance: none;
+	margin: 0;
+}
+
+select {
+	appearance: none;
+	padding-right: 1.5rem;
+	background-image:
+		linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+		linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+	background-position:
+		calc(100% - 0.8rem) 55%,
+		calc(100% - 0.8rem + 4px) 55%;
+	background-size: 4px 4px;
+	background-repeat: no-repeat;
+}
+/* Where the browser allows it, the list that drops down is drawn by the theme too. */
+@supports (appearance: base-select) {
+	select,
+	::picker(select) {
+		appearance: base-select;
+	}
+	select::picker-icon {
+		display: none;
+	}
+	/* Below the box when it fits, as a menu drops; Chrome would pick the roomier side. */
+	::picker(select) {
+		position-try-order: normal;
+		margin-top: 2px;
+		padding: 0.2rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+	}
+	option {
+		padding: 0.2rem 0.5rem;
+		border-radius: var(--radius);
+	}
+	option::checkmark {
+		display: none;
+	}
+	option:is(:hover, :focus-visible) {
+		outline: none;
+		background: color-mix(in oklab, var(--accent) 14%, transparent);
+	}
+	option:checked {
+		color: var(--accent);
+	}
+}
+
+/* A hover hint from `tip.ts`, placed by it. */
+.tip {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	max-width: 18rem;
+	padding: 0.3rem 0.55rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	color: var(--ink);
+	font-size: 0.8rem;
+	white-space: pre-line;
+	box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+	pointer-events: none;
+}
+
+/* Thin and the theme's colour, in place of the system's scrollbars. */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	border: 3px solid transparent;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--muted) 45%, transparent) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+	background-color: var(--muted);
+}
+@supports not selector(::-webkit-scrollbar) {
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: color-mix(in oklab, var(--muted) 45%, transparent) transparent;
+	}
 }
 
 button {

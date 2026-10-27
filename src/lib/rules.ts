@@ -24,12 +24,14 @@ import {
 	compileLine,
 	evaluate,
 	isErr,
+	names,
 	num,
 	parse,
 	parseLine,
 	refText,
 	render,
 	rolls,
+	rowNames,
 	show,
 	str,
 	unwritable,
@@ -197,6 +199,26 @@ export function ready(doc: Doc, c: Character, button: string, row?: InRow): true
 		}
 	};
 	return all.some(passes) || "None of its rules' conditions hold now.";
+}
+
+/** A button's hover hint: a line for each rule its press sets off, then `why` it can't be. */
+export function hint(
+	doc: Doc,
+	c: Character,
+	button: string,
+	why: true | string,
+	row?: InRow
+): string {
+	const known = names(sheetOf(doc, c));
+	const seen = new Set<string>();
+	const lines = listeners(c, { press: button }, row).flatMap(({ rule, row }) => {
+		if (seen.has(rule.id)) return [];
+		seen.add(rule.id);
+		const own = row ? [...rowNames(row.table), ...known] : known;
+		const then = rule.then.map((l) => render(l, own)).join('; ');
+		return [rule.if?.trim() ? `${then} (if ${render(rule.if, own)})` : then];
+	});
+	return [...lines, ...(why === true ? [] : [why])].join('\n');
 }
 
 const calc = (op: string, base: number, x: number) =>

@@ -800,7 +800,24 @@
 		width: 16px;
 		height: 16px;
 		cursor: nwse-resize;
-		background: linear-gradient(135deg, transparent 55%, var(--muted) 55%);
+	}
+	/* A corner mark, echoing the box's own corner. */
+	.grip::after {
+		content: '';
+		position: absolute;
+		right: 4px;
+		bottom: 4px;
+		width: 6px;
+		height: 6px;
+		border-right: 2px solid var(--muted);
+		border-bottom: 2px solid var(--muted);
+		border-bottom-right-radius: 2px;
+		opacity: 0.6;
+	}
+	.slot:hover .grip::after,
+	.slot.selected .grip::after {
+		border-color: var(--accent);
+		opacity: 1;
 	}
 	.zoom {
 		position: absolute;

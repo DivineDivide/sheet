@@ -109,7 +109,8 @@ npm run deploy                    # build + wrangler deploy: goes live
   popup, with a `Preview` of each template's first tab. `Sheet` holds tabs, the stage and the edit-mode gestures. Over the
   stage float, in Edit layout, `Palette` (left: kinds to drag in) and `Toolbar` (right:
   inspector and save as template), as round icons whose panels are 85% see-through
-  (`--panel-bg`). The inspector holds inputs, not explanations. Each clock in `Clocks` has
+  (`--panel-bg`). The inspector holds inputs, not explanations, and a button says what it
+  does only in its hover hint (`tip.ts`). Each clock in `Clocks` has
   a link icon listing the fields and columns its ticks run or that read it.
   Gestures listen on the window, because a drag from the palette is released over the
   sheet.
