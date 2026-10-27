@@ -31,16 +31,12 @@
 	compile={(text) => compile(text, known)}
 	onsave={(stored) => editField(field.id, (f) => (f.formula = stored))}
 />
-{#if field.formula}
-	<p class="muted" title={isErr(out) ? out.why : undefined}>
-		Shows <b class:err={isErr(out)}>{show(out)}</b>{#if isErr(out) && out.why}: {out.why}{/if}
+<!-- The field shows its result; only what went wrong is said here. -->
+{#if field.formula && isErr(out)}
+	<p class="err">
+		{show(out)}{#if out.why}: {out.why}{/if}
 	</p>
 {/if}
-<p class="muted">
-	Labels as they are, or in [brackets] if they have spaces. HP.max reads a resource's max, a track
-	counts its ticks, a clock reads its number and a status its stacks. Excel's functions work: SUM,
-	IF, ROUND, COUNTIF…
-</p>
 
 <style>
 	.muted {
@@ -49,6 +45,8 @@
 		color: var(--muted);
 	}
 	.err {
+		margin: 0;
+		font-size: 0.8rem;
 		color: var(--accent);
 	}
 </style>

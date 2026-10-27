@@ -1,0 +1,105 @@
+<script lang="ts">
+	import { columnKinds, type Column, type Field, type When } from '../lib/doc';
+	import { compile, type Name } from '../lib/formula';
+	import { ruledColumns } from '../lib/rules';
+	import CodeInput from './CodeInput.svelte';
+	import Rules from './Rules.svelte';
+
+	// The table column picked by its icon; its name is edited in its header. Rows keep a
+	// deleted column's cells, unseen, so Undo brings the column back with them.
+	let {
+		field,
+		column,
+		known,
+		whens,
+		fresh,
+		editField
+	}: {
+		field: Field;
+		column: Column;
+		/** This row's cells first, then the character's fields. */
+		known: Name[];
+		whens: { when: When; text: string }[];
+		fresh: string;
+		editField: (id: string, fn: (f: Field) => void) => void;
+	} = $props();
+
+	const change = (fn: (cols: Column[]) => Column[]) =>
+		editField(field.id, (f) => {
+			f.columns = fn(f.columns ?? []);
+		});
+	const put = (patch: Partial<Column>) =>
+		change((cs) => cs.map((c) => (c.id === column.id ? { ...c, ...patch } : c)));
+	/** Commas or 、 between choices, as Excel's lists and Chinese both write them. */
+	const split = (text: string) =>
+		text
+			.split(/[,，、]/)
+			.map((s) => s.trim())
+			.filter(Boolean);
+</script>
+
+<h2>Column {column.name}</h2>
+<label>
+	<span class="muted">Holds</span>
+	<select
+		value={column.kind}
+		onchange={(e) => put({ kind: e.currentTarget.value as Column['kind'] })}
+	>
+		{#each columnKinds as k (k)}<option value={k}>{k}</option>{/each}
+	</select>
+</label>
+{#if column.kind === 'choice'}
+	<label>
+		<span class="muted">Choices</span>
+		<input
+			value={(column.choices ?? []).join(', ')}
+			placeholder="持有, 已献祭, 已消耗"
+			onchange={(e) => put({ choices: split(e.currentTarget.value) })}
+		/>
+	</label>
+{:else if column.kind === 'formula'}
+	<label for="formula-{column.id}"><span class="muted">Formula</span></label>
+	<CodeInput
+		id="formula-{column.id}"
+		label="Formula"
+		value={column.formula ?? ''}
+		names={known}
+		prefix="="
+		placeholder="=[@Cost]*2"
+		compile={(text) => compile(text, known)}
+		onsave={(stored) => put({ formula: stored || undefined })}
+	/>
+{/if}
+{#if ruledColumns.includes(column.kind)}
+	<span class="muted">Rules</span>
+	{#key column.id}
+		<Rules
+			rules={column.rules ?? []}
+			names={known}
+			{whens}
+			{fresh}
+			onchange={(rules) => put({ rules: rules.length ? rules : undefined })}
+		/>
+	{/key}
+{/if}
+<button onclick={() => change((cs) => cs.filter((c) => c.id !== column.id))}>Delete column</button>
+
+<style>
+	h2 {
+		margin: 0;
+		font: inherit;
+		font-family: var(--font-head);
+		font-size: 0.8rem;
+		letter-spacing: var(--label-tracking);
+		color: var(--muted);
+	}
+	label {
+		display: grid;
+		gap: 0.2rem;
+	}
+	.muted {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--muted);
+	}
+</style>

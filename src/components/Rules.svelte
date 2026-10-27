@@ -8,17 +8,15 @@
 		rules,
 		names,
 		whens,
-		on,
 		fresh,
 		onchange,
 		cond = (text) => compile(text, names),
-		line = (text) => compileLine(text, names, on)
+		line = (text) => compileLine(text, names)
 	}: {
 		rules: Rule[];
 		names: Name[];
 		/** What can set a rule off here, the default first. */
 		whens: { when: When; text: string }[];
-		on: 'character' | 'clocks';
 		/** A new rule's line, as stored. */
 		fresh: string;
 		onchange: (rules: Rule[]) => void;

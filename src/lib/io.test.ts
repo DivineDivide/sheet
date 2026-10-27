@@ -6,8 +6,7 @@ function party(): Doc {
 	const doc = newDoc();
 	const ash = newCharacter('Ash', doc.templates[0]);
 	const [hp, notes] = ash.fields;
-	ash.values = { [hp.id]: { cur: 4, max: 10 }, [notes.id]: 'hates boats' };
-	ash.statuses = [{ id: 's', name: 'Poisoned', clock: doc.clocks[0].id, since: 1, lasts: 3 }];
+	ash.values = { ...ash.values, [hp.id]: { cur: 4, max: 10 }, [notes.id]: 'hates boats' };
 	doc.characters.push(ash);
 	return doc;
 }
@@ -29,7 +28,7 @@ describe('parse', () => {
 	});
 
 	it('names a newer version rather than guessing at it', () => {
-		expect(() => parse(mangle((d) => (d.version = 3)))).toThrow(/newer version/);
+		expect(() => parse(mangle((d) => (d.version = 4)))).toThrow(/newer version/);
 	});
 
 	it('refuses a field on a tab that is missing', () => {
@@ -38,10 +37,6 @@ describe('parse', () => {
 
 	it('refuses a character without tabs', () => {
 		expect(() => parse(mangle((d) => (d.characters[0].tabs = [])))).toThrow(/no tabs/);
-	});
-
-	it('refuses a status on a clock that is missing', () => {
-		expect(() => parse(mangle((d) => (d.clocks = [])))).toThrow(/clock/);
 	});
 
 	it('refuses a field position that is not numbers', () => {
@@ -64,14 +59,12 @@ describe('parse', () => {
 		).toThrow(/columns/);
 	});
 
-	it('takes rules, stacks and presets, and refuses a malformed rule', () => {
+	it('takes rules, and refuses a malformed rule', () => {
 		const ok = mangle((d) => {
 			const tick = { tick: d.clocks[0].id };
 			d.characters[0].fields[0].rules = [{ id: 'r', when: tick, if: 'TRUE', then: ['HP -= 1'] }];
-			d.characters[0].statuses[0].stacks = 3;
-			d.presets = [{ id: 'p', name: 'Poison', clock: d.clocks[0].id, rules: [] }];
 		});
-		expect(parse(ok).presets).toHaveLength(1);
+		expect(parse(ok).characters[0].fields[0].rules).toHaveLength(1);
 		const bad = mangle((d) => (d.characters[0].fields[0].rules = [{ id: 'r', then: 'HP -= 1' }]));
 		expect(() => parse(bad)).toThrow(/malformed rules/);
 		const log = mangle((d) => (d.log = [{ id: 'l', at: 1, text: 'x', tick: { ops: 'no' } }]));
@@ -82,6 +75,27 @@ describe('parse', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/
 		);
+	});
+});
+
+describe('a version-2 file', () => {
+	const v2 = (fn: (d: Record<string, any>) => void = () => {}) =>
+		mangle((d) => {
+			d.version = 2;
+			for (const c of d.characters) c.statuses = [];
+			d.characters[0].statuses = [{ id: 's', name: 'Poisoned', clock: d.clocks[0].id, since: 1 }];
+			fn(d);
+		});
+
+	it('takes its statuses into a table', () => {
+		const [ash] = parse(v2()).characters;
+		const table = ash.fields.at(-1)!;
+		expect(table.label).toBe('Statuses 2');
+		expect(ash.values[table.id]).toMatchObject([{ cells: { [table.columns![0].id]: 'Poisoned' } }]);
+	});
+
+	it('still refuses a status on a clock that is missing', () => {
+		expect(() => parse(v2((d) => (d.characters[0].statuses[0].clock = 'gone')))).toThrow(/clock/);
 	});
 });
 
@@ -113,13 +127,12 @@ describe('a version-1 file', () => {
 
 	it('migrates each character onto its own copy of the template, on one tab', () => {
 		const doc = parse(JSON.stringify(v1));
-		expect(doc.version).toBe(2);
+		expect(doc.version).toBe(3);
 		const [c] = doc.characters;
 		expect(c).not.toHaveProperty('template');
 		expect(c.values.look).toBe('黑發藍瞳');
-		expect(c.statuses).toEqual(v1.characters[0].statuses);
 		expect(c.tabs).toHaveLength(1);
-		expect(c.fields.map((f) => f.id)).toEqual(['look', 'hp', 'luck']);
+		expect(c.fields.map((f) => f.label)).toEqual(['外貌描述', 'HP', 'Luck', 'Statuses']);
 		expect(c.fields.every((f) => f.tab === c.tabs[0].id)).toBe(true);
 		expect(c.fields).not.toBe(doc.templates[0].fields);
 	});

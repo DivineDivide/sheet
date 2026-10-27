@@ -3,6 +3,7 @@ import { VERSION, type Doc } from '../src/lib/doc';
 import { ImportError, validate } from '../src/lib/io';
 import { fire, isAct, type Act, type Done } from '../src/lib/rules';
 import { apply, isChange, type Down, type Op } from '../src/lib/sync';
+import { upgrade } from '../src/lib/v2';
 
 const send = (ws: WebSocket, m: Down) => ws.send(JSON.stringify(m));
 
@@ -60,15 +61,23 @@ export class Room extends DurableObject<Env> {
 	private load(): Doc {
 		const rows = this.ctx.storage.sql.exec('SELECT key, json FROM part').toArray();
 		const parts = new Map(rows.map((r) => [String(r.key), JSON.parse(String(r.json))]));
-		return {
-			version: VERSION,
+		const stored = {
 			clocks: parts.get('clocks'),
 			templates: parts.get('templates'),
 			characters: (parts.get('characters') as string[]).map((id) => parts.get(`c:${id}`)),
-			// Rooms made before presets have neither row.
-			presets: parts.get('presets') ?? [],
 			...(parts.has('log') && { log: parts.get('log') })
 		};
+		const old =
+			parts.has('presets') ||
+			stored.characters.some((c) => 'statuses' in c) ||
+			stored.clocks.some((k: object) => 'rules' in k);
+		if (!old) return { version: VERSION, ...stored };
+		// Written back at once, so the tables it makes keep their ids. `presets`, which
+		// version 3 has not, is deleted.
+		const doc = upgrade({ version: 2, ...stored });
+		const keys = ['clocks', 'presets', 'log', ...doc.characters.map((c) => `c:${c.id}`)];
+		this.ctx.storage.transactionSync(() => this.save(doc, keys));
+		return doc;
 	}
 
 	private save(doc: Doc, keys: Iterable<string>) {
@@ -79,7 +88,7 @@ export class Room extends DurableObject<Env> {
 					? doc.characters.map((c) => c.id)
 					: key.startsWith('c:')
 						? doc.characters.find((c) => c.id === key.slice(2))
-						: doc[key as 'clocks' | 'templates' | 'presets' | 'log'];
+						: doc[key as 'clocks' | 'templates' | 'log'];
 			if (value === undefined) sql.exec('DELETE FROM part WHERE key = ?', key);
 			else {
 				sql.exec(
@@ -103,7 +112,7 @@ export class Room extends DurableObject<Env> {
 			]) {
 				sql.exec('INSERT INTO meta VALUES (?, ?)', k, v);
 			}
-			const keys = ['clocks', 'templates', 'characters', 'presets', 'log'];
+			const keys = ['clocks', 'templates', 'characters', 'log'];
 			keys.push(...doc.characters.map((c) => `c:${c.id}`));
 			this.save(doc, keys);
 		});

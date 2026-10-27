@@ -7,21 +7,12 @@ import {
 	type Doc,
 	type Field,
 	type Kind,
+	type Row,
 	type Value,
 	type When
 } from './doc';
-import { names } from './formula';
-import {
-	LOG,
-	applyPreset,
-	compileRule,
-	fire,
-	isAct,
-	ready,
-	rebind,
-	sheetOf,
-	type Act
-} from './rules';
+import { names, rowNames } from './formula';
+import { LOG, compileRule, fire, isAct, ready, rebind, sheetOf, type Act } from './rules';
 import { apply, equal } from './sync';
 
 const box = { x: 0, y: 0, w: 96, h: 56 };
@@ -42,7 +33,7 @@ function add(c: Character, label: string, kind: Kind, value?: Value): Field {
 /** A rule as someone types it in the inspector, labels and all. */
 function rule(doc: Doc, c: Character, on: Field, when: When, cond: string, ...then: string[]) {
 	const typed = { id: newId(), when, ...(cond && { if: cond }), then };
-	(on.rules ??= []).push(compileRule(typed, names(sheetOf(doc, c)), 'character'));
+	(on.rules ??= []).push(compileRule(typed, names(sheetOf(doc, c))));
 }
 
 const get = (c: Character, f: Field) => c.values[f.id];
@@ -94,49 +85,44 @@ describe('map steps: a skill usable once every 4 steps', () => {
 describe('poison: every turn HP falls by the stacks, then the stacks by 1d10 + Stamina', () => {
 	const doc = newDoc();
 	const turn = doc.clocks[0];
-	const c = newCharacter('Ash');
+	// The Basic template's Statuses table: a status is a row, and Left counts down.
+	const c = newCharacter('Ash', doc.templates[0]);
 	doc.characters.push(c);
-	const hp = add(c, 'HP', 'resource', { cur: 30, max: 30 });
+	const [hp, , statuses] = c.fields;
+	c.values[hp.id] = { cur: 30, max: 30 };
 	add(c, 'Stamina', 'number', 2);
-	doc.presets = [
-		{
-			id: 'poison',
-			name: 'Poison',
-			clock: turn.id,
-			rules: [
-				{
-					id: 'r',
-					when: { tick: turn.id },
-					if: 'Poison > 0',
-					then: ['HP -= Poison', 'Poison -= 1d10 + Stamina']
-				}
-			]
-		}
+	const [name, stacks, left] = statuses.columns!;
+	const known = [...rowNames(statuses), ...names(sheetOf(doc, c))];
+	const poison = {
+		id: newId(),
+		when: { tick: turn.id },
+		if: 'AND(Name = "Poison", Stacks > 0)',
+		then: ['HP -= Stacks', 'Stacks = MAX(0, Stacks - 1d10 - Stamina)']
+	};
+	stacks.rules = [compileRule(poison, known)];
+	c.values[statuses.id] = [
+		{ id: 'p', cells: { [name.id]: 'Poison', [stacks.id]: 12 } },
+		{ id: 's', cells: { [name.id]: 'Stunned', [left.id]: 2 } }
 	];
-	applyPreset(doc, c, doc.presets[0], 12);
-	const poison = c.statuses[0];
+	const cell = (row: number, col: string) => (get(c, statuses) as Row[])[row].cells[col];
 	const roll = dice(1, 6, 9);
 	const next = () => fire(doc, { tick: { clock: turn.id, at: turn.now } }, roll);
 	const back = () => fire(doc, { back: { clock: turn.id, at: turn.now } }, roll);
 
-	it("binds the preset's rules to this character's fields", () => {
-		expect(poison).toMatchObject({ name: 'Poison', stacks: 12, since: 1, preset: 'poison' });
-		expect(poison.rules![0].then[0]).toBe(`@${hp.id} -= Poison`);
-	});
-
-	it('runs each turn until the stacks run out', () => {
+	it('runs each turn until the stacks run out, as Left counts down', () => {
 		next();
 		expect(get(c, hp)).toEqual({ cur: 18, max: 30 });
-		expect(poison.stacks).toBe(9);
+		expect(cell(0, stacks.id)).toBe(9);
 		expect(doc.log!.at(-1)!.text).toBe(
-			'Turn 1 → 2 · Ash: HP 30/30 → 18/30, Poison 12 → 9 (1d10: 1)'
+			'Turn 1 → 2 · Ash: HP 30/30 → 18/30, Statuses Poison: Stacks 12 → 9, ' +
+				'Statuses Stunned: Left 2 → 1 (1d10: 1)'
 		);
 		next();
 		expect(get(c, hp)).toEqual({ cur: 9, max: 30 });
-		expect(poison.stacks).toBe(1);
+		expect([cell(0, stacks.id), cell(1, left.id)]).toEqual([1, 0]);
 		next();
 		expect(get(c, hp)).toEqual({ cur: 8, max: 30 });
-		expect(poison.stacks).toBe(0);
+		expect(cell(0, stacks.id)).toBe(0);
 		next();
 		expect(get(c, hp)).toEqual({ cur: 8, max: 30 });
 		expect(turn.now).toBe(5);
@@ -146,14 +132,11 @@ describe('poison: every turn HP falls by the stacks, then the stacks by 1d10 + S
 		for (let i = 0; i < 4; i++) back();
 		expect(turn.now).toBe(1);
 		expect(get(c, hp)).toEqual({ cur: 30, max: 30 });
-		expect(poison.stacks).toBe(12);
-		expect(doc.log!.at(-1)!.text).toBe('Back: Turn 2 → 1 · Ash: HP 18/30 → 30/30, Poison 9 → 12');
-	});
-
-	it('adds to the stacks when applied again', () => {
-		applyPreset(doc, c, doc.presets![0], 3);
-		expect(c.statuses).toHaveLength(1);
-		expect(poison.stacks).toBe(15);
+		expect([cell(0, stacks.id), cell(1, left.id)]).toEqual([12, 2]);
+		expect(doc.log!.at(-1)!.text).toBe(
+			'Back: Turn 2 → 1 · Ash: HP 18/30 → 30/30, Statuses Poison: Stacks 9 → 12, ' +
+				'Statuses Stunned: Left 1 → 2'
+		);
 	});
 });
 
@@ -197,24 +180,6 @@ describe('firing', () => {
 		expect(doc.log!.at(-1)!.text).toMatch(/^Go · Ash: N's rule stopped: #VALUE!/);
 	});
 
-	it('runs a clock rule on the clocks, without setting off their own rules', () => {
-		const { doc, turn } = setup();
-		const round = { id: newId(), name: 'Round', now: 1 };
-		doc.clocks.push(round);
-		const known = names(sheetOf(doc));
-		turn.rules = [
-			compileRule(
-				{ id: 'r', when: { tick: turn.id }, if: 'MOD(Turn, 4) = 1', then: ['Round += 1'] },
-				known,
-				'clocks'
-			)
-		];
-		for (let at = 1; at <= 8; at++) fire(doc, { tick: { clock: turn.id, at } }, dice(1));
-		expect(turn.now).toBe(9);
-		expect(round.now).toBe(3);
-		expect(doc.log!.at(-1)!.text).toBe('Turn 8 → 9 · Round 2 → 3');
-	});
-
 	it('undoes an act exactly with the ops it returns', () => {
 		const { doc, c, turn } = setup();
 		const hp = add(c, 'HP', 'resource', { cur: 10, max: 10 });
@@ -240,6 +205,9 @@ describe('firing', () => {
 		expect(isAct({ id: 'a', act: { tick: { clock: 'k', at: 'now' } } })).toBe(false);
 		expect(isAct({ id: 'a', act: { tick: { clock: 'k', at: 1 }, back: {} } })).toBe(false);
 		expect(isAct({ id: 'a', ops: [] })).toBe(false);
+		const row = { character: 'c', field: 't', column: 'b', row: 'r' };
+		expect(isAct({ id: 'a', act: { press: row } })).toBe(true);
+		expect(isAct({ id: 'a', act: { press: { ...row, row: undefined } } })).toBe(false);
 	});
 
 	it("moves a pasted field's rules with it, onto its own character or another", () => {
@@ -276,5 +244,71 @@ describe('firing', () => {
 		rule(doc, c, n, { press: go.id }, '', 'N += 1');
 		n.kind = 'formula';
 		expect(ready(doc, c, go.id)).toMatch(/No rule listens/);
+	});
+});
+
+describe('a table: a sacrifice button and a cooldown in every row', () => {
+	const doc = newDoc();
+	const turn = doc.clocks[0];
+	const c = newCharacter('Ash');
+	doc.characters.push(c);
+	const ids = { name: newId(), state: newId(), wait: newId(), give: newId() };
+	const lib = add(c, '碎片库', 'table');
+	lib.columns = [
+		{ id: ids.name, name: '名称', kind: 'text' },
+		{ id: ids.state, name: '状态', kind: 'choice', choices: ['持有', '已献祭'] },
+		{ id: ids.wait, name: '冷却', kind: 'track' },
+		{ id: ids.give, name: '献祭', kind: 'button' }
+	];
+	const rows = [
+		{ id: 'r1', cells: { [ids.name]: '怀表', [ids.state]: '持有', [ids.wait]: [true, true] } },
+		{ id: 'r2', cells: { [ids.name]: '旧伤', [ids.state]: '持有', [ids.wait]: [true, false] } },
+		{ id: 'r3', cells: { [ids.name]: '空' } }
+	];
+	c.values[lib.id] = rows;
+	const given = add(c, '献祭数', 'number', 0);
+	const known = [...rowNames(lib), ...names(sheetOf(doc, c))];
+	const typed = (when: When, cond: string, ...then: string[]) =>
+		compileRule({ id: newId(), when, ...(cond && { if: cond }), then }, known);
+	lib.columns[1].rules = [typed({ press: ids.give }, '状态 = "持有"', '状态 = "已献祭"')];
+	lib.columns[2].rules = [typed({ tick: turn.id }, '', '冷却 -= 1')];
+	rule(doc, c, given, { press: ids.give }, '', '献祭数 += 1');
+	const press = (row: string) =>
+		fire(doc, { press: { character: c.id, field: lib.id, column: ids.give, row } }, dice(1));
+	const cell = (row: number, id: string) => (c.values[lib.id] as typeof rows)[row].cells[id];
+
+	it("changes only the pressed row's cells, and fields too", () => {
+		expect(lib.columns![1].rules![0].then[0]).toBe(`@${ids.state} = "已献祭"`);
+		press('r1');
+		expect(cell(0, ids.state)).toBe('已献祭');
+		expect(cell(1, ids.state)).toBe('持有');
+		expect(get(c, given)).toBe(1);
+		expect(doc.log!.at(-1)!.text).toBe(
+			'献祭 · 碎片库 怀表 · Ash: 献祭数 0 → 1, 碎片库 怀表: 状态 "持有" → "已献祭"'
+		);
+	});
+
+	it("knows a row's button is spent where its condition fails", () => {
+		const row = (i: number) => ({ table: lib, row: (c.values[lib.id] as typeof rows)[i] });
+		expect(ready(doc, c, ids.give, row(0))).toBe(true);
+		press('r2');
+		expect(cell(1, ids.state)).toBe('已献祭');
+	});
+
+	it('runs a column rule for every row when the clock ticks, leaving a blank cell be', () => {
+		fire(doc, { tick: { clock: turn.id, at: 1 } }, dice(1));
+		expect(cell(0, ids.wait)).toEqual([true, false]);
+		expect(cell(1, ids.wait)).toEqual([false, false]);
+		expect(cell(2, ids.wait)).toBeUndefined();
+		expect(doc.log!.at(-1)!.text).toBe(
+			'Turn 1 → 2 · Ash: 碎片库 怀表: 冷却 2/2 → 1/2, 碎片库 旧伤: 冷却 1/2 → 0/2'
+		);
+	});
+
+	it('shows a blank cell a rule fills as —', () => {
+		lib.columns![2].rules = [typed({ tick: turn.id }, '', '冷却 += 1')];
+		fire(doc, { tick: { clock: turn.id, at: 2 } }, dice(1));
+		expect(cell(2, ids.wait)).toEqual([true, false, false, false]);
+		expect(doc.log!.at(-1)!.text).toContain('碎片库 空: 冷却 — → 1/4');
 	});
 });

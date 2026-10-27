@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		newId,
 		valueOf,
 		type Character,
 		type Entry,
@@ -15,8 +14,24 @@
 	import { ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
 	import Prose from './Prose.svelte';
+	import Table from './Table.svelte';
 
-	let { character, field }: { character: Character; field: Field } = $props();
+	// The rest are a table's, for its headers in Edit layout.
+	let {
+		character,
+		field,
+		laying = false,
+		picked = null,
+		drop = null,
+		onpick
+	}: {
+		character: Character;
+		field: Field;
+		laying?: boolean;
+		picked?: string | null;
+		drop?: number | null;
+		onpick?: (column: string) => void;
+	} = $props();
 
 	const v = $derived(valueOf(character, field));
 	const sheet = $derived(sheetOf(session.doc, character));
@@ -160,75 +175,7 @@
 		</ol>
 		<button class="more" onclick={() => set([...entries, { name: '', text: '' }])}>+ Entry</button>
 	{:else if field.kind === 'table'}
-		{@const rows = v as Row[]}
-		{@const cols = field.columns ?? []}
-		{@const put = (row: Row, col: string, cell: string | number) => {
-			const cells = { ...row.cells, [col]: cell };
-			if (cell === '') delete cells[col];
-			set(rows.map((r) => (r.id === row.id ? { ...r, cells } : r)));
-		}}
-		{#if cols.length}
-			<table class="grid">
-				<thead>
-					<tr>
-						{#each cols as c (c.id)}<th>{c.name}</th>{/each}
-						<th aria-label="Remove"></th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each rows as row (row.id)}
-						<tr>
-							{#each cols as c (c.id)}
-								{@const cell = row.cells[c.id] ?? ''}
-								<td>
-									{#if c.kind === 'choice'}
-										<select
-											value={String(cell)}
-											aria-label={c.name}
-											onchange={(e) => put(row, c.id, e.currentTarget.value)}
-										>
-											<option value=""></option>
-											{#each c.choices ?? [] as o (o)}<option>{o}</option>{/each}
-											<!-- A value from before the choices changed still shows. -->
-											{#if cell !== '' && !c.choices?.includes(String(cell))}<option>{cell}</option
-												>{/if}
-										</select>
-									{:else if c.kind === 'number'}
-										<input
-											class="short"
-											type="number"
-											value={cell}
-											aria-label={c.name}
-											onchange={(e) => {
-												const t = e.currentTarget.value;
-												put(row, c.id, t.trim() === '' ? '' : num(t, Number(cell) || 0));
-											}}
-										/>
-									{:else}
-										<Prose
-											value={String(cell)}
-											label={c.name}
-											empty=""
-											onchange={(t) => put(row, c.id, t)}
-										/>
-									{/if}
-								</td>
-							{/each}
-							<td>
-								<button
-									class="x"
-									aria-label="Remove this row"
-									onclick={() => set(rows.filter((r) => r.id !== row.id))}>×</button
-								>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-			<button class="more" onclick={() => set([...rows, { id: newId(), cells: {} }])}>+ Row</button>
-		{:else}
-			<span class="none">No columns yet. Add them in Edit layout.</span>
-		{/if}
+		<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
 	{:else if field.kind === 'image'}
 		{@const src = v as string}
 		<!-- A drop stops here: on the window it would be taken for a session file to import.
@@ -398,40 +345,6 @@
 	}
 	.more {
 		justify-self: start;
-	}
-	.grid {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.9rem;
-	}
-	.grid th {
-		padding: 0.15rem 0.3rem;
-		border-bottom: 1px solid var(--line);
-		font-family: var(--font-head);
-		font-size: 0.75rem;
-		font-weight: normal;
-		letter-spacing: var(--label-tracking);
-		text-align: left;
-		color: var(--muted);
-	}
-	.grid td {
-		padding: 0.1rem 0.15rem;
-		border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent);
-		vertical-align: top;
-	}
-	.grid td:last-child,
-	.grid th:last-child {
-		width: 1.5rem;
-	}
-	/* A cell of text is one line until it holds more. */
-	.grid :global(.grow) {
-		min-height: 1.6em;
-	}
-	/* Wide enough for the chosen word, however the table shares out its width. */
-	.grid select {
-		width: 100%;
-		min-width: 5.5em;
-		field-sizing: content;
 	}
 	/* Fills what its box leaves under the label; the picture fits inside, uncropped. */
 	.picture {

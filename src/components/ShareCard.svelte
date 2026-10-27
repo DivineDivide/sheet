@@ -1,38 +1,22 @@
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
 	import {
-		describe,
-		phase,
+		cellOf,
 		valueOf,
 		type Character,
 		type Clock,
-		type Doc,
 		type Entry,
 		type Field,
 		type Resource,
 		type Row
 	} from '../lib/doc';
-	import { result, show } from '../lib/formula';
+	import { cellResult, result, show } from '../lib/formula';
 	import { bounds, settle } from '../lib/layout';
 	import { markdown } from '../lib/markdown';
 
 	// What gets pasted into a chat: every tab, every value in full. Each box keeps its place
 	// and width from the sheet but grows to its whole value, because an image cannot scroll.
-	let {
-		character,
-		clocks,
-		presets
-	}: { character: Character; clocks: Clock[]; presets: Doc['presets'] } = $props();
-
-	const statuses = $derived(
-		character.statuses.filter(
-			(s) =>
-				phase(
-					s,
-					clocks.find((k) => k.id === s.clock)!
-				) === 'active'
-		)
-	);
+	let { character, clocks }: { character: Character; clocks: Clock[] } = $props();
 	const sections = $derived(
 		character.tabs
 			// A button has nothing to show in a picture.
@@ -70,18 +54,6 @@
 		</span>
 	</header>
 
-	{#if statuses.length}
-		<ul class="statuses">
-			{#each statuses as s (s.id)}
-				<li>
-					<b>{s.name}{s.stacks !== undefined ? ` ${s.stacks}` : ''}</b><span
-						>{describe(s, clocks)}</span
-					>
-				</li>
-			{/each}
-		</ul>
-	{/if}
-
 	{#each sections as { tab, fields } (tab.id)}
 		{@const at = laid[tab.id]}
 		<section>
@@ -109,7 +81,7 @@
 								></span></span
 							>
 						{:else if f.kind === 'formula'}
-							<span class="big">{show(result({ ...character, clocks, presets }, f.id))}</span>
+							<span class="big">{show(result({ ...character, clocks }, f.id))}</span>
 						{:else if f.kind === 'track'}
 							{@const boxes = v as boolean[]}
 							<span class="track">
@@ -133,18 +105,38 @@
 							{:else}<span class="none">—</span>{/if}
 						{:else if f.kind === 'table'}
 							{@const rows = v as Row[]}
-							{#if rows.length && f.columns?.length}
+							<!-- Buttons, as on their own, have nothing to show. -->
+							{@const cols = (f.columns ?? []).filter((c) => c.kind !== 'button')}
+							{#if rows.length && cols.length}
 								<table class="grid">
 									<thead>
 										<tr
-											>{#each f.columns as c (c.id)}<th>{c.name}</th>{/each}</tr
+											>{#each cols as c (c.id)}<th>{c.name}</th>{/each}</tr
 										>
 									</thead>
 									<tbody>
 										{#each rows as r (r.id)}
 											<tr>
-												{#each f.columns as c (c.id)}
-													<td class="md">{@html markdown(String(r.cells[c.id] ?? ''))}</td>
+												{#each cols as c (c.id)}
+													{@const cell = cellOf(r, c)}
+													<td class="md">
+														{#if c.kind === 'track'}
+															{@const boxes = cell as boolean[]}
+															<span class="track">
+																{#each boxes as on, j (j)}<span class="box" class:on></span>{/each}
+															</span>
+														{:else if c.kind === 'formula'}
+															{c.formula?.trim()
+																? show(cellResult({ ...character, clocks }, f.id, c.id, r.id))
+																: ''}
+														{:else if c.kind === 'resource'}
+															{(cell as Resource).cur} / {(cell as Resource).max}
+														{:else if c.kind === 'tags'}
+															{((cell as string[] | undefined) ?? []).join(', ')}
+														{:else}
+															{@html markdown(String(cell ?? ''))}
+														{/if}
+													</td>
 												{/each}
 											</tr>
 										{/each}
@@ -202,27 +194,6 @@
 		font-family: var(--mono);
 		font-size: 13px;
 		color: var(--muted);
-	}
-	.statuses {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-	.statuses li {
-		display: flex;
-		gap: 8px;
-		padding: 3px 10px;
-		border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
-		border-radius: var(--radius);
-		background: color-mix(in oklab, var(--accent) 12%, transparent);
-	}
-	.statuses span {
-		font-family: var(--mono);
-		font-size: 12px;
-		color: var(--accent);
 	}
 	section {
 		display: grid;

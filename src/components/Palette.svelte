@@ -10,7 +10,7 @@
 		text: 'free text, in Markdown',
 		tags: 'a list of short labels',
 		entries: 'titled items, described in Markdown',
-		table: 'rows under named columns, with choices',
+		table: 'rows under columns: drop kinds onto it',
 		image: 'a picture: pick, drop or paste one'
 	};
 </script>

@@ -181,8 +181,6 @@ export const session = {
 			d.clocks = next.clocks;
 			d.templates = next.templates;
 			d.characters = next.characters;
-			// Older files have none; a list must stay for a preset to be added to it.
-			d.presets = next.presets ?? [];
 		});
 	},
 	/** Takes back this client's own last edit, wherever nobody has changed it since. */

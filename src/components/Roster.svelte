@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { scale } from 'svelte/transition';
-	import { newCharacter, phase, type Character } from '../lib/doc';
+	import { newCharacter, type Character } from '../lib/doc';
 	import { session } from '../lib/session.svelte';
 	import ExcelImport from './ExcelImport.svelte';
 	import Icon from './Icon.svelte';
@@ -21,12 +21,6 @@
 	const chosen = $derived(doc.templates.some((t) => t.id === from) ? from : '');
 	/** Which ends of the strip have characters scrolled out past them. */
 	let more = $state({ left: false, right: false });
-
-	const active = (c: Character) =>
-		c.statuses.filter((s) => {
-			const clock = doc.clocks.find((k) => k.id === s.clock);
-			return clock && phase(s, clock) === 'active';
-		}).length;
 
 	/** Adds a made character, as one change, so Undo takes it back. */
 	function place(c: Character) {
@@ -75,7 +69,6 @@
 		}}
 	>
 		{#each doc.characters as c (c.id)}
-			{@const n = active(c)}
 			<button
 				class="chip"
 				class:active={c.id === character?.id}
@@ -85,7 +78,6 @@
 				in:scale={{ start: 0.6, duration: 200 }}
 			>
 				<span class="cname">{c.name}</span>
-				{#if n}<span class="count" title="{n} active status{n === 1 ? '' : 'es'}">{n}</span>{/if}
 			</button>
 		{/each}
 	</nav>
@@ -203,16 +195,6 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-family: var(--font-head);
-	}
-	.count {
-		min-width: 1.4em;
-		padding: 0 0.3em;
-		border-radius: 999px;
-		background: color-mix(in oklab, var(--accent) 18%, transparent);
-		font-family: var(--mono);
-		font-size: 0.75rem;
-		text-align: center;
-		color: var(--accent);
 	}
 	.plus {
 		width: 2rem;

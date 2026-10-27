@@ -1,8 +1,9 @@
 // Reading version-1 files: layout lived on templates, on a 12-column grid whose rows
 // took the height of their content. Kept only to migrate those files forward.
 
-import { newId, type Clock, type Doc, type Field, type Kind, type Status, type Value } from './doc';
+import { newId, type Clock, type Field, type Kind, type Value } from './doc';
 import { GAP, defaultSize } from './layout';
+import type { Status, V2Doc } from './v2';
 
 type GridBox = { x: number; y: number; w: number; h: number };
 type V1Field = { id: string; label: string; kind: Kind; box?: GridBox };
@@ -101,7 +102,7 @@ export function toFree(fields: V1Field[], tab: string): Field[] {
 }
 
 /** Every character gets its own copy of its template's layout, on one tab. */
-export function migrate(v1: V1Doc): Doc {
+export function migrate(v1: V1Doc): V2Doc {
 	const templates = v1.templates.map((t) => {
 		const tab = { id: newId(), name: 'Main' };
 		return { id: t.id, name: t.name, tabs: [tab], fields: toFree(t.fields, tab.id) };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newCharacter, newDoc, newId, type Doc } from './doc';
+import { newCharacter, newDoc, newId, valueOf, type Character, type Doc, type Row } from './doc';
 import {
 	Replica,
 	apply,
@@ -13,6 +13,12 @@ import {
 } from './sync';
 
 const clone = <T>(v: T): T => structuredClone(v);
+
+/** A row added to a character's first table, as a status is. */
+function addRow(c: Character, id: string = newId()) {
+	const t = c.fields.find((f) => f.kind === 'table');
+	if (t) c.values[t.id] = [...(valueOf(c, t) as Row[]), { id, cells: { name: 'Hex' } }];
+}
 
 function party(names = ['Ann', 'Bo']): Doc {
 	const doc = newDoc();
@@ -104,11 +110,7 @@ describe('diff and apply', () => {
 		['a reorder', (d) => d.characters.reverse()],
 		['a removed value', (d) => delete d.characters[0].values[d.characters[0].fields[0].id]],
 		['tags', (d) => (d.characters[0].values.x = ['brave', 'tired'])],
-		[
-			'a status',
-			(d) =>
-				d.characters[0].statuses.push({ id: 's', name: 'Hex', clock: d.clocks[0].id, since: 1 })
-		],
+		['a row', (d) => addRow(d.characters[0], 's')],
 		['a clock', (d) => d.clocks[0].now++]
 	];
 
@@ -192,6 +194,19 @@ describe('Replica', () => {
 		expect(a.replica.pending).toEqual([]);
 	});
 
+	it('keeps a character this client put back whole in its own order', () => {
+		const doc = party();
+		const a = new Client(doc);
+		const b = new Client(doc);
+		a.edit((d) => d.characters[0].fields.pop());
+		a.edit((d) => d.characters.shift());
+		a.undo();
+		b.edit((d) => d.characters[0].fields.reverse());
+		new Room(clone(doc)).receive(b, b.outbox.shift()!, [a, b]);
+		a.take();
+		expect(a.shown).toEqual(a.replica.rebuild());
+	});
+
 	it('brings every client to the room’s doc, whatever arrives when', () => {
 		let seed = 7;
 		const rand = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
@@ -216,14 +231,7 @@ describe('Replica', () => {
 				d.characters.splice(Math.floor(rand() * d.characters.length), 0, c);
 			},
 			(d) => d.characters.length && pick(d.characters).fields.reverse(),
-			(d) =>
-				d.characters.length &&
-				pick(d.characters).statuses.push({
-					id: newId(),
-					name: 'Hex',
-					clock: d.clocks[0].id,
-					since: 1
-				}),
+			(d) => d.characters.length && addRow(pick(d.characters)),
 			(d) => d.clocks[0].now++
 		];
 

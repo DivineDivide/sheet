@@ -19,10 +19,12 @@
 	import { tick } from 'svelte';
 	import {
 		blank,
+		columnKinds,
 		newId,
 		uniqueLabel,
 		valueOf,
 		type Character,
+		type ColumnKind,
 		type Doc,
 		type Kind
 	} from '../lib/doc';
@@ -38,6 +40,7 @@
 	import Icon from './Icon.svelte';
 	import Palette from './Palette.svelte';
 	import ShareCard from './ShareCard.svelte';
+	import { gapAt } from './Table.svelte';
 	import Toolbar from './Toolbar.svelte';
 
 	let { character }: { character: Character } = $props();
@@ -51,6 +54,10 @@
 	let selected = $state<string | null>(null);
 	/** A gesture in flight: `id` null is a new field still being dragged from the palette. */
 	let drag = $state<{ id: string | null; kind: Kind; box: Box } | null>(null);
+	/** A kind from the palette held over a table, to land as a column at `index`. */
+	let drop = $state<{ field: string; index: number } | null>(null);
+	/** The table column the inspector shows. */
+	let picked = $state<{ field: string; column: string } | null>(null);
 	let panning = $state(false);
 	let vw = $state(0);
 	let vh = $state(0);
@@ -63,6 +70,11 @@
 	const stacked = $derived(vw > 0 && vw < NARROW);
 	const laying = $derived(editing && !stacked);
 	const field = $derived(character.fields.find((f) => f.id === selected));
+	const column = $derived(
+		picked && picked.field === field?.id
+			? field.columns?.find((c) => c.id === picked!.column)
+			: undefined
+	);
 	const boxOf = (f: Field) => (drag?.id === f.id ? drag.box : f.box);
 
 	// Each tab keeps where it was looking; a tab not looked at yet opens on 0,0.
@@ -108,6 +120,19 @@
 			c.values[id] = blank(kind);
 		});
 		selected = id;
+	}
+
+	function addColumn(id: string, kind: ColumnKind, at: number) {
+		const col = newId();
+		editField(id, (f) => {
+			const cols = f.columns ?? [];
+			const named = cols.map((c) => ({ id: c.id, label: c.name }));
+			const name = uniqueLabel(kind[0].toUpperCase() + kind.slice(1), named);
+			cols.splice(at, 0, { id: col, name, kind });
+			f.columns = cols;
+		});
+		selected = id;
+		picked = { field: id, column: col };
 	}
 
 	function remove(id: string) {
@@ -187,6 +212,17 @@
 			moved ||= Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4;
 			if (!moved) return;
 			if (mode === 'new') {
+				// A kind a cell can hold, held over a table, becomes a column of it.
+				const over = (columnKinds as readonly string[]).includes(kind)
+					? document
+							.elementFromPoint(ev.clientX, ev.clientY)
+							?.closest<HTMLElement>('.slot[data-table]')
+					: null;
+				drop = over ? { field: over.dataset.table!, index: gapAt(over, ev.clientX) } : null;
+				if (over) {
+					drag = null;
+					return;
+				}
 				const r = stage!.getBoundingClientRect();
 				// Not over a rail either: a field dropped there would land hidden under it.
 				const inside =
@@ -215,10 +251,13 @@
 			window.removeEventListener('pointerup', onup);
 			window.removeEventListener('pointercancel', onup);
 			const done = drag;
+			const into = drop;
 			drag = null;
+			drop = null;
 			// Only the release is written, so a whole gesture is one undo step.
 			if (mode === 'new') {
-				if (done) add(kind, done.box);
+				if (into) addColumn(into.field, kind as ColumnKind, into.index);
+				else if (done) add(kind, done.box);
 				else if (!moved) add(kind);
 			} else if (done && id) {
 				moveTo(id, done.box);
@@ -501,7 +540,9 @@
 					<div
 						class="slot"
 						class:selected={laying && selected === f.id}
+						class:target={drop?.field === f.id}
 						class:dragging={drag?.id === f.id}
+						data-table={f.kind === 'table' ? f.id : undefined}
 						style:--x="{b.x}px"
 						style:--y="{b.y}px"
 						style:--w="{b.w}px"
@@ -514,8 +555,19 @@
 						onpointerdown={laying ? (e) => grab(e, 'move', f.id, f.kind) : undefined}
 						onfocus={laying ? () => (selected = f.id) : undefined}
 					>
-						<div class="content" inert={laying || undefined}>
-							<FieldValue {character} field={f} />
+						<!-- A table's headers are edited in place; it keeps the rest inert itself. -->
+						<div class="content" inert={(laying && f.kind !== 'table') || undefined}>
+							<FieldValue
+								{character}
+								field={f}
+								{laying}
+								picked={picked?.field === f.id ? picked.column : null}
+								drop={drop?.field === f.id ? drop.index : null}
+								onpick={(col) => {
+									selected = f.id;
+									picked = { field: f.id, column: col };
+								}}
+							/>
 						</div>
 						{#if laying}
 							<span
@@ -543,7 +595,9 @@
 		{#if laying}
 			<Palette grab={(e, kind) => grab(e, 'new', null, kind)} {add} />
 		{/if}
-		<Toolbar {character} {field} {laying} {editField} {remove} {saveTemplate} />
+		{#if laying}
+			<Toolbar {character} {field} {column} {editField} {remove} {saveTemplate} />
+		{/if}
 		{#if !stacked}
 			<div class="zoom" role="group" aria-label="Zoom">
 				<button class="dot" aria-label="Zoom out" title="Zoom out (−)" onclick={() => zoomBy(0.8)}
@@ -571,7 +625,7 @@
 
 {#if sharing}
 	<div class="offstage" aria-hidden="true" bind:this={card}>
-		<ShareCard {character} clocks={session.doc.clocks} presets={session.doc.presets} />
+		<ShareCard {character} clocks={session.doc.clocks} />
 	</div>
 {/if}
 
@@ -715,6 +769,7 @@
 		user-select: none;
 	}
 	.slot.selected,
+	.slot.target,
 	.laying .slot:focus-visible {
 		outline: none;
 		border-color: var(--accent);
@@ -728,8 +783,10 @@
 	.content {
 		height: 100%;
 	}
+	/* Never under the pointer, so a drop can find the table beneath it. */
 	.ghost {
 		z-index: 2;
+		pointer-events: none;
 		display: grid;
 		place-items: center;
 		border: 1px dashed var(--accent);

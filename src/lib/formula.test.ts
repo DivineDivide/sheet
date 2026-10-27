@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { blank, type Field, type Kind, type Row, type Value } from './doc';
 import {
 	FormulaError,
+	cellResult,
 	compile,
 	compileLine,
 	evaluate,
@@ -11,6 +12,7 @@ import {
 	parseLine,
 	render,
 	result,
+	rowNames,
 	show,
 	suggest,
 	type Val
@@ -289,6 +291,62 @@ describe('tables', () => {
 	});
 });
 
+describe('columns of every kind, worked out row by row', () => {
+	const gear: Field = {
+		id: 'gear',
+		label: 'Gear',
+		kind: 'table',
+		tab: 't',
+		box,
+		columns: [
+			{ id: 'cost', name: 'Cost', kind: 'number' },
+			{ id: 'uses', name: 'Uses', kind: 'resource' },
+			{ id: 'marks', name: 'Marks', kind: 'track' },
+			{ id: 'tags', name: 'Tags', kind: 'tags' },
+			{ id: 'go', name: 'Go', kind: 'button' },
+			{ id: 'twice', name: 'Twice', kind: 'formula' }
+		]
+	};
+	const bonus: Field = { id: 'bonus', label: 'Bonus', kind: 'number', tab: 't', box };
+	const cost: Field = { id: 'costf', label: 'Cost', kind: 'number', tab: 't', box };
+	const rows: Row[] = [
+		{
+			id: 'a',
+			cells: { cost: 3, uses: { cur: 1, max: 2 }, marks: [true, false], tags: ['x', 'y'] }
+		},
+		{ id: 'b', cells: { cost: 5 } }
+	];
+	const s = { fields: [gear, bonus, cost], values: { gear: rows, bonus: 10, costf: 100 } };
+	const known = [...rowNames(gear), ...s.fields];
+	const twice = (formula: string) => {
+		gear.columns![5].formula = compile(formula, known);
+		return [cellResult(s, 'gear', 'twice', 'a'), cellResult(s, 'gear', 'twice', 'b')];
+	};
+
+	it("reads its own row's cells first, by name or as [@Column]", () => {
+		expect(compile('Cost * 2 + Bonus', known)).toBe('@cost * 2 + @bonus');
+		expect(twice('Cost * 2 + Bonus')).toEqual([16, 20]);
+		expect(twice('[@Cost] + Uses + Uses.max + Marks + Marks.max')).toEqual([9, 29]);
+		expect(render(gear.columns![5].formula!, known)).toBe(
+			'Cost + Uses + Uses.max + Marks + Marks.max'
+		);
+	});
+
+	it('reads a whole column, formulas worked out', () => {
+		twice('Cost * 2');
+		const out: Field = { id: 'o', label: 'O', kind: 'formula', tab: 't', box };
+		out.formula = compile(
+			'SUM(Gear[Twice]) & "/" & COUNTA(Gear[Tags]) & "/" & SUM(Gear[Uses])',
+			s.fields
+		);
+		expect(result({ ...s, fields: [...s.fields, out] }, 'o')).toBe('16/1/11');
+	});
+
+	it('says when a column reaches itself', () => {
+		expect(show(twice('Twice + 1')[0])).toBe('#CYCLE!');
+	});
+});
+
 describe('functions', () => {
 	const s = sheet(['Rolls', 'tags', ['持有', '已献祭', '持有', 'apple', 'Apricot']]);
 
@@ -438,16 +496,37 @@ describe('parse', () => {
 describe('what rules add', () => {
 	const s = sheet(['HP', 'resource', { cur: 5, max: 8 }], ['Odds', 'formula'], ['Notes', 'text']);
 	const turn = { id: 'k', name: 'Turn', now: 3 };
-	const poison = { id: 'p', name: 'Poison', clock: 'k', since: 1, stacks: 4 };
-	const all = { ...s, clocks: [turn], statuses: [poison], presets: [{ name: 'Stun' }] };
+	const statuses: Field = {
+		id: 'st',
+		label: 'Statuses',
+		kind: 'table',
+		tab: 't',
+		box,
+		columns: [
+			{ id: 'n', name: 'Name', kind: 'text' },
+			{ id: 'x', name: 'Stacks', kind: 'number' }
+		]
+	};
+	const rows = [
+		{ id: 'a', cells: { n: 'Poison', x: 4 } },
+		{ id: 'b', cells: { n: 'Stun', x: 9 } }
+	];
+	const all = {
+		fields: [...s.fields, statuses],
+		values: { ...s.values, st: rows },
+		clocks: [turn]
+	};
 	const known = names(all);
 
-	it('reads clocks by name, and statuses by name as their stacks', () => {
-		const stored = compile('Turn * 10 + Poison + Stun', known);
-		expect(stored).toBe('@k * 10 + Poison + Stun');
-		expect(render(stored, known)).toBe('Turn * 10 + Poison + Stun');
+	it('reads clocks by name, and a status from its table', () => {
+		const stored = compile('Turn * 10 + SUMIF(Statuses[Name], "Poison", Statuses[Stacks])', known);
+		expect(stored).toBe('@k * 10 + SUMIF(@st[n], "Poison", @st[x])');
 		const out = { ...s.fields[1], formula: stored };
-		expect(result({ ...all, fields: [s.fields[0], out, s.fields[2]] }, out.id)).toBe(34);
+		const fields = [s.fields[0], out, s.fields[2], statuses];
+		expect(result({ ...all, fields }, out.id)).toBe(34);
+		expect(result({ ...all, fields: [{ ...out, formula: 'Poison' }] }, out.id)).toMatchObject({
+			err: '#NAME?'
+		});
 	});
 
 	it('rolls dice only in rules', () => {
@@ -459,13 +538,11 @@ describe('what rules add', () => {
 
 	it('reads a line: what it changes, then =, += or -=', () => {
 		expect(parseLine('HP -= 1d6')).toMatchObject({ target: { t: 'name', s: 'HP' }, op: '-=' });
-		expect(compileLine('HP.max += 2', known, 'character')).toBe('@f0.max += 2');
-		expect(compileLine('Poison = 0', known, 'character')).toBe('Poison = 0');
+		expect(compileLine('HP.max += 2', known)).toBe('@f0.max += 2');
 		expect(() => parseLine('HP - = 1')).toThrow(/expected =, \+= or -=/);
-		expect(() => compileLine('Odds = 1', known, 'character')).toThrow(/can't be changed/);
-		expect(() => compileLine('Notes += "x"', known, 'character')).toThrow(/takes only =/);
-		expect(() => compileLine('Turn += 1', known, 'character')).toThrow(/presses Next/);
-		expect(() => compileLine('HP = 1', known, 'clocks')).toThrow(/not a clock/);
-		expect(() => compileLine('Nobody = 1', known, 'character')).toThrow(/nothing is called/);
+		expect(() => compileLine('Odds = 1', known)).toThrow(/can't be changed/);
+		expect(() => compileLine('Notes += "x"', known)).toThrow(/takes only =/);
+		expect(() => compileLine('Turn += 1', known)).toThrow(/presses Next/);
+		expect(() => compileLine('Nobody = 1', known)).toThrow(/nothing is called/);
 	});
 });

@@ -1,20 +1,20 @@
-// Rules: when a button is pressed or a clock ticks, change fields, statuses or clocks. The
+// Rules: when a button is pressed or a clock ticks, change fields and table cells. The
 // room runs them (`worker/room.ts`), so a press counts once and nobody can roll the dice
 // again. A rule is a formula and lines like `HP -= 1d6`, and it cannot set off another
 // event, so every event ends.
 
 import {
+	cellOf,
 	newId,
-	phase,
 	valueOf,
 	type Character,
+	type Column,
 	type Doc,
 	type Field,
 	type LogLine,
-	type Preset,
 	type Resource,
+	type Row,
 	type Rule,
-	type Status,
 	type When
 } from './doc';
 import {
@@ -24,7 +24,6 @@ import {
 	compileLine,
 	evaluate,
 	isErr,
-	names,
 	num,
 	parse,
 	parseLine,
@@ -32,9 +31,10 @@ import {
 	render,
 	rolls,
 	show,
-	statusNamed,
 	str,
 	unwritable,
+	type InRow,
+	type Line,
 	type Name,
 	type Roll,
 	type Rolled,
@@ -43,9 +43,12 @@ import {
 } from './formula';
 import { apply, equal, get, revert, type Op, type Path } from './sync';
 
-/** What a client asks the room to do. A tick or a step back names the reading it saw. */
+/**
+ * What a client asks the room to do. A button in a table names its column and row. A tick
+ * or a step back names the reading it saw.
+ */
 export type Act =
-	| { press: { character: string; field: string } }
+	| { press: { character: string; field: string; column?: string; row?: string } }
 	| { tick: { clock: string; at: number } }
 	| { back: { clock: string; at: number } };
 
@@ -57,7 +60,16 @@ export function isAct(v: unknown): v is { id: string; act: Act } {
 	if (!isObj(v) || typeof v.id !== 'string' || !isObj(v.act)) return false;
 	const { press, tick, back } = v.act;
 	if (Object.keys(v.act).length !== 1) return false;
-	if (isObj(press)) return typeof press.character === 'string' && typeof press.field === 'string';
+	if (isObj(press)) {
+		const opt = (v: unknown) => v === undefined || typeof v === 'string';
+		return (
+			typeof press.character === 'string' &&
+			typeof press.field === 'string' &&
+			opt(press.column) &&
+			opt(press.row) &&
+			(press.column === undefined) === (press.row === undefined)
+		);
+	}
 	const t = tick ?? back;
 	return isObj(t) && typeof t.clock === 'string' && Number.isFinite(t.at);
 }
@@ -107,57 +119,79 @@ class Writes {
 	}
 }
 
-/** What a character's rules and formulas read; without one, a clock's rules read the clocks. */
-export const sheetOf = (doc: Doc, c?: Character): Sheet =>
-	c
-		? { ...c, clocks: doc.clocks, presets: doc.presets }
-		: { fields: [], values: {}, clocks: doc.clocks };
+/** What a character's rules and formulas read. */
+export const sheetOf = (doc: Doc, c: Character): Sheet => ({ ...c, clocks: doc.clocks });
 
 const listensTo = (r: Rule, w: When) =>
 	'press' in w
 		? 'press' in r.when && r.when.press === w.press
 		: 'tick' in r.when && r.when.tick === w.tick;
 
-const isOn = (doc: Doc, s: Status) => {
-	const k = doc.clocks.find((x) => x.id === s.clock);
-	return !k || phase(s, k) === 'active';
-};
+type Listener = { rule: Rule; owner: string; row?: InRow };
 
-type Listener = { rule: Rule; owner: string };
-
-/** The kinds a rule can change, and so the only fields whose rules run. */
+/** The kinds a rule can change, and so the only fields and columns whose rules run. */
 export const ruled: Field['kind'][] = ['number', 'resource', 'track', 'text'];
+export const ruledColumns: Column['kind'][] = ['number', 'resource', 'track', 'text', 'choice'];
 
-/** The rules on a character that `when` sets off: its fields', and its active statuses'. */
-function listeners(doc: Doc, c: Character, when: When): Listener[] {
+/** A row as the log names it: by its first text, or its place. */
+function rowName(table: Field, row: Row, rows: Row[]) {
+	for (const col of table.columns ?? []) {
+		const v = (col.kind === 'text' || col.kind === 'choice') && cellOf(row, col);
+		if (v !== undefined && v !== false && String(v).trim()) return String(v).trim();
+	}
+	return `row ${rows.indexOf(row) + 1}`;
+}
+
+/**
+ * The rules on a character that `when` sets off: its fields', and its columns', once for
+ * each row. A button in a row sets off only that row's.
+ */
+function listeners(c: Character, when: When, only?: InRow): Listener[] {
+	const cols = c.fields
+		.filter((f) => f.kind === 'table')
+		.flatMap((table) =>
+			(table.columns ?? [])
+				.filter((col) => ruledColumns.includes(col.kind))
+				.flatMap((col) => (col.rules ?? []).map((rule) => ({ table, col, rule })))
+		)
+		.filter(({ rule }) => listensTo(rule, when))
+		.flatMap(({ table, col, rule }) => {
+			const rows = valueOf(c, table) as Row[];
+			const owner = (row: Row) => `${table.label} ${rowName(table, row, rows)}: ${col.name}`;
+			const inRow = only && 'press' in when && only.table.columns?.some((x) => x.id === when.press);
+			if (inRow)
+				return only.table.id === table.id ? [{ rule, owner: owner(only.row), row: only }] : [];
+			return rows.map((row) => ({ rule, owner: owner(row), row: { table, row } }));
+		});
 	return [
 		...c.fields
 			.filter((f) => ruled.includes(f.kind))
 			.flatMap((f) => (f.rules ?? []).map((rule) => ({ rule, owner: f.label }))),
-		...c.statuses
-			.filter((s) => isOn(doc, s))
-			.flatMap((s) => (s.rules ?? []).map((rule) => ({ rule, owner: s.name })))
+		...cols
 	].filter(({ rule }) => listensTo(rule, when));
 }
 
 const why = (v: Val) => (isErr(v) ? `${v.err}${v.why ? ` (${v.why})` : ''}` : String(v));
 
-function test(rule: Rule, sheet: Sheet, roll?: Roll, rolled?: Rolled[]): boolean {
+function test(rule: Rule, sheet: Sheet, roll?: Roll, rolled?: Rolled[], row?: InRow): boolean {
 	if (!rule.if?.trim()) return true;
-	const b = bool(evaluate(parse(rule.if), sheet, roll, rolled));
+	const b = bool(evaluate(parse(rule.if), sheet, roll, rolled, row));
 	if (isErr(b)) throw new Stop(`its condition is ${why(b)}`);
 	return b;
 }
 
-/** Whether pressing a button would do anything now, or why not. */
-export function ready(doc: Doc, c: Character, button: string): true | string {
-	const all = listeners(doc, c, { press: button });
-	if (!all.length) return 'No rule listens to it yet: give a field a rule for when it is pressed.';
+/** Whether pressing a button, or a button column in `row`, would do anything now, or why not. */
+export function ready(doc: Doc, c: Character, button: string, row?: InRow): true | string {
+	const all = listeners(c, { press: button }, row);
+	if (!all.length)
+		return 'No rule listens to it yet: give a field or column a rule for when it is pressed.';
 	const sheet = sheetOf(doc, c);
-	const passes = ({ rule }: Listener) => {
+	const passes = ({ rule, row }: Listener) => {
 		try {
 			// Dice cannot be known before the room rolls them.
-			return !rule.if?.trim() || rolls(parse(rule.if)) || test(rule, sheet);
+			return (
+				!rule.if?.trim() || rolls(parse(rule.if)) || test(rule, sheet, undefined, undefined, row)
+			);
 		} catch {
 			return false;
 		}
@@ -174,73 +208,80 @@ function number(v: Val): number {
 	return n;
 }
 
-/** Runs one line, on a character or, for a clock's rule, on the clocks. */
-function line(
-	text: string,
-	doc: Doc,
-	c: Character | undefined,
-	w: Writes,
-	roll: Roll,
-	rolled: Rolled[]
-) {
-	const { target, op, expr } = parseLine(text);
-	const sheet = sheetOf(doc, c);
-	const v = evaluate(expr, sheet, roll, rolled);
-	if (isErr(v)) throw new Stop(why(v));
-
-	const byRef = (id: string) => target.t === 'ref' && target.id === id;
-	const named = (s: string) => target.t === 'name' && same(s, target.s);
-	const field = c?.fields.find((f) => byRef(f.id) || named(f.label));
-	const clock = field ? undefined : doc.clocks.find((k) => byRef(k.id) || named(k.name));
-	const status =
-		field || clock || !c || target.t !== 'name' ? undefined : statusNamed(sheet, target.s);
-	const kind: Name['kind'] = field?.kind ?? (clock ? 'clock' : status ? 'status' : undefined);
-	if (!kind) {
-		// A status this character does not have has nothing to change.
-		if (target.t === 'name' && doc.presets?.some((p) => named(p.name))) return;
-		throw new Stop(
-			target.t === 'ref' ? 'it changes a field that was deleted' : `nothing is called "${target.s}"`
-		);
-	}
-	const refused =
-		target.col !== undefined
-			? "can't be changed by a rule"
-			: unwritable(kind, target.prop, op, c ? 'character' : 'clocks');
-	if (refused) throw new Stop(`${field?.label ?? clock?.name ?? status!.name} ${refused}`);
-
-	if (clock) return w.set(['clocks', clock.id, 'now'], Math.round(calc(op, clock.now, number(v))));
-	const ch = c!;
-	if (status) {
-		const n = Math.max(0, calc(op, status.stacks ?? 1, number(v)));
-		return w.set(['characters', ch.id, 'statuses', status.id, 'stacks'], n);
-	}
-	const f = field!;
-	const now = valueOf(ch, f);
-	const to = (next: unknown) => w.set(['characters', ch.id, 'values', f.id], next);
-	const prop = target.prop?.toLowerCase();
-	switch (f.kind) {
+/** What a value of this kind becomes, as a line sets it. */
+function changed(kind: Name['kind'], now: unknown, op: Line['op'], v: Val, prop?: string) {
+	switch (kind) {
 		case 'number':
-			return to(calc(op, now as number, number(v)));
+			return calc(op, (now as number | undefined) ?? 0, number(v));
 		case 'resource': {
 			const r = now as Resource;
 			const key = prop === 'max' ? 'max' : 'cur';
-			return to({ ...r, [key]: calc(op, r[key], number(v)) });
+			return { ...r, [key]: calc(op, r[key], number(v)) };
 		}
 		case 'track': {
 			const boxes = now as boolean[];
 			if (prop === 'max') {
 				const n = Math.min(100, Math.max(0, Math.round(calc(op, boxes.length, number(v)))));
-				return to(Array.from({ length: n }, (_, i) => boxes[i] ?? false));
+				return Array.from({ length: n }, (_, i) => boxes[i] ?? false);
 			}
 			const n = Math.round(calc(op, boxes.filter(Boolean).length, number(v)));
-			return to(boxes.map((_, i) => i < n));
+			return boxes.map((_, i) => i < n);
 		}
-		case 'text': {
+		default: {
 			const s = str(v);
 			if (isErr(s)) throw new Stop(why(s));
-			return to(s);
+			return s;
 		}
 	}
+}
+
+/**
+ * Runs one line on a character. In a row, the table's columns name that row's cells,
+ * before any field.
+ */
+function line(
+	text: string,
+	doc: Doc,
+	c: Character,
+	w: Writes,
+	roll: Roll,
+	rolled: Rolled[],
+	row?: InRow
+) {
+	const { target, op, expr } = parseLine(text);
+	const sheet = sheetOf(doc, c);
+	const v = evaluate(expr, sheet, roll, rolled, row);
+	if (isErr(v)) throw new Stop(why(v));
+
+	const byRef = (id: string) => target.t === 'ref' && target.id === id;
+	const named = (s: string) => target.t === 'name' && same(s, target.s);
+	const at = target.t === 'name' && target.s.startsWith('@');
+	const col = row?.table.columns?.find(
+		(x) => byRef(x.id) || (target.t === 'name' && same(x.name, target.s.replace(/^@/, '')))
+	);
+	if (at && !col) throw new Stop(`this row has no column "${target.s.slice(1)}"`);
+	const field = col ? undefined : c.fields.find((f) => byRef(f.id) || named(f.label));
+	const clock = col || field ? undefined : doc.clocks.find((k) => byRef(k.id) || named(k.name));
+	const kind: Name['kind'] = col?.kind ?? field?.kind ?? (clock ? 'clock' : undefined);
+	if (!kind) {
+		throw new Stop(
+			target.t === 'ref' ? 'it changes a field that was deleted' : `nothing is called "${target.s}"`
+		);
+	}
+	const refused =
+		target.col !== undefined ? "can't be changed by a rule" : unwritable(kind, target.prop, op);
+	if (refused) throw new Stop(`${col?.name ?? field?.label ?? clock!.name} ${refused}`);
+
+	const prop = target.prop?.toLowerCase();
+	const [p, now] = col
+		? [
+				['characters', c.id, 'values', row!.table.id, row!.row.id, 'cells', col.id],
+				cellOf(row!.row, col)
+			]
+		: [['characters', c.id, 'values', field!.id], valueOf(c, field!)];
+	const next = changed(kind, now, op, v, prop);
+	// A blank value reads as its kind's blank, so writing that would only store it.
+	if (!equal(now, next)) w.set(p, next);
 }
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -252,22 +293,24 @@ type Report = { fired: number; notes: string[]; rolled: Rolled[] };
  * their conditions are tested first, so one rule's lines never stop another from running.
  * A rule that fails part-way is taken back whole.
  */
-function run(doc: Doc, rules: Listener[], c: Character | undefined, w: Writes, roll: Roll) {
+function run(doc: Doc, rules: Listener[], c: Character, w: Writes, roll: Roll) {
 	const out: Report = { fired: 0, notes: [], rolled: [] };
 	const sheet = sheetOf(doc, c);
-	const passing = rules.filter(({ rule, owner }) => {
+	const passing = rules.filter(({ rule, owner, row }) => {
 		try {
-			return test(rule, sheet, roll, out.rolled);
+			return test(rule, sheet, roll, out.rolled, row);
 		} catch (e) {
 			if (!(e instanceof Stop || e instanceof FormulaError)) throw e;
 			out.notes.push(`${owner}'s rule: ${e.message}`);
 			return false;
 		}
 	});
-	for (const { rule, owner } of passing) {
+	for (const { rule, owner, row } of passing) {
 		const mine = new Writes(doc);
 		try {
-			for (const text of rule.then) if (text.trim()) line(text, doc, c, mine, roll, out.rolled);
+			for (const text of rule.then) {
+				if (text.trim()) line(text, doc, c, mine, roll, out.rolled, row);
+			}
 			w.add(mine);
 			out.fired++;
 		} catch (e) {
@@ -280,38 +323,39 @@ function run(doc: Doc, rules: Listener[], c: Character | undefined, w: Writes, r
 }
 
 /** A value as the log shows it. */
-function shown(f: Field | undefined, v: unknown): string {
-	if (f?.kind === 'resource') return `${(v as Resource).cur}/${(v as Resource).max}`;
-	if (f?.kind === 'track') {
-		return `${(v as boolean[]).filter(Boolean).length}/${(v as boolean[]).length}`;
-	}
+function shown(kind: Name['kind'], v: unknown): string {
+	if (v === undefined) return '—';
+	if (kind === 'resource') return `${(v as Resource).cur}/${(v as Resource).max}`;
+	if (kind === 'track' && Array.isArray(v)) return `${v.filter(Boolean).length}/${v.length}`;
 	if (typeof v === 'number') return show(v);
 	if (typeof v === 'string') return `"${v.length > 24 ? `${v.slice(0, 23)}…` : v}"`;
-	// A status without stacks reads as 1.
-	return v === undefined ? '1' : String(v);
+	return String(v);
 }
 
-/** What changed, one part for the clocks and one per character, leaving out `title`'s clock. */
-function describe(doc: Doc, w: Writes, reports: Map<string, Report>, titled?: string): string[] {
+/** What changed, one part per character. The clock that moved is the title's. */
+function describe(doc: Doc, w: Writes, reports: Map<string, Report>): string[] {
 	const parts = new Map<string, string[]>();
 	const add = (who: string, s: string) => parts.set(who, [...(parts.get(who) ?? []), s]);
 	for (const { p, was, now } of w.changed()) {
-		if (p[0] === 'clocks') {
-			if (p[1] !== titled)
-				add('', `${doc.clocks.find((k) => k.id === p[1])?.name} ${was} → ${now}`);
+		if (p[0] === 'clocks') continue;
+		const c = doc.characters.find((x) => x.id === p[1])!;
+		const f = c.fields.find((x) => x.id === p[3]);
+		if (f && p[5] === 'cells') {
+			const rows = valueOf(c, f) as Row[];
+			const row = rows.find((r) => r.id === p[4])!;
+			const col = f.columns?.find((x) => x.id === p[6]);
+			const label = `${f.label} ${rowName(f, row, rows)}: ${col?.name}`;
+			add(c.id, `${label} ${shown(col?.kind, was)} → ${shown(col?.kind, now)}`);
 			continue;
 		}
-		const c = doc.characters.find((x) => x.id === p[1])!;
-		const f = p[2] === 'values' ? c.fields.find((x) => x.id === p[3]) : undefined;
-		const label = f ? f.label : c.statuses.find((s) => s.id === p[3])?.name;
-		add(c.id, `${label} ${shown(f, was)} → ${shown(f, now)}`);
+		add(c.id, `${f?.label} ${shown(f?.kind, was)} → ${shown(f?.kind, now)}`);
 	}
 	for (const [who, r] of reports) for (const n of r.notes) add(who, n);
 	return [...parts].map(([who, changes]) => {
-		const c = doc.characters.find((x) => x.id === who);
+		const c = doc.characters.find((x) => x.id === who)!;
 		const dice = reports.get(who)?.rolled.map((r) => `${r.dice}: ${r.got.join('+')}`) ?? [];
 		const after = dice.length ? ` (${dice.join('; ')})` : '';
-		return c ? `${c.name}: ${changes.join(', ')}${after}` : changes.join(', ');
+		return `${c.name}: ${changes.join(', ')}${after}`;
 	});
 }
 
@@ -338,34 +382,42 @@ const none = (why?: string): Done => ({ ops: [], undo: [], why });
 export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 	const w = new Writes(doc);
 	const reports = new Map<string, Report>();
-	let title: string;
-	let titled: string | undefined;
+	let title = '';
 	let tick: { clock: string; to: number } | undefined;
 
 	if ('press' in act) {
-		const c = doc.characters.find((x) => x.id === act.press.character);
-		const b = c?.fields.find((f) => f.id === act.press.field && f.kind === 'button');
-		if (!c || !b) return none('that button is gone');
-		const r = run(doc, listeners(doc, c, { press: b.id }), c, w, roll);
+		const { character, field, column, row } = act.press;
+		const c = doc.characters.find((x) => x.id === character);
+		const f = c?.fields.find((x) => x.id === field);
+		let b: { id: string; label: string } | undefined;
+		let r: Report | undefined;
+		if (c && f?.kind === 'button') {
+			b = f;
+			r = run(doc, listeners(c, { press: f.id }), c, w, roll);
+			title = f.label;
+		} else if (c && f?.kind === 'table') {
+			const rows = valueOf(c, f) as Row[];
+			const col = f.columns?.find((x) => x.id === column && x.kind === 'button');
+			const at = rows.find((x) => x.id === row);
+			if (col && at) {
+				b = { id: col.id, label: col.name };
+				r = run(doc, listeners(c, { press: col.id }, { table: f, row: at }), c, w, roll);
+				title = `${col.name} · ${f.label} ${rowName(f, at, rows)}`;
+			}
+		}
+		if (!c || !b || !r) return none('that button is gone');
 		if (!r.fired && !r.notes.length) {
 			return none(`${b.label}: none of its rules' conditions hold now`);
 		}
 		reports.set(c.id, r);
-		title = b.label;
 	} else {
 		const { clock, at: from } = 'tick' in act ? act.tick : act.back;
 		const k = doc.clocks.find((x) => x.id === clock);
 		if (!k || k.now !== from) return none();
-		titled = k.id;
 		if ('tick' in act) {
 			w.set(['clocks', k.id, 'now'], from + 1);
-			const own = doc.clocks.flatMap((o) =>
-				(o.rules ?? []).map((rule) => ({ rule, owner: o.name }))
-			);
-			const mine = own.filter(({ rule }) => listensTo(rule, { tick: k.id }));
-			reports.set('', run(doc, mine, undefined, w, roll));
 			for (const c of doc.characters) {
-				reports.set(c.id, run(doc, listeners(doc, c, { tick: k.id }), c, w, roll));
+				reports.set(c.id, run(doc, listeners(c, { tick: k.id }), c, w, roll));
 			}
 			title = `${k.name} ${from} → ${from + 1}`;
 			tick = { clock: k.id, to: from + 1 };
@@ -387,13 +439,13 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 	const undo: Op[] = changed.map(({ p, was }) =>
 		was === undefined ? { k: 'del', p } : { k: 'set', p, v: structuredClone(was) }
 	);
-	const text = [title, ...describe(doc, w, reports, titled)].join(' · ');
+	const text = [title, ...describe(doc, w, reports)].join(' · ');
 	const entry: LogLine = { id: newId(), at, text, ...(tick && { tick: { ...tick, ops, undo } }) };
 	return { ops: [...ops, ...logged(doc, entry)], undo };
 }
 
 /** A rule as typed, with labels swapped for ids; a line that cannot be read stays as typed. */
-export function compileRule(rule: Rule, known: Name[], on: 'character' | 'clocks'): Rule {
+export function compileRule(rule: Rule, known: Name[]): Rule {
 	const keep = (f: () => string, text: string) => {
 		try {
 			return f();
@@ -403,7 +455,7 @@ export function compileRule(rule: Rule, known: Name[], on: 'character' | 'clocks
 		}
 	};
 	const cond = rule.if?.trim() ? { if: keep(() => compile(rule.if!, known), rule.if!) } : {};
-	return { ...rule, ...cond, then: rule.then.map((l) => keep(() => compileLine(l, known, on), l)) };
+	return { ...rule, ...cond, then: rule.then.map((l) => keep(() => compileLine(l, known), l)) };
 }
 
 /**
@@ -431,32 +483,8 @@ export function rebind(
 		const button = pressed && known.find((n) => n.id === pressed);
 		const there = button && target.find((n) => n.kind === 'button' && same(n.label, button.label));
 		return {
-			...compileRule(typed, target, 'character'),
+			...compileRule(typed, target),
 			...(there && { when: { press: there.id } })
 		};
-	});
-}
-
-/**
- * Puts a preset's status on a character, its rules bound to the character's fields. A
- * preset with stacks that is already on adds to those stacks instead.
- */
-export function applyPreset(doc: Doc, c: Character, p: Preset, stacks = p.stacks) {
-	const already = statusNamed(sheetOf(doc, c), p.name);
-	if (stacks !== undefined && already && isOn(doc, already) && already.stacks !== undefined) {
-		already.stacks += stacks;
-		return;
-	}
-	const clock = doc.clocks.find((k) => k.id === p.clock) ?? doc.clocks[0];
-	const known = names(sheetOf(doc, c));
-	c.statuses.push({
-		id: newId(),
-		name: p.name,
-		clock: clock.id,
-		since: clock.now,
-		...(p.lasts !== undefined && { lasts: p.lasts }),
-		...(stacks !== undefined && { stacks }),
-		preset: p.id,
-		rules: p.rules.map((r) => ({ ...compileRule(r, known, 'character'), id: newId() }))
 	});
 }

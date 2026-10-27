@@ -1,63 +1,82 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { kinds, uniqueLabel, type Character, type Field, type Kind, type When } from '../lib/doc';
-	import { compileLine, nameOf, names as namesOf } from '../lib/formula';
-	import { mod } from '../lib/keys';
+	import {
+		kinds,
+		uniqueLabel,
+		type Character,
+		type Column,
+		type Field,
+		type Kind,
+		type When
+	} from '../lib/doc';
+	import { compileLine, nameOf, names as namesOf, rowNames, type Name } from '../lib/formula';
 	import { session } from '../lib/session.svelte';
 	import { ui, type Panel } from '../lib/ui.svelte';
 	import { ruled, sheetOf } from '../lib/rules';
-	import Columns from './Columns.svelte';
+	import ColumnPanel from './ColumnPanel.svelte';
 	import FormulaInput from './FormulaInput.svelte';
 	import Icon from './Icon.svelte';
-	import { hints } from './Palette.svelte';
 	import Rules from './Rules.svelte';
-	import Statuses from './Statuses.svelte';
 
 	let {
 		character,
 		field,
-		laying,
+		column,
 		editField,
 		remove,
 		saveTemplate
 	}: {
 		character: Character;
 		field: Field | undefined;
-		laying: boolean;
+		/** The column of the selected table picked in its header. */
+		column: Column | undefined;
 		editField: (id: string, fn: (f: Field) => void) => void;
 		remove: (id: string) => void;
 		saveTemplate: (name: string) => void;
 	} = $props();
 
-	const names: Record<Panel, string> = {
-		field: 'Selected field',
-		statuses: 'Statuses',
-		template: 'Save as template'
-	};
-	const mode = $derived(laying ? 'edit' : 'play');
-	const panels = $derived<Panel[]>(laying ? ['field', 'statuses', 'template'] : ['statuses']);
-	const open = $derived(ui.panel[mode]);
-	const toggle = (p: Panel) => (ui.panel[mode] = open === p ? null : p);
+	const names: Record<Panel, string> = { field: 'Selected field', template: 'Save as template' };
+	const open = $derived(ui.panel);
+	const toggle = (p: Panel) => (ui.panel = open === p ? null : p);
 
 	// Selecting a field brings its inspector up, even after it was closed.
 	const selectedId = $derived(field?.id);
 	$effect(() => {
-		if (selectedId) ui.panel.edit = 'field';
+		if (selectedId) ui.panel = 'field';
 	});
 
 	let templateName = $state('');
 
 	const known = $derived(namesOf(sheetOf(session.doc, character)));
-	const whens = $derived<{ when: When; text: string }[]>([
-		...character.fields
+	type Whens = { when: When; text: string }[];
+	const pressed = (t: Field, text: (c: Column) => string): Whens =>
+		(t.columns ?? [])
+			.filter((c) => c.kind === 'button')
+			.map((c) => ({ when: { press: c.id }, text: text(c) }));
+	const buttons = $derived<Whens>(
+		character.fields
 			.filter((f) => f.kind === 'button')
-			.map((b) => ({ when: { press: b.id }, text: `${b.label} pressed` })),
-		...session.doc.clocks.map((k) => ({ when: { tick: k.id }, text: `${k.name} ticks` }))
+			.map((b) => ({ when: { press: b.id }, text: `${b.label} pressed` }))
+	);
+	const ticks = $derived<Whens>(
+		session.doc.clocks.map((k) => ({ when: { tick: k.id }, text: `${k.name} ticks` }))
+	);
+	const whens = $derived<Whens>([
+		...buttons,
+		...character.fields
+			.filter((t) => t.kind === 'table')
+			.flatMap((t) => pressed(t, (c) => `${t.label} ${c.name} pressed`)),
+		...ticks
 	]);
-	function fresh(f: Field) {
-		const text = `${nameOf(f)} ${f.kind === 'text' ? '= ""' : '+= 1'}`;
+	// A column's rules hear only its own table's buttons, each in the row pressed.
+	const columnWhens = $derived<Whens>(
+		field ? [...pressed(field, (c) => `${c.name} pressed, in its row`), ...buttons, ...ticks] : []
+	);
+	const rowKnown = $derived(field ? [...rowNames(field), ...known] : known);
+	function fresh(label: string, kind: string, names: Name[]) {
+		const text = `${nameOf({ label })} ${kind === 'text' || kind === 'choice' ? '= ""' : '+= 1'}`;
 		try {
-			return compileLine(text, known, 'character');
+			return compileLine(text, names);
 		} catch {
 			return text;
 		}
@@ -66,7 +85,7 @@
 
 <aside class="rail">
 	<div class="icons">
-		{#each panels as p (p)}
+		{#each ['field', 'template'] as const as p (p)}
 			<button
 				class="dot"
 				aria-label={names[p]}
@@ -77,7 +96,7 @@
 		{/each}
 	</div>
 
-	{#if open && panels.includes(open)}
+	{#if open}
 		<section class="panel" transition:fly={{ x: 16, duration: 160 }}>
 			{#if open === 'field'}
 				<h2>Selected</h2>
@@ -114,7 +133,16 @@
 							<FormulaInput {character} {field} {editField} />
 						{/key}
 					{:else if field.kind === 'table'}
-						<Columns {field} {editField} />
+						{#if column}
+							<ColumnPanel
+								{field}
+								{column}
+								known={rowKnown}
+								whens={columnWhens}
+								fresh={fresh(column.name, column.kind, rowKnown)}
+								{editField}
+							/>
+						{/if}
 					{/if}
 					{#if ruled.includes(field.kind)}
 						<span class="muted">Rules</span>
@@ -123,8 +151,7 @@
 								rules={field.rules ?? []}
 								names={known}
 								{whens}
-								on="character"
-								fresh={fresh(field)}
+								fresh={fresh(field.label, field.kind, known)}
 								onchange={(rules) => {
 									editField(field.id, (f) => {
 										f.rules = rules.length ? rules : undefined;
@@ -132,10 +159,6 @@
 								}}
 							/>
 						{/key}
-						<p class="muted">
-							When a button is pressed or a clock ticks, and its condition holds, a rule runs its
-							lines in order. It can change any field here, as in HP -= 1d6.
-						</p>
 					{/if}
 					{#if character.tabs.length > 1}
 						<label>
@@ -150,22 +173,10 @@
 							</select>
 						</label>
 					{/if}
-					<p class="muted">
-						{hints[field.kind]} · {field.box.w}×{field.box.h} at {field.box.x}, {field.box.y}
-					</p>
 					<button onclick={() => remove(field.id)}>Delete field</button>
-					<p class="muted">
-						Changing a kind shows this field blank until it is changed back or undone.
-					</p>
 				{:else}
-					<p class="muted">
-						Drag a kind in from the left. Drag a field to move it and its corner to resize it. With
-						a field selected, arrow keys nudge it, Shift with the arrows resizes it, Delete removes
-						it, and {mod}C copies it to paste with {mod}V, here or on another character.
-					</p>
+					<p class="muted">Nothing selected.</p>
 				{/if}
-			{:else if open === 'statuses'}
-				<Statuses {character} />
 			{:else}
 				<h2>Template</h2>
 				<form

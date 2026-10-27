@@ -2,11 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A character sheet with clocks and statuses, shared live by everyone in a room. The plan
-and its phases are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built.
-Formulas, tables and Excel import followed, planned in
-`notes/trpg/plan-sheet-formulas-import.md`, then buttons, rules and status presets, in
-`notes/trpg/plan-sheet-rules.md`.
+A character sheet with clocks, shared live by everyone in a room. The plan and its phases
+are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built. Formulas,
+tables and Excel import followed, planned in `notes/trpg/plan-sheet-formulas-import.md`,
+then buttons and rules, in `notes/trpg/plan-sheet-rules.md`, which folded statuses into
+tables.
 
 ## Commands
 
@@ -25,10 +25,9 @@ npm run deploy                    # build + wrangler deploy: goes live
 
 - **`src/lib/doc.ts`** — the whole session is one versioned JSON `Doc`: clocks, templates
   and characters. Each character owns its layout (tabs, and fields placed on them) as well
-  as its values and statuses, so reshaping one never touches another. A template is a
-  layout saved from a character and is never edited; `newCharacter` copies it. A status is
-  a stamp: it stores the clock reading when it was applied, and `left` / `phase` derive the
-  rest, so advancing a clock rewrites nothing and stepping back is exact.
+  as its values, so reshaping one never touches another. A template is a layout saved from
+  a character and is never edited; `newCharacter` copies it. A status is a row of a table
+  (`statusTable`, which the Basic template has), whose Left a column rule counts down.
 - **Rooms** — every session lives in a room at `/r/<token>`, and the link is the only
   key. `worker/room.ts` is one SQLite Durable Object per room, storing each character
   as a row of its own, plus rows for clocks, templates and the character order. Players
@@ -48,37 +47,43 @@ npm run deploy                    # build + wrangler deploy: goes live
   finished (on blur, change or release), never per keystroke or drag frame: each change
   is a row written, and the free plan allows 100,000 a day.
 - **`src/lib/io.ts`** — export and import. `parse` refuses bad structure or dangling
-  tab/clock references whole. Version-1 files are checked as written, then `v1.ts`
-  migrates them: each character gets its own copy of its template's layout on one tab,
-  and the old 12-column grid becomes a 672px sheet. Field values are read through
-  `valueOf`, which treats a value of the wrong kind as blank, so changing a field's kind
-  needs no migration.
+  tab/clock references whole. Older files are checked as written, then migrated. `v1.ts`
+  gives each character its own copy of its template's layout on one tab, and turns the old
+  12-column grid into a 672px sheet. `v2.ts` turns statuses into a Statuses table and drops
+  presets and clocks' rules; `Room.load` runs it too, writing the new rows back once, so
+  the tables keep their ids. Field values are read through `valueOf`, which treats a value
+  of the wrong kind as blank, so changing a field's kind needs no migration.
 - **`src/lib/formula.ts`** — Excel's formula language over one character's fields, with
   its quirks on purpose (each is a test). A formula is stored with `@<id>` references and
   shown with labels (`compile` / `render`), so a rename breaks nothing; `@` takes a UUID
   exactly, so `@id-1` keeps its minus. Results are computed wherever they show and never
   stored, so they cost no rows written. A table column is `Table[Column]`, stored by column
   id. `highlight` colours the editor and must never throw on a half-typed formula. Clocks
-  are named like fields and stored by id. A status is always named, never stored as an id,
-  since it comes and goes, and reads as its stacks. Field labels are unique within a
+  are named like fields and stored by id. A status is read from its table, as
+  `SUMIF(Statuses[Name], "Poison", Statuses[Stacks])`. Field labels are unique within a
   character (`uniqueLabel`), so a label names one field on any tab.
 - **`src/lib/rules.ts`** — when a button is pressed or a clock ticks, rules run: each is a
-  formula condition and lines like `HP -= 1d6`, and lives on what it changes (a field, a
-  status from a preset, or a clock, whose rules change only clocks), never on the button.
-  The room runs them: a client sends an act (`press`, `tick` or `back`, naming the reading
-  it saw), and `Room.act` calls `fire` with its own dice, so a press counts once and nobody
-  rolls again. `fire` tests every condition before any rule's lines run, takes a rule that
-  fails part-way back whole, and logs each event. It returns the ops and the ops that take
+  formula condition and lines like `HP -= 1d6`, and lives on what it changes (a field or a
+  table column), never on the button or the clock. The room runs them: a client sends an
+  act (`press`, `tick` or `back`, naming the reading it saw), and `Room.act` calls `fire`
+  with its own dice, so a press counts once and nobody rolls again. `fire` tests every
+  condition before any rule's lines run, takes a rule that fails part-way back whole, and
+  logs each event. It returns the ops and the ops that take
   them back, which the presser's ⌘Z sends as an ordinary edit. A tick's log line keeps
   both, so Back takes the last tick to this reading back, its rules' effects with it. No
   rule sets off another event, so every event ends. Dice roll only in rules: a formula
-  field that rolls shows #VALUE!. Its spec is the map-step cooldown and the poison preset.
+  field that rolls shows #VALUE!. Its spec is the map-step cooldown and poison, a rule on
+  the Statuses table.
 - **Tables** — a `table` field's columns live on the field and its rows, each with an id,
   are the character's value, so rows and cells sync one by one through the keyed-list diff.
-- **Presets and the log** — `doc.presets` are statuses to apply again and again, with rules
-  written with labels; `applyPreset` binds them to a character's fields. `doc.log` holds the
-  last 50 events. Clients cannot write it, since it is not among `isChange`'s roots. Both
-  are rows of their own in the room.
+  A column holds any kind a cell can (`columnKinds`), read through `cellOf` as `valueOf`
+  reads a field. A formula column is worked out per row, where a column's name or `[@Col]`
+  reads that row's cell. A column's rules run in every row, or only in the row whose button
+  column was pressed. In Edit layout a kind dropped from the palette onto a table becomes a
+  column there (`Table` owns its headers: rename, drag the icon to move, press it to open
+  `ColumnPanel` in the inspector).
+- **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
+  not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically
   so only someone importing downloads it, into plain data. `src/lib/excel.ts` then decides
   by rules, from shape and bold alone, which cells make which field. It lists every cell no
@@ -102,8 +107,10 @@ npm run deploy                    # build + wrangler deploy: goes live
   conditions and lines; `Rules` edits a list of rules with it. `App` holds the top bar,
   where `Roster` shows three characters at a time and a + that opens the new-character
   popup, with a `Preview` of each template's first tab. `Sheet` holds tabs, the stage and the edit-mode gestures. Over the
-  stage float `Palette` (left: kinds to drag in) and `Toolbar` (right: inspector, statuses,
-  save as template), as round icons whose panels are 85% see-through (`--panel-bg`).
+  stage float, in Edit layout, `Palette` (left: kinds to drag in) and `Toolbar` (right:
+  inspector and save as template), as round icons whose panels are 85% see-through
+  (`--panel-bg`). The inspector holds inputs, not explanations. Each clock in `Clocks` has
+  a link icon listing the fields and columns its ticks run or that read it.
   Gestures listen on the window, because a drag from the palette is released over the
   sheet.
 - **`src/lib/keys.ts`** — shortcuts listen on the window too: `App` takes the session-wide

@@ -1,6 +1,7 @@
 import { VERSION, columnKinds, kinds, type Doc } from './doc';
 import { isChange } from './sync';
 import { migrate, type V1Doc } from './v1';
+import { upgrade, type V2Doc } from './v2';
 
 export class ImportError extends Error {}
 
@@ -24,7 +25,7 @@ const okRules = (v: unknown) => v === undefined || (Array.isArray(v) && v.every(
 
 /**
  * Parses an exported document, refusing anything whose structure or references are
- * wrong instead of loading half of it. Version-1 files are checked as they were written,
+ * wrong instead of loading half of it. Older files are checked as they were written,
  * then migrated. Field values are only checked to be present: `valueOf` already reads a
  * mismatched value as blank.
  */
@@ -41,8 +42,8 @@ export function parse(text: string): Doc {
 /** `parse` after JSON: what a room runs over its doc after every change. */
 export function validate(data: unknown): Doc {
 	if (!isObj(data)) throw new ImportError('not a sheet document');
-	if (data.version === 1) return migrate(checkV1(data));
-	if (data.version !== VERSION) {
+	if (data.version === 1) return upgrade(migrate(checkV1(data)));
+	if (data.version !== 2 && data.version !== VERSION) {
 		throw new ImportError(
 			isNum(data.version) && data.version > VERSION
 				? `made by a newer version (${data.version})`
@@ -66,28 +67,10 @@ export function validate(data: unknown): Doc {
 			throw new ImportError('a character is malformed');
 		}
 		checkLayout(ch, `"${ch.name}"`);
-		checkStatuses(ch, clockIds);
+		if (data.version === 2) checkStatuses(ch, clockIds);
 	}
-	checkPresets(data);
 	checkLog(data);
-	return data as Doc;
-}
-
-function checkPresets(data: Record<string, unknown>) {
-	if (data.presets === undefined) return;
-	if (!Array.isArray(data.presets)) throw new ImportError('the status presets are malformed');
-	for (const p of data.presets) {
-		const ok =
-			isObj(p) &&
-			isStr(p.id) &&
-			isStr(p.name) &&
-			isStr(p.clock) &&
-			(p.lasts === undefined || isNum(p.lasts)) &&
-			(p.stacks === undefined || isNum(p.stacks)) &&
-			Array.isArray(p.rules) &&
-			okRules(p.rules);
-		if (!ok) throw new ImportError('a status preset is malformed');
-	}
+	return data.version === 2 ? upgrade(data as unknown as V2Doc) : (data as Doc);
 }
 
 function checkLog(data: Record<string, unknown>) {
@@ -114,7 +97,7 @@ function checkClocks(data: Record<string, unknown>): Set<string> {
 	if (!Array.isArray(data.clocks)) throw new ImportError('missing clocks');
 	const ids = new Set<string>();
 	for (const c of data.clocks) {
-		if (!isObj(c) || !isStr(c.id) || !isStr(c.name) || !isNum(c.now) || !okRules(c.rules)) {
+		if (!isObj(c) || !isStr(c.id) || !isStr(c.name) || !isNum(c.now)) {
 			throw new ImportError('a clock is malformed');
 		}
 		ids.add(c.id);
@@ -150,7 +133,9 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 			isStr(c.id) &&
 			isStr(c.name) &&
 			columnKinds.includes(c.kind as never) &&
-			(c.choices === undefined || (Array.isArray(c.choices) && c.choices.every(isStr)));
+			(c.choices === undefined || (Array.isArray(c.choices) && c.choices.every(isStr))) &&
+			(c.formula === undefined || isStr(c.formula)) &&
+			okRules(c.rules);
 		if (f.columns !== undefined && !(Array.isArray(f.columns) && f.columns.every(okColumn))) {
 			throw new ImportError(`"${f.label}" on ${name} has malformed columns`);
 		}

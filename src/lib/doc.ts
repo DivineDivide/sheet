@@ -5,7 +5,8 @@ import type { Box } from './layout';
 import type { Op } from './sync';
 
 // 2: layout moved from templates onto each character, in tabs, placed freely.
-export const VERSION = 2;
+// 3: statuses became a table's rows, and clocks lost their rules; see `v2.ts`.
+export const VERSION = 3;
 
 /** What sets a rule off: a button on the same character pressed, or a clock ticking. */
 export type When = { press: string } | { tick: string };
@@ -15,37 +16,7 @@ export type When = { press: string } | { tick: string };
  */
 export type Rule = { id: string; when: When; if?: string; then: string[] };
 
-/** A clock's rules change only clocks. */
-export type Clock = { id: string; name: string; now: number; rules?: Rule[] };
-
-/**
- * A stamp, not a countdown: `since` is the clock's reading when the status went on, and
- * time left is derived from it. Advancing a clock rewrites no status, so stepping back
- * is exact and nothing can drift.
- */
-export type Status = {
-	id: string;
-	name: string;
-	clock: string;
-	since: number;
-	/** Absent means it lasts until removed. */
-	lasts?: number;
-	/** What its name reads as in a formula; at 0 it has run out. */
-	stacks?: number;
-	rules?: Rule[];
-	/** The preset it was applied from. */
-	preset?: string;
-};
-
-/** A status to apply again and again. Its rules name fields by label, to suit any character. */
-export type Preset = {
-	id: string;
-	name: string;
-	clock: string;
-	lasts?: number;
-	stacks?: number;
-	rules: Rule[];
-};
+export type Clock = { id: string; name: string; now: number };
 
 /** What the room did for a press or a tick, as everyone reads it. Only the room writes it. */
 export type LogLine = {
@@ -70,13 +41,28 @@ export const kinds = [
 ] as const;
 export type Kind = (typeof kinds)[number];
 
-export const columnKinds = ['text', 'number', 'choice'] as const;
+/** What a cell can hold: most field kinds, and a choice from a list. */
+export const columnKinds = [
+	'text',
+	'number',
+	'choice',
+	'resource',
+	'track',
+	'formula',
+	'button',
+	'tags'
+] as const;
+export type ColumnKind = (typeof columnKinds)[number];
 export type Column = {
 	id: string;
 	name: string;
-	kind: (typeof columnKinds)[number];
+	kind: ColumnKind;
 	/** What a choice column offers, as Excel's dropdown lists do. */
 	choices?: string[];
+	/** A formula column's expression, worked out for each row; it reads its row's cells. */
+	formula?: string;
+	/** Rules that change this column, run row by row. */
+	rules?: Rule[];
 };
 
 export type Tab = { id: string; name: string };
@@ -101,15 +87,15 @@ export type Template = Layout & { id: string; name: string };
 export type Resource = { cur: number; max: number };
 /** A titled item: a role-book ability, a talent and its usages, a fragment. */
 export type Entry = { name: string; text: string };
+export type Cell = string | number | Resource | boolean[] | string[];
 /** A table row, with ids so rows and cells sync one by one. A blank cell is absent. */
-export type Row = { id: string; cells: Record<string, string | number> };
+export type Row = { id: string; cells: Record<string, Cell> };
 export type Value = number | Resource | boolean[] | string | string[] | Entry[] | Row[];
 
 export type Character = Layout & {
 	id: string;
 	name: string;
 	values: Record<string, Value>;
-	statuses: Status[];
 };
 
 export type Doc = {
@@ -117,17 +103,43 @@ export type Doc = {
 	clocks: Clock[];
 	templates: Template[];
 	characters: Character[];
-	presets?: Preset[];
 	log?: LogLine[];
 };
 
 export const newId = () => crypto.randomUUID();
 
+/**
+ * A table to keep statuses in, one a row, whose Left counts down as `clock` ticks. Rules
+ * on its columns, such as Poison's on Stacks, make the rest of a status.
+ */
+export function statusTable(tab: string, box: Box, clock: string): Field {
+	const left = newId();
+	const countdown: Rule = {
+		id: newId(),
+		when: { tick: clock },
+		if: `@${left} > 0`,
+		then: [`@${left} -= 1`]
+	};
+	return {
+		id: newId(),
+		label: 'Statuses',
+		kind: 'table',
+		tab,
+		box,
+		columns: [
+			{ id: newId(), name: 'Name', kind: 'text' },
+			{ id: newId(), name: 'Stacks', kind: 'number' },
+			{ id: left, name: 'Left', kind: 'number', rules: [countdown] }
+		]
+	};
+}
+
 export function newDoc(): Doc {
 	const tab = { id: newId(), name: 'Main' };
+	const turn = { id: newId(), name: 'Turn', now: 1 };
 	return {
 		version: VERSION,
-		clocks: [{ id: newId(), name: 'Turn', now: 1 }],
+		clocks: [turn],
 		templates: [
 			{
 				id: newId(),
@@ -147,12 +159,12 @@ export function newDoc(): Doc {
 						kind: 'text',
 						tab: tab.id,
 						box: { x: 0, y: 104, w: 480, h: 160 }
-					}
+					},
+					statusTable(tab.id, { x: 0, y: 280, w: 480, h: 160 }, turn.id)
 				]
 			}
 		],
-		characters: [],
-		presets: []
+		characters: []
 	};
 }
 
@@ -165,8 +177,7 @@ export function newCharacter(name: string, from?: Layout): Character {
 		id: newId(),
 		name,
 		...layout,
-		values: Object.fromEntries(layout.fields.map((f) => [f.id, blank(f.kind)])),
-		statuses: []
+		values: Object.fromEntries(layout.fields.map((f) => [f.id, blank(f.kind)]))
 	};
 }
 
@@ -236,42 +247,26 @@ function fits(kind: Kind, v: unknown): boolean {
 }
 
 /**
+ * A cell, read leniently as a field's value is. A blank resource or track reads as a new
+ * field's would; any other blank cell is undefined, as an empty cell is in Excel.
+ */
+export function cellOf(row: Row, col: Column): Cell | undefined {
+	const v = row.cells[col.id];
+	if (col.kind === 'resource' || col.kind === 'track') {
+		return (fits(col.kind, v) ? v : blank(col.kind)) as Cell;
+	}
+	if (v === undefined || v === '') return undefined;
+	// Text takes a number as written, as a cell typed 42 in a text column of Excel.
+	if (col.kind === 'text' || col.kind === 'choice')
+		return typeof v === 'number' ? v : fits('text', v) ? v : undefined;
+	return fits(col.kind, v) ? v : undefined;
+}
+
+/**
  * A field's value for a character, read leniently: a value missing or left over from
  * the field's previous kind reads as blank, so changing a kind needs no migration.
  */
 export function valueOf(c: Pick<Character, 'values'>, f: Pick<Field, 'id' | 'kind'>): Value {
 	const v = c.values[f.id];
 	return fits(f.kind, v) ? v : blank(f.kind);
-}
-
-export type Phase = 'pending' | 'active' | 'expired';
-
-/** Turns left on the status's clock; Infinity when it lasts until removed. */
-export function left(s: Status, clock: Clock): number {
-	return s.lasts === undefined ? Infinity : s.lasts - (clock.now - s.since);
-}
-
-/** Pending when the clock has been stepped back to before the status went on. */
-export function phase(s: Status, clock: Clock): Phase {
-	if (clock.now < s.since) return 'pending';
-	return left(s, clock) <= 0 || (s.stacks ?? 1) <= 0 ? 'expired' : 'active';
-}
-
-/** What a status's name reads as: its stacks, or 1 without any, while it is on; else 0. */
-export function strength(s: Status, clock: Clock | undefined): number {
-	return !clock || phase(s, clock) === 'active' ? (s.stacks ?? 1) : 0;
-}
-
-/** How long a status has left, naming its clock only when there is more than one. */
-export function describe(s: Status, clocks: Clock[]): string {
-	const k = clocks.find((k) => k.id === s.clock)!;
-	const on = clocks.length > 1 ? ` · ${k.name}` : '';
-	switch (phase(s, k)) {
-		case 'pending':
-			return `from ${k.name} ${s.since}`;
-		case 'expired':
-			return `expired${on}`;
-		case 'active':
-			return s.lasts === undefined ? `until removed${on}` : `${left(s, k)} left${on}`;
-	}
 }

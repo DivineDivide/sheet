@@ -1,35 +1,36 @@
 <script lang="ts">
-	import { newId, phase, type Clock, type Doc } from '../lib/doc';
-	import { nameOf, names } from '../lib/formula';
-	import { sheetOf } from '../lib/rules';
+	import { newId, type Clock, type Doc, type Rule } from '../lib/doc';
+	import { refText } from '../lib/formula';
 	import { session } from '../lib/session.svelte';
+	import Icon from './Icon.svelte';
 	import Log from './Log.svelte';
-	import Rules from './Rules.svelte';
 
 	const doc = $derived(session.doc);
-	const inUse = (id: string) => doc.characters.some((c) => c.statuses.some((s) => s.clock === id));
-	const expired = $derived(
-		doc.characters.flatMap((c) =>
-			c.statuses.filter((s) => {
-				const clock = doc.clocks.find((k) => k.id === s.clock);
-				return clock && phase(s, clock) === 'expired';
-			})
-		).length
-	);
-
 	const clockOf = (d: Doc, id: string) => d.clocks.find((k) => k.id === id)!;
 	const offline = $derived(session.status === 'open' ? null : 'Waiting for the room to come back');
-	const known = $derived(names(sheetOf(doc)));
-	// A clock's rule most often follows another clock, as rounds follow turns.
-	const whensFor = (k: Clock) =>
-		[...doc.clocks.filter((o) => o.id !== k.id), k].map((o) => ({
-			when: { tick: o.id },
-			text: `${o.name} ticks`
-		}));
+
+	/** Fields and columns with a rule on the clock's tick, or a formula or rule reading it. */
+	function tied(k: Clock): string[] {
+		const ref = refText(k.id);
+		const ties = (x: { formula?: string; rules?: Rule[] }) =>
+			!!x.formula?.includes(ref) ||
+			(x.rules ?? []).some(
+				(r) =>
+					('tick' in r.when && r.when.tick === k.id) ||
+					[r.if ?? '', ...r.then].some((t) => t.includes(ref))
+			);
+		return doc.characters.flatMap((c) =>
+			c.fields.flatMap((f) => [
+				...(ties(f) ? [`${c.name} · ${f.label}`] : []),
+				...(f.columns ?? []).filter(ties).map((col) => `${c.name} · ${f.label} ${col.name}`)
+			])
+		);
+	}
 </script>
 
 <section class="clocks">
 	{#each doc.clocks as clock, i (clock.id)}
+		{@const uses = tied(clock)}
 		<div class="clock">
 			<input
 				class="name"
@@ -56,35 +57,27 @@
 				Next
 			</button>
 			<button
-				class="small"
-				popovertarget="clock-rules-{clock.id}"
-				title="Rules that change clocks when one ticks"
-				>Rules{clock.rules?.length ? ` ${clock.rules.length}` : ''}</button
+				class="tie"
+				class:idle={!uses.length}
+				popovertarget="clock-uses-{clock.id}"
+				aria-label="What uses {clock.name}"
+				title="What uses {clock.name}"
+				><Icon name="link" />{#if uses.length}<span>{uses.length}</span>{/if}</button
 			>
-			<div id="clock-rules-{clock.id}" class="pop" popover>
-				<p class="muted">
-					When a clock ticks, change clocks: as Round += 1 if MOD(Turn, 4) = 0. A clock moved by a
-					rule does not run its own rules.
-				</p>
-				<Rules
-					rules={clock.rules ?? []}
-					names={known}
-					whens={whensFor(clock)}
-					on="clocks"
-					fresh={`${nameOf({ label: clock.name })} += 1`}
-					onchange={(rules) => {
-						session.change((d) => {
-							clockOf(d, clock.id).rules = rules.length ? rules : undefined;
-						});
-					}}
-				/>
+			<div id="clock-uses-{clock.id}" class="pop" popover>
+				{#if uses.length}
+					<ul>
+						{#each uses as use, j (j)}<li>{use}</li>{/each}
+					</ul>
+				{:else}
+					<p class="muted">Nothing uses {clock.name} yet.</p>
+				{/if}
 			</div>
 			{#if doc.clocks.length > 1}
 				<button
 					class="x"
 					aria-label="Delete clock {clock.name}"
-					title={inUse(clock.id) ? 'Statuses still run on this clock' : 'Delete clock'}
-					disabled={inUse(clock.id)}
+					title="Delete clock"
 					onclick={() =>
 						session.change((d) => (d.clocks = d.clocks.filter((k) => k.id !== clock.id)))}>×</button
 				>
@@ -98,17 +91,6 @@
 			)}
 	>
 		+ Clock
-	</button>
-	<button
-		disabled={expired === 0}
-		onclick={() =>
-			session.change((d) => {
-				for (const c of d.characters) {
-					c.statuses = c.statuses.filter((s) => phase(s, clockOf(d, s.clock)) !== 'expired');
-				}
-			})}
-	>
-		Clear expired{expired ? ` (${expired})` : ''}
 	</button>
 	<Log />
 </section>
@@ -145,14 +127,26 @@
 		border-color: var(--accent);
 		color: var(--accent);
 	}
-	.small {
-		padding: 0.05rem 0.4rem;
+	.tie {
+		display: flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.1rem 0.35rem;
+		font-family: var(--mono);
 		font-size: 0.8rem;
+	}
+	.tie :global(svg) {
+		width: 0.9rem;
+		height: 0.9rem;
+	}
+	.tie.idle {
+		opacity: 0.45;
 	}
 	.pop {
 		position: fixed;
 		inset: 7.5rem auto auto 1rem;
-		width: min(22rem, calc(100vw - 2rem));
+		width: max-content;
+		max-width: min(22rem, calc(100vw - 2rem));
 		max-height: 70vh;
 		margin: 0;
 		padding: 0.75rem;
@@ -162,9 +156,12 @@
 		background: var(--surface);
 		color: var(--ink);
 	}
-	.pop:popover-open {
+	.pop ul {
 		display: grid;
-		gap: 0.4rem;
+		gap: 0.2rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 	.muted {
 		margin: 0;

@@ -190,8 +190,10 @@ export class Replica<D> {
 				}
 			}
 			// Where an item sits depends on every addition and reorder before it, in turn, so
-			// a list this client is also adding to or reordering is worked out again.
-			if (moves && mine.some((q) => shapes(q, list))) this.reorder(list, mine, shown);
+			// a list this client is also adding to or reordering is worked out again, unless
+			// this client replaces the list whole, as Undo puts back a deleted character.
+			const replaced = mine.some((q) => q.k !== 'order' && within(q.p, list));
+			if (moves && !replaced && mine.some((q) => shapes(q, list))) this.reorder(list, mine, shown);
 		}
 	}
 
@@ -233,7 +235,7 @@ export class Replica<D> {
 }
 
 // The log is not here: only the room writes it.
-const ROOTS = ['clocks', 'templates', 'characters', 'presets'];
+const ROOTS = ['clocks', 'templates', 'characters'];
 const UNSAFE = ['__proto__', 'prototype', 'constructor'];
 
 /**

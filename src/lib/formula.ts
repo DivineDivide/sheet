@@ -4,15 +4,15 @@
 // dice and lines that change a field, as `HP -= 1d6`.
 
 import {
-	strength,
+	cellOf,
 	valueOf,
 	type Character,
 	type Clock,
 	type Column,
+	type ColumnKind,
 	type Entry,
 	type Field,
 	type Kind,
-	type Preset,
 	type Resource,
 	type Row
 } from './doc';
@@ -26,13 +26,8 @@ export type Val = Scalar | Scalar[];
 
 export class FormulaError extends Error {}
 
-/** What a formula reads: a character's fields and, when given, its statuses and the clocks. */
-export type Sheet = Pick<Character, 'fields' | 'values'> & {
-	statuses?: Character['statuses'];
-	clocks?: Clock[];
-	/** Status names that read 0 on a character without that status. */
-	presets?: Pick<Preset, 'name'>[];
-};
+/** What a formula reads: a character's fields and, when given, the clocks. */
+export type Sheet = Pick<Character, 'fields' | 'values'> & { clocks?: Clock[] };
 
 /** Rolls one die, from 1 to `sides`. */
 export type Roll = (sides: number) => number;
@@ -738,12 +733,16 @@ export const functions = Object.keys(FNS).sort();
 
 // ---- evaluating ------------------------------------------------------------------------
 
+/** A table row a column's formula or rule is worked out for: its columns read its cells. */
+export type InRow = { table: Field; row: Row };
+
 type Ctx = {
 	sheet: Sheet;
 	stack: string[];
 	memo: Map<string, Val>;
 	roll?: Roll;
 	rolled?: Rolled[];
+	row?: InRow;
 };
 
 function ev(n: Node, ctx: Ctx): Val {
@@ -785,6 +784,8 @@ function ev(n: Node, ctx: Ctx): Val {
 function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 	const f = ctx.sheet.fields.find((x) => x.id === n.id);
 	if (!f) {
+		const here = ctx.row?.table.columns?.find((c) => c.id === n.id);
+		if (here && n.col === undefined) return cell(ctx.row!.table, here, ctx.row!.row, ctx, n.prop);
 		const k = ctx.sheet.clocks?.find((x) => x.id === n.id);
 		if (!k) return E('#REF!', 'reads a field that was deleted');
 		return n.prop || n.col !== undefined
@@ -798,12 +799,12 @@ function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 		// A table alone is all its cells, row by row, as Excel reads a table's body.
 		const rows = v as Row[];
 		const cols = f.columns ?? [];
-		const cell = (r: Row, id: string) =>
-			r.cells[id] === undefined || r.cells[id] === '' ? null : r.cells[id];
 		if (prop) return none;
-		if (n.col === undefined) return rows.flatMap((r) => cols.map((c) => cell(r, c.id)));
+		if (n.col === undefined) return rows.flatMap((r) => cols.map((c) => one(cell(f, c, r, ctx))));
 		const c = cols.find((x) => x.id === n.col);
-		return c ? rows.map((r) => cell(r, c.id)) : E('#REF!', `${f.label} has no such column`);
+		return c
+			? rows.map((r) => one(cell(f, c, r, ctx)))
+			: E('#REF!', `${f.label} has no such column`);
 	}
 	if (n.col !== undefined) return E('#REF!', `${f.label} has no columns`);
 	switch (f.kind) {
@@ -837,19 +838,63 @@ function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-/** The status a name means: an active one first, since the same name may be on twice. */
-export function statusNamed(sheet: Sheet, name: string) {
-	const all = (sheet.statuses ?? []).filter((s) => same(s.name, name));
-	const clock = (s: { clock: string }) => sheet.clocks?.find((k) => k.id === s.clock);
-	return all.find((s) => strength(s, clock(s)) > 0) ?? all[0];
+/** One cell as a formula reads it: a resource its current, a track its ticks, tags joined. */
+function cell(table: Field, col: Column, r: Row, ctx: Ctx, prop?: string): Val {
+	const p = prop?.toLowerCase();
+	const has =
+		!p ||
+		(col.kind === 'resource' && (p === 'max' || p === 'cur')) ||
+		(col.kind === 'track' && p === 'max');
+	if (!has) return E('#VALUE!', `${col.name} has no .${prop}`);
+	if (col.kind === 'formula') return runCell(table, col, r, ctx);
+	if (col.kind === 'button') return null;
+	const v = cellOf(r, col);
+	if (v === undefined) return null;
+	if (col.kind === 'resource') return p === 'max' ? (v as Resource).max : (v as Resource).cur;
+	if (col.kind === 'track') {
+		const boxes = v as boolean[];
+		return p === 'max' ? boxes.length : boxes.filter(Boolean).length;
+	}
+	if (col.kind === 'tags') return (v as string[]).join(', ') || null;
+	return v as number | string;
 }
 
-/**
- * A name stored as typed: a status, which comes and goes and so is never an id, or a
- * field or clock named since the formula was written.
- */
+function runCell(table: Field, col: Column, r: Row, ctx: Ctx): Val {
+	const key = `${col.id}:${r.id}`;
+	if (ctx.stack.includes(key)) return E('#CYCLE!', `${col.name} reaches itself`);
+	const known = ctx.memo.get(key);
+	if (known !== undefined) return known;
+	if (!col.formula?.trim()) return null;
+	ctx.stack.push(key);
+	let v: Val;
+	try {
+		v = ev(compiled(col.formula), { ...ctx, roll: undefined, row: { table, row: r } }) ?? 0;
+	} catch (e) {
+		if (!(e instanceof FormulaError)) throw e;
+		v = E('#ERROR!', e.message);
+	}
+	ctx.stack.pop();
+	ctx.memo.set(key, v);
+	return v;
+}
+
+/** A formula column's result in one row. */
+export function cellResult(sheet: Sheet, table: string, col: string, row: string): Val {
+	const f = sheet.fields.find((x) => x.id === table);
+	const c = f?.columns?.find((x) => x.id === col);
+	const r = f && (valueOf(sheet, f) as Row[]).find((x) => x.id === row);
+	if (!c || !r) return E('#REF!');
+	return runCell(f, c, r, { sheet, stack: [], memo: new Map() });
+}
+
+/** A name stored as typed: a column of this row, or a field or clock named since. */
 function byName(n: Extract<Node, { t: 'name' }>, ctx: Ctx): Val {
-	const { fields, clocks = [], presets = [] } = ctx.sheet;
+	const { fields, clocks = [] } = ctx.sheet;
+	// In a row, its own columns come first; [@Column] names only them, as in Excel.
+	const at = n.s.startsWith('@');
+	const here = ctx.row?.table.columns?.find((c) => same(c.name, at ? n.s.slice(1) : n.s));
+	if (here) return cell(ctx.row!.table, here, ctx.row!.row, ctx, n.prop);
+	if (at) return E('#NAME?', `this row has no column "${n.s.slice(1)}"`);
 	const f = fields.find((x) => same(x.label, n.s));
 	if (f) {
 		const col = n.col && (f.columns?.find((c) => same(c.name, n.col!))?.id ?? n.col);
@@ -857,17 +902,7 @@ function byName(n: Extract<Node, { t: 'name' }>, ctx: Ctx): Val {
 	}
 	const k = clocks.find((x) => same(x.name, n.s));
 	if (k) return read({ id: k.id, prop: n.prop, col: n.col }, ctx);
-	const s = statusNamed(ctx.sheet, n.s);
-	if (!s && !presets.some((p) => same(p.name, n.s))) {
-		return E('#NAME?', `no field is labelled "${n.s}"`);
-	}
-	if (n.prop || n.col !== undefined) return E('#VALUE!', `${n.s} is a status: only its stacks`);
-	return s
-		? strength(
-				s,
-				clocks.find((x) => x.id === s.clock)
-			)
-		: 0;
+	return E('#NAME?', `no field is labelled "${n.s}"`);
 }
 
 const parsed = new Map<string, Node | FormulaError>();
@@ -898,7 +933,7 @@ function run(f: Field, ctx: Ctx): Val {
 	try {
 		// A formula that reads a blank shows 0, as Excel's does. Its dice never roll, even
 		// read from a rule, or it would change every time it shows.
-		v = ev(compiled(f.formula), ctx.roll ? { ...ctx, roll: undefined } : ctx) ?? 0;
+		v = ev(compiled(f.formula), { ...ctx, roll: undefined, row: undefined }) ?? 0;
 	} catch (e) {
 		if (!(e instanceof FormulaError)) throw e;
 		v = E('#ERROR!', e.message);
@@ -909,8 +944,8 @@ function run(f: Field, ctx: Ctx): Val {
 }
 
 /** A parsed formula's value. Dice roll only when `roll` is given, as in a rule. */
-export function evaluate(n: Node, sheet: Sheet, roll?: Roll, rolled?: Rolled[]): Val {
-	return ev(n, { sheet, stack: [], memo: new Map(), roll, rolled });
+export function evaluate(n: Node, sheet: Sheet, roll?: Roll, rolled?: Rolled[], row?: InRow): Val {
+	return ev(n, { sheet, stack: [], memo: new Map(), roll, rolled, row });
 }
 
 /** Whether a formula rolls dice, and so cannot be known before it runs. */
@@ -938,27 +973,26 @@ export function show(v: Val): string {
 
 // ---- labels in, ids out ----------------------------------------------------------------
 
-/** Something a formula can name. A status keeps its name when stored, since it comes and goes. */
+/** Something a formula can name. */
 export type Name = {
 	id: string;
 	label: string;
-	kind?: Kind | 'clock' | 'status';
+	kind?: Kind | ColumnKind | 'clock';
 	columns?: Column[];
+	/** A column of the row a formula or rule is worked out for. */
+	row?: boolean;
 };
 
-/** All a character's formulas can name: its fields, the clocks, and statuses the room knows. */
+/** A table's columns, as its column formulas and rules name them: this row's cells. */
+export const rowNames = (table: Field): Name[] =>
+	(table.columns ?? []).map((c) => ({ id: c.id, label: c.name, kind: c.kind, row: true }));
+
+/** All a character's formulas can name: its fields and the clocks. */
 export function names(sheet: Sheet): Name[] {
-	const out: Name[] = [
+	return [
 		...sheet.fields,
 		...(sheet.clocks ?? []).map((k) => ({ id: k.id, label: k.name, kind: 'clock' as const }))
 	];
-	const taken = new Set(out.map((x) => x.label.trim().toLowerCase()));
-	for (const { name } of [...(sheet.statuses ?? []), ...(sheet.presets ?? [])]) {
-		const k = name.trim().toLowerCase();
-		if (k && !taken.has(k)) out.push({ id: '', label: name, kind: 'status' });
-		taken.add(k);
-	}
-	return out;
 }
 
 /** How a field is written in a formula: its label, bracketed unless it reads as one word. */
@@ -983,7 +1017,11 @@ function swap(src: string, names: Name[]): string {
 	let last = 0;
 	for (const t of lex(src)) {
 		if (t.k !== 'name') continue;
-		const hits = names.filter((f) => f.kind !== 'status' && same(f.label, t.s));
+		// A row's own columns come first; Excel's [@Column] names only them.
+		const at = t.s.startsWith('@');
+		const all = names.filter((f) => same(f.label, at ? t.s.slice(1) : t.s));
+		const own = all.filter((f) => f.row);
+		const hits = at || own.length ? own : all;
 		if (hits.length > 1) {
 			throw new FormulaError(
 				hits.some((h) => h.kind === 'clock')
@@ -1039,25 +1077,20 @@ export function parseLine(text: string): Line {
 export function unwritable(
 	kind: Name['kind'],
 	prop: string | undefined,
-	op: Line['op'],
-	on: 'character' | 'clocks'
+	op: Line['op']
 ): string | null {
 	const p = prop?.toLowerCase();
-	if (on === 'clocks') {
-		if (kind !== 'clock') return "is not a clock, and a clock's rules change only clocks";
-		return p ? `has no .${prop}` : null;
-	}
 	switch (kind) {
 		case 'clock':
 			return 'moves only when someone presses Next';
 		case 'number':
-		case 'status':
 			return p ? `has no .${prop}` : null;
 		case 'resource':
 			return !p || p === 'cur' || p === 'max' ? null : `has no .${prop}`;
 		case 'track':
 			return !p || p === 'max' ? null : `has no .${prop}`;
 		case 'text':
+		case 'choice':
 			return p ? `has no .${prop}` : op === '=' ? null : 'takes only =';
 		default:
 			return "can't be changed by a rule";
@@ -1066,24 +1099,19 @@ export function unwritable(
 
 /**
  * A line as typed, with labels swapped for ids. Refused when it cannot be read or changes
- * what a rule cannot: on a clock, only clocks; otherwise anything but a clock.
+ * what a rule cannot, such as a clock.
  */
-export function compileLine(text: string, names: Name[], on: 'character' | 'clocks'): string {
+export function compileLine(text: string, names: Name[]): string {
 	const out = swap(text.trim(), names);
 	const { target, op } = parseLine(out);
-	const who =
-		target.t === 'ref'
-			? names.find((x) => x.id === target.id)
-			: names.find((x) => x.kind === 'status' && same(x.label, target.s));
+	const who = target.t === 'ref' ? names.find((x) => x.id === target.id) : undefined;
 	if (!who) {
 		throw new FormulaError(
 			target.t === 'ref' ? 'it changes a field that was deleted' : `nothing is called "${target.s}"`
 		);
 	}
 	const why =
-		target.col !== undefined
-			? "can't be changed by a rule"
-			: unwritable(who.kind, target.prop, op, on);
+		target.col !== undefined ? "can't be changed by a rule" : unwritable(who.kind, target.prop, op);
 	if (why) throw new FormulaError(`${who.label} ${why}`);
 	return out;
 }
