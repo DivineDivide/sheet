@@ -10,7 +10,6 @@
 <script lang="ts">
 	import {
 		cellOf,
-		newId,
 		uniqueLabel,
 		type Cell,
 		type Character,
@@ -282,9 +281,6 @@
 			{/each}
 		</tbody>
 	</table>
-	{#if !laying}
-		<button class="more" onclick={() => set([...rows, { id: newId(), cells: {} }])}>+ Row</button>
-	{/if}
 {:else}
 	<span class="none"
 		>No columns yet. In Edit layout, drag a kind from the left onto this table.</span
@@ -427,9 +423,5 @@
 	.none {
 		font-size: 0.85rem;
 		color: var(--muted);
-	}
-	.more {
-		justify-self: start;
-		align-self: start;
 	}
 </style>

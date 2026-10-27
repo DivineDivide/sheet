@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		newId,
 		valueOf,
 		type Character,
 		type Entry,
@@ -14,6 +15,7 @@
 	import { hint, ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
 	import { tip } from '../lib/tip';
+	import Icon from './Icon.svelte';
 	import Prose from './Prose.svelte';
 	import Table from './Table.svelte';
 
@@ -53,6 +55,20 @@
 	}
 
 	let picker = $state<HTMLInputElement>();
+	/** A tag is typed into a box that the label's + opens. */
+	let adding = $state(false);
+
+	// A field holding a list adds to it from a + by its label, not a button under the list.
+	const add = $derived.by(() => {
+		if (field.kind === 'entries')
+			return { what: 'Add an entry', run: () => set([...(v as Entry[]), { name: '', text: '' }]) };
+		if (field.kind === 'table' && !laying && field.columns?.length)
+			return { what: 'Add a row', run: () => set([...(v as Row[]), { id: newId(), cells: {} }]) };
+		if (field.kind === 'tags') return { what: 'Add a tag', run: () => (adding = true) };
+		if (field.kind === 'track')
+			return { what: 'Add a box', run: () => set([...(v as boolean[]), false]) };
+		return null;
+	});
 
 	async function take(file: File | undefined) {
 		if (!file?.type.startsWith('image/')) return;
@@ -73,7 +89,29 @@
 	class="field"
 	{@attach tip(field.kind === 'button' ? hint(session.doc, character, field.id, why) : '')}
 >
-	{#if field.kind !== 'button'}<div class="label md">{@html markdown(field.label)}</div>{/if}
+	{#if field.kind !== 'button'}
+		<div class="head">
+			<div class="label md">{@html markdown(field.label)}</div>
+			{#if add}
+				<button
+					class="icon"
+					aria-label="{add.what} to {field.label}"
+					{@attach tip(add.what)}
+					onclick={add.run}><Icon name="plus" /></button
+				>
+			{/if}
+			{#if field.kind === 'track'}
+				{@const boxes = v as boolean[]}
+				<button
+					class="icon"
+					aria-label="Remove a box from {field.label}"
+					disabled={boxes.length === 0}
+					{@attach tip('Remove a box')}
+					onclick={() => set(boxes.slice(0, -1))}><Icon name="minus" /></button
+				>
+			{/if}
+		</div>
+	{/if}
 
 	{#if field.kind === 'button'}
 		<button
@@ -130,13 +168,6 @@
 					onclick={() => set(boxes.map((b, j) => (j === i ? !b : b)))}
 				></button>
 			{/each}
-			<button
-				class="x"
-				aria-label="Remove a box"
-				disabled={boxes.length === 0}
-				onclick={() => set(boxes.slice(0, -1))}>−</button
-			>
-			<button class="x" aria-label="Add a box" onclick={() => set([...boxes, false])}>+</button>
 		</div>
 	{:else if field.kind === 'formula'}
 		{#if field.formula?.trim()}
@@ -180,7 +211,6 @@
 				</li>
 			{/each}
 		</ol>
-		<button class="more" onclick={() => set([...entries, { name: '', text: '' }])}>+ Entry</button>
 	{:else if field.kind === 'table'}
 		<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
 	{:else if field.kind === 'image'}
@@ -242,17 +272,21 @@
 					>
 				</span>
 			{/each}
-			<input
-				class="add"
-				placeholder="add…"
-				aria-label="Add to {field.label}"
-				onkeydown={(e) => {
-					const text = e.currentTarget.value.trim();
-					if (e.key !== 'Enter' || !text) return;
-					set([...tags, text]);
-					e.currentTarget.value = '';
-				}}
-			/>
+			{#if adding}
+				<!-- Stays open after Enter for the next tag; closes when it loses focus. -->
+				<input
+					class="add"
+					aria-label="Add to {field.label}"
+					{@attach (el) => el.focus()}
+					onblur={() => (adding = false)}
+					onkeydown={(e) => {
+						const text = e.currentTarget.value.trim();
+						if (e.key !== 'Enter' || !text) return;
+						set([...tags, text]);
+						e.currentTarget.value = '';
+					}}
+				/>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -281,6 +315,33 @@
 	}
 	.press:disabled {
 		opacity: 0.45;
+	}
+	.head {
+		display: flex;
+		align-items: center;
+		gap: 0.15rem;
+		min-height: 1.25rem;
+	}
+	.icon {
+		display: grid;
+		place-items: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: none;
+		color: var(--muted);
+	}
+	.icon:hover:not(:disabled) {
+		color: var(--accent);
+	}
+	.icon:disabled {
+		opacity: 0.4;
+	}
+	.icon :global(svg) {
+		width: 0.9rem;
+		height: 0.9rem;
 	}
 	.label {
 		font-family: var(--font-head);
@@ -356,9 +417,6 @@
 	}
 	.row.top {
 		align-items: start;
-	}
-	.more {
-		justify-self: start;
 	}
 	/* Fills what its box leaves under the label; the picture fits inside, uncropped. */
 	.picture {
