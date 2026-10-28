@@ -21,6 +21,9 @@ npm run lint                      # prettier --check; `npm run format` rewrites
 npm run deploy                    # build + wrangler deploy: goes live
 ```
 
+`scripts/cdp.mjs` drives headless Chrome and `scripts/rooms.mjs` makes rooms on a dev
+server, for checking the page or showing it: the `sheet-room` skill says how.
+
 ## Architecture
 
 - **`src/lib/doc.ts`** — the whole session is one versioned JSON `Doc`: clocks, templates
