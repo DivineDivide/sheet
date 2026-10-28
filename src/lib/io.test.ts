@@ -91,6 +91,15 @@ describe('parse', () => {
 		);
 	});
 
+	it('keeps a resource as a bar, on a field or a column, and refuses any other setting', () => {
+		const kept = parse(mangle((d) => (d.characters[0].fields[0].bar = true)));
+		expect(kept.characters[0].fields[0].bar).toBe(true);
+		expect(() => parse(mangle((d) => (d.characters[0].fields[0].bar = 'yes')))).toThrow(/bar/);
+		const table = (d: Record<string, any>) =>
+			d.characters[0].fields.find((f: { kind: string }) => f.kind === 'table');
+		expect(() => parse(mangle((d) => (table(d).columns[0].bar = 1)))).toThrow(/columns/);
+	});
+
 	it('refuses an unknown field kind', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/

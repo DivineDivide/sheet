@@ -169,7 +169,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   inspector and save as template), as round icons whose panels are 85% see-through
   (`--panel-bg`). A table's + menu (`Picker`) sits on the stage as well, after
   the viewport, so the stage clips it, its panels float over it, and it stays on its table
-  as the sheet pans. The inspector holds inputs, not explanations, and a button says what it
+  as the sheet pans. `Bar` draws a resource whose field or column has `bar`: a thin bar
+  before the current / max boxes, where a press or drag sets the current, written on
+  release. The inspector holds inputs, not explanations, and a button says what it
   does only in its hover hint (`tip.ts`). Each clock in `Clocks` has
   a link icon listing the fields and columns its ticks run or that read it.
   Gestures listen on the window, because a drag from the palette is released over the

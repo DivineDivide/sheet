@@ -287,6 +287,7 @@ function newColumn(doc: Doc, c: Character, i: Input, cols: Column[]): Column {
 		if (kind !== 'choice') fail(`only a choice column draws on a table, and ${name} is ${kind}`);
 		setFrom(doc, c, col, from);
 	}
+	if (i.bar === true) setBar(col, name, true);
 	return col;
 }
 
@@ -345,16 +346,29 @@ const placing = {
 const from = text(
 	"A choice column's source, a table as Character!Table: it offers that table's rows by name, choosing one fills the row's columns of the same names, and the row then follows it. Empty stops it"
 );
+const bar = {
+	type: 'boolean',
+	description:
+		'A resource: true shows it as a bar, pressed or dragged to set the current; false as numbers'
+};
 const columnSpec = obj(
 	{
 		name: text('The column name'),
 		kind: { type: 'string', enum: [...columnKinds] },
 		choices: list({ type: 'string' }, 'What a choice column offers'),
 		from,
-		formula: text("A formula column's formula; a column's name reads that row's cell")
+		formula: text("A formula column's formula; a column's name reads that row's cell"),
+		bar
 	},
 	['name', 'kind']
 );
+
+/** Shows a resource field or column as a bar, or as numbers again. */
+function setBar(on: { kind: string; bar?: true }, name: string, shown: boolean) {
+	if (on.kind !== 'resource') fail(`only a resource shows as a bar, and ${name} is ${on.kind}`);
+	if (shown) on.bar = true;
+	else delete on.bar;
+}
 const ruleSpec = obj(
 	{
 		press: text(
@@ -597,7 +611,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_field',
 		description:
-			"Changes a field's label, kind, tab, place, size or formula, whether its label shows, or whether a long list flips pages. A value left from its old kind reads as blank.",
+			"Changes a field's label, kind, tab, place, size or formula, whether its label shows, whether a long list flips pages, or whether a resource shows as a bar. A value left from its old kind reads as blank.",
 		input_schema: obj(
 			{
 				...who,
@@ -615,7 +629,8 @@ export const tools: Tool[] = [
 					type: 'boolean',
 					description:
 						"true hides the field's label from everyone, its + and other controls showing on hover; false shows it. A button's label is its text, so it has none to hide"
-				}
+				},
+				bar
 			},
 			['character', 'field']
 		),
@@ -650,6 +665,7 @@ export const tools: Tool[] = [
 				if (i.hide_label) f.hideLabel = true;
 				else delete f.hideLabel;
 			}
+			if (typeof i.bar === 'boolean') setBar(f, f.label, i.bar);
 			return `Changed.${asked ? renamed(asked, f.label) : ''}${shows(doc, c, f)}${overlaps(c, f)}\n${fieldView(doc, c, f)}`;
 		}
 	},
@@ -708,7 +724,8 @@ export const tools: Tool[] = [
 							kind: { type: 'string', enum: [...columnKinds] },
 							choices: list({ type: 'string' }, 'What a choice column offers'),
 							from,
-							formula: text("A formula column's formula; empty removes it")
+							formula: text("A formula column's formula; empty removes it"),
+							bar
 						},
 						['column']
 					),
@@ -774,6 +791,7 @@ export const tools: Tool[] = [
 				}
 				const formula = opt(ch, 'formula');
 				if (formula !== undefined) formulas.push([col, formula]);
+				if (typeof ch.bar === 'boolean') setBar(col, col.name, ch.bar);
 			}
 			for (const spec of objs(i, 'add_columns')) {
 				const col = newColumn(doc, c, spec, cols);

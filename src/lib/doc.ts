@@ -66,6 +66,8 @@ export type Column = {
 	from?: string;
 	/** A formula column's expression, worked out for each row; it reads its row's cells. */
 	formula?: string;
+	/** A resource column shows each cell as a bar, pressed or dragged to set it. */
+	bar?: true;
 	/** Rules that change this column, run row by row. */
 	rules?: Rule[];
 };
@@ -87,6 +89,8 @@ export type Field = {
 	pages?: true;
 	/** Its label is hidden from everyone, and its label's controls float on hover. */
 	hideLabel?: true;
+	/** A resource field shows as a bar, pressed or dragged to set its current. */
+	bar?: true;
 	rules?: Rule[];
 };
 /** Tabs and the fields on them: what a character is shaped like, apart from its values. */

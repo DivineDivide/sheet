@@ -369,3 +369,47 @@ describe('a hidden label', () => {
 		).toMatch(/button/);
 	});
 });
+
+describe('a resource as a bar', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	const ash = () => doc.characters[0];
+	const field = (label: string) => ash().fields.find((f) => f.label === label)!;
+
+	it('shows a resource field as a bar and says so, then as numbers again', () => {
+		expect(ok(doc, 'edit_field', { character: 'Ash', field: 'HP', bar: true })).toContain(
+			'as a bar'
+		);
+		expect(field('HP').bar).toBe(true);
+		ok(doc, 'edit_field', { character: 'Ash', field: 'HP', bar: false });
+		expect(field('HP').bar).toBeUndefined();
+	});
+
+	it('adds a resource column as a bar, and turns it back to numbers', () => {
+		const text = ok(doc, 'edit_table', {
+			character: 'Ash',
+			table: 'Statuses',
+			add_columns: [{ name: 'Charge', kind: 'resource', bar: true }]
+		});
+		expect(text).toContain('Charge (resource, as a bar)');
+		ok(doc, 'edit_table', {
+			character: 'Ash',
+			table: 'Statuses',
+			change_columns: [{ column: 'Charge', bar: false }]
+		});
+		expect(field('Statuses').columns!.find((c) => c.name === 'Charge')!.bar).toBeUndefined();
+	});
+
+	it('refuses a bar on what is not a resource', () => {
+		expect(refused(doc, 'edit_field', { character: 'Ash', field: 'Notes', bar: true })).toMatch(
+			/only a resource shows as a bar/
+		);
+		expect(
+			refused(doc, 'edit_table', {
+				character: 'Ash',
+				table: 'Statuses',
+				change_columns: [{ column: 'Stacks', bar: true }]
+			})
+		).toMatch(/only a resource shows as a bar, and Stacks is number/);
+	});
+});

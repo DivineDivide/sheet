@@ -94,6 +94,17 @@
 		compile={(text) => compile(text, known)}
 		onsave={(stored) => put({ formula: stored || undefined })}
 	/>
+{:else if column.kind === 'resource'}
+	<label {@attach tip('A bar is pressed or dragged to set the current')}>
+		<span class="muted">Shows as</span>
+		<select
+			value={column.bar ? 'bar' : 'numbers'}
+			onchange={(e) => put({ bar: e.currentTarget.value === 'bar' || undefined })}
+		>
+			<option value="numbers">Numbers</option>
+			<option value="bar">Bar</option>
+		</select>
+	</label>
 {/if}
 {#if ruledColumns.includes(column.kind)}
 	<span class="muted">Rules</span>

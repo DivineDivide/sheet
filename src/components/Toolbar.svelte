@@ -151,6 +151,21 @@
 							</select>
 						</label>
 					{/if}
+					{#if field.kind === 'resource'}
+						<label {@attach tip('A bar is pressed or dragged to set the current')}>
+							<span class="muted">Shows as</span>
+							<select
+								value={field.bar ? 'bar' : 'numbers'}
+								onchange={(e) => {
+									const bar = e.currentTarget.value === 'bar';
+									editField(field.id, (f) => (bar ? (f.bar = true) : delete f.bar));
+								}}
+							>
+								<option value="numbers">Numbers</option>
+								<option value="bar">Bar</option>
+							</select>
+						</label>
+					{/if}
 					{#if field.kind === 'formula'}
 						{#key field.id}
 							<FormulaInput {character} {field} {editField} />

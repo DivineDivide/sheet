@@ -18,6 +18,7 @@
 	import { rowFrom, sourceOf } from '../lib/source';
 	import { tip } from '../lib/tip';
 	import { pageOf, ui } from '../lib/ui.svelte';
+	import Bar from './Bar.svelte';
 	import Icon from './Icon.svelte';
 	import Pages from './Pages.svelte';
 	import Picker from './Picker.svelte';
@@ -183,6 +184,8 @@
 			/>
 			<button aria-label="{field.label} up" onclick={() => set(n + 1)}>+</button>
 		</div>
+	{:else if field.kind === 'resource' && field.bar}
+		<div class="row"><Bar value={v as Resource} label={field.label} {set} /></div>
 	{:else if field.kind === 'resource'}
 		{@const r = v as Resource}
 		<div class="row">

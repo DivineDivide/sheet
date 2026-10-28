@@ -88,7 +88,7 @@ function columnText(doc: Doc, col: Column, known: Name[]) {
 		return `${col.name} (choice of ${col.choices?.join(', ') || 'nothing yet'})`;
 	if (col.kind === 'formula')
 		return `${col.name} (formula ${col.formula?.trim() ? `=${render(col.formula, known)}` : 'not set'})`;
-	return `${col.name} (${col.kind})`;
+	return `${col.name} (${col.kind}${col.bar ? ', as a bar' : ''})`;
 }
 
 /** Which source row a row follows, if any. */
@@ -159,7 +159,7 @@ export function fieldView(doc: Doc, c: Character, f: Field, full = false): strin
 	const [first, ...rest] = valueText(doc, c, f, full);
 	const known = knownOn(doc, c);
 	return [
-		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${first === undefined ? '' : `: ${first}`}`,
+		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${f.bar ? ', as a bar' : ''}${first === undefined ? '' : `: ${first}`}`,
 		...rest,
 		...(f.rules ?? []).map((r) => `  rule: ${ruleText(doc, c, r, known)}`)
 	].join('\n');

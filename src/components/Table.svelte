@@ -24,6 +24,7 @@
 	import { session } from '../lib/session.svelte';
 	import { choose, fromSource, keyOf, sources, type Source } from '../lib/source';
 	import { tip } from '../lib/tip';
+	import Bar from './Bar.svelte';
 	import Icon from './Icon.svelte';
 	import Prose from './Prose.svelte';
 
@@ -209,6 +210,8 @@
 									aria-label={c.name}
 									onchange={(e) => put(row, c.id, num(e.currentTarget.value))}
 								/>
+							{:else if c.kind === 'resource' && c.bar}
+								<Bar compact value={v as Resource} label={c.name} set={(r) => put(row, c.id, r)} />
 							{:else if c.kind === 'resource'}
 								{@const r = v as Resource}
 								<span class="pair">
