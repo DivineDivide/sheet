@@ -11,3 +11,7 @@ export const ui = $state({
 	/** The page each paged list shows, by `globalId`; each browser flips its own. */
 	pages: {} as Record<string, number>
 });
+
+/** The page a list of `count` pages shows: its last, once the one it was on has gone. */
+export const pageOf = (at: string, count: number) =>
+	Math.min(ui.pages[at] ?? 0, Math.max(0, count - 1));

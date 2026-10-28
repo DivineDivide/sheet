@@ -17,6 +17,7 @@
 	import { session } from '../lib/session.svelte';
 	import { rowFrom, sourceOf } from '../lib/source';
 	import { tip } from '../lib/tip';
+	import { pageOf, ui } from '../lib/ui.svelte';
 	import Icon from './Icon.svelte';
 	import Pages from './Pages.svelte';
 	import Picker from './Picker.svelte';
@@ -63,6 +64,7 @@
 	let adding = $state(false);
 	let menu = $state<Picker>();
 	let pages = $state<Pages>();
+	let pageCount = $state(0);
 	/** The table a table's + offers rows of. */
 	const src = $derived(field.kind === 'table' ? sourceOf(session.doc, field.from) : undefined);
 	/** Adds to a list, turning a paged one to its last page, where the new row lands. */
@@ -124,6 +126,30 @@
 						onpick={(item) => append(rowFrom(src, item, field.columns ?? []))}
 					/>
 				{/if}
+			{/if}
+			{#if field.pages && pageCount > 1}
+				{@const at = globalId(character, field)}
+				{@const page = pageOf(at, pageCount)}
+				<!-- Its presses stay its own, so in Edit layout they flip pages, not grab the field. -->
+				<nav
+					class="pager"
+					aria-label="Pages of {field.label}"
+					onpointerdown={(e) => e.stopPropagation()}
+				>
+					<button
+						class="icon"
+						aria-label="Previous page"
+						disabled={page === 0}
+						onclick={() => (ui.pages[at] = page - 1)}><Icon name="prev" /></button
+					>
+					<span>{page + 1} / {pageCount}</span>
+					<button
+						class="icon"
+						aria-label="Next page"
+						disabled={page === pageCount - 1}
+						onclick={() => (ui.pages[at] = page + 1)}><Icon name="next" /></button
+					>
+				</nav>
 			{/if}
 			{#if field.kind === 'track'}
 				{@const boxes = v as boolean[]}
@@ -215,7 +241,7 @@
 			on={!!field.pages}
 			at={globalId(character, field)}
 			rows=".entries > li"
-			label={field.label}
+			bind:count={pageCount}
 		>
 			<ol class="entries">
 				{#each entries as entry, i (i)}
@@ -252,7 +278,7 @@
 			on={!!field.pages}
 			at={globalId(character, field)}
 			rows=".grid > tbody > tr"
-			label={field.label}
+			bind:count={pageCount}
 		>
 			<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
 		</Pages>
@@ -385,6 +411,16 @@
 	.icon :global(svg) {
 		width: 0.9rem;
 		height: 0.9rem;
+	}
+	/* At the right end of the label's line. */
+	.pager {
+		display: flex;
+		align-items: center;
+		gap: 0.1rem;
+		margin-left: auto;
+		font-size: 0.72rem;
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
 	}
 	.label {
 		font-family: var(--font-head);
