@@ -22,7 +22,6 @@
 	import { COLORS, nameOf, type Peer } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
-	import { tip } from '../lib/tip';
 	import { ui } from '../lib/ui.svelte';
 	import { HOME, fit, toSheet, zoomAt, type View } from '../lib/view';
 	import FieldValue from './FieldValue.svelte';
@@ -589,8 +588,7 @@
 							(e.target as Element).matches(TYPED) && presence.set({ editing: f.id })}
 						onfocusout={() => presence.set({ editing: undefined })}
 					>
-						<!-- A table's headers are edited in place; it keeps the rest inert itself. -->
-						<div class="content" inert={(laying && f.kind !== 'table') || undefined}>
+						<div class="content">
 							<FieldValue
 								{character}
 								field={f}
@@ -609,20 +607,6 @@
 								aria-hidden="true"
 								onpointerdown={(e) => grab(e, 'size', f.id, f.kind)}
 							></span>
-							<!-- On the box, not in the field, whose content is inert while laying out. -->
-							{#if f.kind !== 'button'}
-								<button
-									class="eye"
-									class:off={f.hideLabel}
-									aria-label="{f.hideLabel ? 'Show' : 'Hide'} {f.label}'s label"
-									{@attach tip(f.hideLabel ? 'Show the label' : 'Hide the label, for everyone')}
-									onpointerdown={(e) => e.stopPropagation()}
-									onclick={() =>
-										editField(f.id, (x) =>
-											x.hideLabel ? delete x.hideLabel : (x.hideLabel = true)
-										)}><Icon name={f.hideLabel ? 'eye-off' : 'eye'} /></button
-								>
-							{/if}
 						{/if}
 					</div>
 				{/each}
@@ -950,36 +934,6 @@
 	.slot.selected .grip::after {
 		border-color: var(--accent);
 		opacity: 1;
-	}
-	/* Shown while the box is hovered or selected, and always once its label is hidden. */
-	.eye {
-		position: absolute;
-		top: 3px;
-		right: 3px;
-		display: grid;
-		place-items: center;
-		width: 1.25rem;
-		height: 1.25rem;
-		padding: 0;
-		border: none;
-		border-radius: 50%;
-		background: var(--field-bg);
-		color: var(--muted);
-		cursor: pointer;
-		opacity: 0;
-	}
-	.slot:hover .eye,
-	.slot.selected .eye,
-	.eye:focus-visible,
-	.eye.off {
-		opacity: 1;
-	}
-	.eye:hover {
-		color: var(--accent);
-	}
-	.eye :global(svg) {
-		width: 0.85rem;
-		height: 0.85rem;
 	}
 	.zoom {
 		position: absolute;

@@ -54,6 +54,20 @@
 				: 'Waiting for the room to come back.'
 	);
 
+	// In Edit layout only the label's toggle is live, but a table edits its headers in place
+	// and keeps the rest inert itself.
+	const dead = $derived(laying && field.kind !== 'table');
+
+	function toggleLabel() {
+		session.change((d) => {
+			const f = d.characters
+				.find((c) => c.id === character.id)!
+				.fields.find((x) => x.id === field.id)!;
+			if (f.hideLabel) delete f.hideLabel;
+			else f.hideLabel = true;
+		});
+	}
+
 	function set(next: Value) {
 		session.change((d) => {
 			d.characters.find((c) => c.id === character.id)!.values[field.id] = next;
@@ -107,259 +121,287 @@
 
 <div
 	class="field"
-	{@attach tip(field.kind === 'button' ? hint(session.doc, character, field.id, why) : '')}
+	{@attach tip(
+		field.kind === 'button' && !laying ? hint(session.doc, character, field.id, why) : ''
+	)}
 >
 	{#if field.kind !== 'button'}
-		<!-- In Edit layout the pager would sit under the label's eye, and nothing here is live. -->
 		{@const paged = !!field.pages && pageCount > 1 && !laying}
-		{#if !field.hideLabel || (!laying && (add || paged || field.kind === 'track'))}
-			<div class="head" class:bare={field.hideLabel}>
-				{#if !field.hideLabel}<div class="label md">{@html markdown(field.label)}</div>{/if}
-				{#if add}
+		{#if laying || !field.hideLabel || add || paged || field.kind === 'track'}
+			<div class="head" class:bare={field.hideLabel && !laying}>
+				{#if laying || !field.hideLabel}
+					<div class="label md" class:gone={field.hideLabel} inert={dead || undefined}>
+						{@html markdown(field.label)}
+					</div>
+				{/if}
+				{#if laying}
 					<button
-						class="icon"
-						aria-label="{add.what} to {field.label}"
-						{@attach tip(add.what)}
-						onclick={add.run}><Icon name="plus" /></button
+						class="icon toggle"
+						class:off={field.hideLabel}
+						aria-label="{field.hideLabel ? 'Show' : 'Hide'} {field.label}'s label"
+						{@attach tip(field.hideLabel ? 'Show the label' : 'Hide the label, for everyone')}
+						onpointerdown={(e) => e.stopPropagation()}
+						onclick={toggleLabel}><Icon name={field.hideLabel ? 'label-off' : 'label'} /></button
 					>
-					{#if src}
-						<Picker
-							bind:this={menu}
-							{src}
-							onblank={blankRow}
-							onpick={(item) => append(rowFrom(src, item, field.columns ?? []))}
-						/>
+				{/if}
+				<div class="controls" inert={dead || undefined}>
+					{#if add}
+						<button
+							class="icon"
+							aria-label="{add.what} to {field.label}"
+							{@attach tip(add.what)}
+							onclick={add.run}><Icon name="plus" /></button
+						>
+						{#if src}
+							<Picker
+								bind:this={menu}
+								{src}
+								onblank={blankRow}
+								onpick={(item) => append(rowFrom(src, item, field.columns ?? []))}
+							/>
+						{/if}
 					{/if}
-				{/if}
-				{#if paged}
-					{@const at = globalId(character, field)}
-					{@const page = pageOf(at, pageCount)}
-					<nav class="pager" aria-label="Pages of {field.label}">
+					{#if paged}
+						{@const at = globalId(character, field)}
+						{@const page = pageOf(at, pageCount)}
+						<nav class="pager" aria-label="Pages of {field.label}">
+							<button
+								class="icon"
+								aria-label="Previous page"
+								disabled={page === 0}
+								onclick={() => (ui.pages[at] = page - 1)}><Icon name="prev" /></button
+							>
+							<span>{page + 1} / {pageCount}</span>
+							<button
+								class="icon"
+								aria-label="Next page"
+								disabled={page === pageCount - 1}
+								onclick={() => (ui.pages[at] = page + 1)}><Icon name="next" /></button
+							>
+						</nav>
+					{/if}
+					{#if field.kind === 'track'}
+						{@const boxes = v as boolean[]}
 						<button
 							class="icon"
-							aria-label="Previous page"
-							disabled={page === 0}
-							onclick={() => (ui.pages[at] = page - 1)}><Icon name="prev" /></button
+							aria-label="Remove a box from {field.label}"
+							disabled={boxes.length === 0}
+							{@attach tip('Remove a box')}
+							onclick={() => set(boxes.slice(0, -1))}><Icon name="minus" /></button
 						>
-						<span>{page + 1} / {pageCount}</span>
-						<button
-							class="icon"
-							aria-label="Next page"
-							disabled={page === pageCount - 1}
-							onclick={() => (ui.pages[at] = page + 1)}><Icon name="next" /></button
-						>
-					</nav>
-				{/if}
-				{#if field.kind === 'track'}
-					{@const boxes = v as boolean[]}
-					<button
-						class="icon"
-						aria-label="Remove a box from {field.label}"
-						disabled={boxes.length === 0}
-						{@attach tip('Remove a box')}
-						onclick={() => set(boxes.slice(0, -1))}><Icon name="minus" /></button
-					>
-				{/if}
+					{/if}
+				</div>
 			</div>
 		{/if}
 	{/if}
 
-	{#if field.kind === 'button'}
-		<button
-			class="press md"
-			disabled={why !== true}
-			onclick={() => session.act({ press: { character: character.id, field: field.id } })}
-			>{@html markdown(field.label)}</button
-		>
-	{:else if field.kind === 'number'}
-		{@const n = v as number}
-		<div class="row">
-			<button aria-label="{field.label} down" onclick={() => set(n - 1)}>−</button>
-			<input
-				class="short"
-				type="number"
-				value={n}
-				aria-label={field.label}
-				onchange={(e) => set(num(e.currentTarget.value, n))}
-			/>
-			<button aria-label="{field.label} up" onclick={() => set(n + 1)}>+</button>
-		</div>
-	{:else if field.kind === 'resource' && field.bar}
-		<div class="row"><Bar value={v as Resource} label={field.label} {set} /></div>
-	{:else if field.kind === 'resource'}
-		{@const r = v as Resource}
-		<div class="row">
-			<button aria-label="{field.label} down" onclick={() => set({ ...r, cur: r.cur - 1 })}
-				>−</button
+	<div class="body" inert={dead || undefined}>
+		{#if field.kind === 'button'}
+			<button
+				class="press md"
+				disabled={why !== true}
+				onclick={() => session.act({ press: { character: character.id, field: field.id } })}
+				>{@html markdown(field.label)}</button
 			>
-			<input
-				class="short"
-				type="number"
-				value={r.cur}
-				aria-label="{field.label} current"
-				onchange={(e) => set({ ...r, cur: num(e.currentTarget.value, r.cur) })}
-			/>
-			<span class="of">/</span>
-			<input
-				class="short"
-				type="number"
-				value={r.max}
-				aria-label="{field.label} max"
-				onchange={(e) => set({ ...r, max: num(e.currentTarget.value, r.max) })}
-			/>
-			<button aria-label="{field.label} up" onclick={() => set({ ...r, cur: r.cur + 1 })}>+</button>
-		</div>
-	{:else if field.kind === 'track'}
-		{@const boxes = v as boolean[]}
-		<div class="row">
-			{#each boxes as on, i (i)}
-				<button
-					class="box"
-					class:on
-					aria-label="{field.label} box {i + 1}"
-					aria-pressed={on}
-					onclick={() => set(boxes.map((b, j) => (j === i ? !b : b)))}
-				></button>
-			{/each}
-		</div>
-	{:else if field.kind === 'formula'}
-		{#if field.formula?.trim()}
-			<output
-				class="big"
-				class:err={isErr(out)}
-				title={isErr(out) ? out.why : `=${render(field.formula, names(sheet))}`}>{show(out)}</output
-			>
-		{:else}
-			<span class="none">No formula yet. Set one in Edit layout.</span>
-		{/if}
-	{:else if field.kind === 'text'}
-		<Prose value={v as string} label={field.label} at={globalId(character, field)} onchange={set} />
-	{:else if field.kind === 'entries'}
-		{@const entries = v as Entry[]}
-		{@const put = (i: number, patch: Partial<Entry>) =>
-			set(entries.map((x, j) => (j === i ? { ...x, ...patch } : x)))}
-		<Pages
-			bind:this={pages}
-			on={!!field.pages}
-			at={globalId(character, field)}
-			rows=".entries > li"
-			bind:count={pageCount}
-		>
-			<ol class="entries">
-				{#each entries as entry, i (i)}
-					<li>
-						<div class="row top">
-							<Prose
-								line
-								value={entry.name}
-								at="{globalId(character, field)}/{i}/name"
-								label="{field.label} name"
-								empty="Name"
-								onchange={(name) => put(i, { name })}
-							/>
-							<button
-								class="x"
-								aria-label="Remove {entry.name}"
-								onclick={() => set(entries.filter((_, j) => j !== i))}>×</button
-							>
-						</div>
-						<Prose
-							value={entry.text}
-							at="{globalId(character, field)}/{i}/text"
-							label="{entry.name} description"
-							empty="Description, in Markdown."
-							onchange={(text) => put(i, { text })}
-						/>
-					</li>
-				{/each}
-			</ol>
-		</Pages>
-	{:else if field.kind === 'table'}
-		<Pages
-			bind:this={pages}
-			on={!!field.pages}
-			at={globalId(character, field)}
-			rows=".grid > tbody > tr"
-			bind:count={pageCount}
-		>
-			<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
-		</Pages>
-	{:else if field.kind === 'image'}
-		{@const src = v as string}
-		<!-- A drop stops here: on the window it would be taken for a session file to import.
-		     Paste reaches this once it has focus, from a click or Tab. -->
-		<!-- svelte-ignore a11y_no_noninteractive_tabindex: focusable so a paste has somewhere to land -->
-		<div
-			class="picture"
-			role="group"
-			aria-label={field.label}
-			tabindex="0"
-			ondragover={(e) => {
-				e.preventDefault();
-				e.stopPropagation();
-			}}
-			ondrop={(e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				take(e.dataTransfer?.files[0]);
-			}}
-			onpaste={(e) => {
-				const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'));
-				if (!file) return;
-				e.preventDefault();
-				take(file);
-			}}
-		>
-			{#if src}
-				<img {src} alt={field.label} />
-				<span class="tools">
-					<button onclick={() => picker?.click()}>Replace</button>
-					<button class="x" aria-label="Remove the picture" onclick={() => set('')}>×</button>
-				</span>
-			{:else}
-				<button class="pick" onclick={() => picker?.click()}>Pick, drop or paste a picture</button>
-			{/if}
-			<input
-				bind:this={picker}
-				type="file"
-				accept="image/*"
-				hidden
-				onchange={(e) => {
-					take(e.currentTarget.files?.[0]);
-					e.currentTarget.value = '';
-				}}
-			/>
-		</div>
-	{:else if field.kind === 'tags'}
-		{@const tags = v as string[]}
-		<div class="row wrap">
-			{#each tags as tag, i (i)}
-				<span class="tag">
-					{tag}
-					<button
-						class="x"
-						aria-label="Remove {tag}"
-						onclick={() => set(tags.filter((_, j) => j !== i))}>×</button
-					>
-				</span>
-			{/each}
-			{#if adding}
-				<!-- Stays open after Enter for the next tag; closes when it loses focus. -->
+		{:else if field.kind === 'number'}
+			{@const n = v as number}
+			<div class="row">
+				<button aria-label="{field.label} down" onclick={() => set(n - 1)}>−</button>
 				<input
-					class="add"
-					aria-label="Add to {field.label}"
-					{@attach (el) => el.focus()}
-					onblur={() => (adding = false)}
-					onkeydown={(e) => {
-						const text = e.currentTarget.value.trim();
-						if (e.key !== 'Enter' || !text) return;
-						set([...tags, text]);
+					class="short"
+					type="number"
+					value={n}
+					aria-label={field.label}
+					onchange={(e) => set(num(e.currentTarget.value, n))}
+				/>
+				<button aria-label="{field.label} up" onclick={() => set(n + 1)}>+</button>
+			</div>
+		{:else if field.kind === 'resource' && field.bar}
+			<div class="row"><Bar value={v as Resource} label={field.label} {set} /></div>
+		{:else if field.kind === 'resource'}
+			{@const r = v as Resource}
+			<div class="row">
+				<button aria-label="{field.label} down" onclick={() => set({ ...r, cur: r.cur - 1 })}
+					>−</button
+				>
+				<input
+					class="short"
+					type="number"
+					value={r.cur}
+					aria-label="{field.label} current"
+					onchange={(e) => set({ ...r, cur: num(e.currentTarget.value, r.cur) })}
+				/>
+				<span class="of">/</span>
+				<input
+					class="short"
+					type="number"
+					value={r.max}
+					aria-label="{field.label} max"
+					onchange={(e) => set({ ...r, max: num(e.currentTarget.value, r.max) })}
+				/>
+				<button aria-label="{field.label} up" onclick={() => set({ ...r, cur: r.cur + 1 })}
+					>+</button
+				>
+			</div>
+		{:else if field.kind === 'track'}
+			{@const boxes = v as boolean[]}
+			<div class="row">
+				{#each boxes as on, i (i)}
+					<button
+						class="box"
+						class:on
+						aria-label="{field.label} box {i + 1}"
+						aria-pressed={on}
+						onclick={() => set(boxes.map((b, j) => (j === i ? !b : b)))}
+					></button>
+				{/each}
+			</div>
+		{:else if field.kind === 'formula'}
+			{#if field.formula?.trim()}
+				<output
+					class="big"
+					class:err={isErr(out)}
+					title={isErr(out) ? out.why : `=${render(field.formula, names(sheet))}`}
+					>{show(out)}</output
+				>
+			{:else}
+				<span class="none">No formula yet. Set one in Edit layout.</span>
+			{/if}
+		{:else if field.kind === 'text'}
+			<Prose
+				value={v as string}
+				label={field.label}
+				at={globalId(character, field)}
+				onchange={set}
+			/>
+		{:else if field.kind === 'entries'}
+			{@const entries = v as Entry[]}
+			{@const put = (i: number, patch: Partial<Entry>) =>
+				set(entries.map((x, j) => (j === i ? { ...x, ...patch } : x)))}
+			<Pages
+				bind:this={pages}
+				on={!!field.pages}
+				at={globalId(character, field)}
+				rows=".entries > li"
+				bind:count={pageCount}
+			>
+				<ol class="entries">
+					{#each entries as entry, i (i)}
+						<li>
+							<div class="row top">
+								<Prose
+									line
+									value={entry.name}
+									at="{globalId(character, field)}/{i}/name"
+									label="{field.label} name"
+									empty="Name"
+									onchange={(name) => put(i, { name })}
+								/>
+								<button
+									class="x"
+									aria-label="Remove {entry.name}"
+									onclick={() => set(entries.filter((_, j) => j !== i))}>×</button
+								>
+							</div>
+							<Prose
+								value={entry.text}
+								at="{globalId(character, field)}/{i}/text"
+								label="{entry.name} description"
+								empty="Description, in Markdown."
+								onchange={(text) => put(i, { text })}
+							/>
+						</li>
+					{/each}
+				</ol>
+			</Pages>
+		{:else if field.kind === 'table'}
+			<Pages
+				bind:this={pages}
+				on={!!field.pages}
+				at={globalId(character, field)}
+				rows=".grid > tbody > tr"
+				bind:count={pageCount}
+			>
+				<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
+			</Pages>
+		{:else if field.kind === 'image'}
+			{@const src = v as string}
+			<!-- A drop stops here: on the window it would be taken for a session file to import.
+		     Paste reaches this once it has focus, from a click or Tab. -->
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex: focusable so a paste has somewhere to land -->
+			<div
+				class="picture"
+				role="group"
+				aria-label={field.label}
+				tabindex="0"
+				ondragover={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+				}}
+				ondrop={(e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					take(e.dataTransfer?.files[0]);
+				}}
+				onpaste={(e) => {
+					const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'));
+					if (!file) return;
+					e.preventDefault();
+					take(file);
+				}}
+			>
+				{#if src}
+					<img {src} alt={field.label} />
+					<span class="tools">
+						<button onclick={() => picker?.click()}>Replace</button>
+						<button class="x" aria-label="Remove the picture" onclick={() => set('')}>×</button>
+					</span>
+				{:else}
+					<button class="pick" onclick={() => picker?.click()}>Pick, drop or paste a picture</button
+					>
+				{/if}
+				<input
+					bind:this={picker}
+					type="file"
+					accept="image/*"
+					hidden
+					onchange={(e) => {
+						take(e.currentTarget.files?.[0]);
 						e.currentTarget.value = '';
 					}}
 				/>
-			{/if}
-		</div>
-	{/if}
+			</div>
+		{:else if field.kind === 'tags'}
+			{@const tags = v as string[]}
+			<div class="row wrap">
+				{#each tags as tag, i (i)}
+					<span class="tag">
+						{tag}
+						<button
+							class="x"
+							aria-label="Remove {tag}"
+							onclick={() => set(tags.filter((_, j) => j !== i))}>×</button
+						>
+					</span>
+				{/each}
+				{#if adding}
+					<!-- Stays open after Enter for the next tag; closes when it loses focus. -->
+					<input
+						class="add"
+						aria-label="Add to {field.label}"
+						{@attach (el) => el.focus()}
+						onblur={() => (adding = false)}
+						onkeydown={(e) => {
+							const text = e.currentTarget.value.trim();
+							if (e.key !== 'Enter' || !text) return;
+							set([...tags, text]);
+							e.currentTarget.value = '';
+						}}
+					/>
+				{/if}
+			</div>
+		{/if}
+	</div>
 </div>
 
 <style>
@@ -415,6 +457,26 @@
 	}
 	.press:disabled {
 		opacity: 0.45;
+	}
+	/* Boxless, so what it holds lays out as before; there to be inert in Edit layout. */
+	.body,
+	.controls {
+		display: contents;
+	}
+	/* Beside the label in Edit layout: shown while the box is hovered or selected, and always
+	   once the label is hidden, which then shows faded and struck through. */
+	.toggle {
+		opacity: 0;
+	}
+	:global(.slot:hover) .toggle,
+	:global(.slot.selected) .toggle,
+	.toggle:focus-visible,
+	.toggle.off {
+		opacity: 1;
+	}
+	.label.gone {
+		opacity: 0.55;
+		text-decoration: line-through;
 	}
 	.head {
 		display: flex;
