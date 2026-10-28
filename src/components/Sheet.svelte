@@ -15,6 +15,7 @@
 	import type { Attachment } from 'svelte/attachments';
 	import { chat } from '../lib/agent/client.svelte';
 	import { keep, kept, type Clip } from '../lib/clip';
+	import { cursors } from '../lib/cursors.svelte';
 	import { lift, place } from '../lib/group';
 	import { free, mod } from '../lib/keys';
 	import { SNAP, bounds, clamp, defaultSize, readingOrder, type Box } from '../lib/layout';
@@ -90,6 +91,12 @@
 	$effect(() => {
 		presence.set({ character: character.id, tab: tab.id, picked: laying ? [...chosen] : [] });
 	});
+
+	// Others on this tab, whose pointers show and who see this one; with nobody, nothing is sent.
+	const company = $derived(
+		presence.others.filter((p) => p.character === character.id && p.tab === tab.id)
+	);
+	$effect(() => cursors.want(!stacked && session.status === 'open'));
 
 	// Each tab keeps where it was looking; a tab not looked at yet opens on 0,0.
 	const viewKey = $derived(`${character.id}:${tab.id}`);
@@ -518,6 +525,9 @@
 		bind:clientWidth={vw}
 		bind:clientHeight={vh}
 		onpointerdown={pan}
+		onpointermove={(e) =>
+			company.length && !stacked && cursors.move(toSheet(view, ...fromMiddle(e)))}
+		onpointerleave={() => company.length && cursors.move(null)}
 		{@attach wheel}
 	>
 		<div class="viewport" style:--ox="{ox}px" style:--oy="{oy}px" style:--dots="{16 * view.z}px">
@@ -599,6 +609,23 @@
 						{/if}
 					</div>
 				{/each}
+				{#if !stacked}
+					{#each company as p (p.who)}
+						{@const at = cursors.points[p.who]}
+						{#if at}
+							<span
+								class="cursor"
+								style:--peer="var(--peer-{p.color % COLORS})"
+								style:translate="{at.x}px {at.y}px"
+								style:scale={1 / view.z}
+								aria-hidden="true"
+								><svg viewBox="0 0 16 16" width="16" height="16"
+									><path d="M1.5 1.5v12l3.2-3 2.3 5 2-.9-2.3-4.9h4.6z" /></svg
+								><span class="who">{nameOf(p)}</span></span
+							>
+						{/if}
+					{/each}
+				{/if}
 				{#if drag && !drag.id}
 					<div
 						class="slot ghost"
@@ -832,6 +859,31 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		pointer-events: none;
+	}
+	/* Someone else's pointer: the same size at any zoom, eased between their updates. */
+	.cursor {
+		position: absolute;
+		top: 0;
+		left: 0;
+		z-index: 4;
+		display: flex;
+		transform-origin: 0 0;
+		transition: translate 100ms linear;
+		pointer-events: none;
+	}
+	.cursor svg {
+		fill: var(--peer);
+		stroke: var(--surface);
+		stroke-width: 1;
+	}
+	.cursor .who {
+		margin: 14px 0 0 -4px;
+		padding: 0 0.35em;
+		border-radius: var(--radius);
+		background: var(--peer);
+		color: var(--surface);
+		font-size: 0.7rem;
+		white-space: nowrap;
 	}
 	.slot.dragging {
 		z-index: 2;

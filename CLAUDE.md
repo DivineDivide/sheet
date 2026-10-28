@@ -64,6 +64,17 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   never overwrites typing. While someone types in a `Prose`, its text rides their presence
   as a `draft` (every 250 ms, cut at 4,096 UTF-16 units so the attachment fits), named by the
   box's `at`, and others' `Prose` there shows it until the box is left: still one save.
+- **Cursors** — over Cloudflare Realtime, never the room, so moving the pointer costs the
+  room nothing. Each browser publishes a `cursor` data channel and hears everyone else's;
+  the room wires them over its socket (`rtc` messages, `cursor.ts`), calling Realtime's API
+  with `CF_REALTIME_ID` and `CF_REALTIME_KEY` (`worker/realtime.ts`). Session ids stay in the
+  socket's attachment, never in a browser, and a person's channels close when they leave.
+  Cloudflare has no spending cap, so `worker/meter.ts` is one: the room books the most each
+  connection could cost, 5 minutes ahead on an alarm, and the one `Meter` says no once the
+  last 31 days would pass 900 GB of the free 1,000 GB; then every connection ends. The
+  booking trusts the rate, so a browser hearing more than `LIMIT_RATE` from someone has the
+  room cut them off. `cursors.svelte.ts` holds the connection, and `Sheet` sends only while
+  someone else is on its tab, at most 15 times a second.
 - **`src/lib/io.ts`** — export and import. `parse` refuses bad structure or dangling
   tab/clock references whole. Older files are checked as written, then migrated. `v1.ts`
   gives each character its own copy of its template's layout on one tab, and turns the old

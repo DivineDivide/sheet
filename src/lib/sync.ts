@@ -2,6 +2,7 @@
 // changing different fields of one character touch different data. The room applies
 // changes in the order they arrive, and that order alone settles who wins the rest.
 
+import type { RtcDown } from './cursor';
 import type { Doc } from './doc';
 import type { Peer } from './presence';
 
@@ -29,7 +30,8 @@ export type Down =
 	/** On connect: everyone present, this connection (`me`) among them. */
 	| { t: 'peers'; me: string; list: Peer[] }
 	| { t: 'peer'; peer: Peer }
-	| { t: 'left'; who: string };
+	| { t: 'left'; who: string }
+	| { t: 'rtc'; rtc: RtcDown };
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);

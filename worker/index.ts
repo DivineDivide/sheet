@@ -5,6 +5,7 @@ import type { Model } from './agent';
 import { identify } from './identity';
 import { supported } from './regions';
 export { Agent } from './agent';
+export { Meter } from './meter';
 export { Registry } from './registry';
 export { Room } from './room';
 

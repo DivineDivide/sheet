@@ -25,12 +25,14 @@
 		"bindings": [
 			{ "name": "ROOM", "class_name": "Room" },
 			{ "name": "REGISTRY", "class_name": "Registry" },
-			{ "name": "AGENT", "class_name": "Agent" }
+			{ "name": "AGENT", "class_name": "Agent" },
+			{ "name": "METER", "class_name": "Meter" }
 		]
 	},
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["Room", "Registry"] },
-		{ "tag": "v2", "new_sqlite_classes": ["Agent"] }
+		{ "tag": "v2", "new_sqlite_classes": ["Agent"] },
+		{ "tag": "v3", "new_sqlite_classes": ["Meter"] }
 	],
 	// Access does not run locally. This stubs a GM, so the code path is never "no token,
 	// assume it's fine".

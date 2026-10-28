@@ -1,5 +1,14 @@
 import { DurableObject } from 'cloudflare:workers';
 import { forAgent } from '../src/lib/agent/chat';
+import {
+	PERIOD,
+	ROOM_MAX,
+	listenBytes,
+	rtcIn,
+	seatBytes,
+	type RtcDown,
+	type RtcUp
+} from '../src/lib/cursor';
 import { VERSION, newId, type Doc } from '../src/lib/doc';
 import { ImportError, validate } from '../src/lib/io';
 import { firstFree, presenceIn, type Peer, type Presence } from '../src/lib/presence';
@@ -14,8 +23,16 @@ import {
 	type Proposal
 } from '../src/lib/sync';
 import { upgrade } from '../src/lib/v2';
+import { realtime } from './realtime';
 
 const send = (ws: WebSocket, m: Down) => ws.send(JSON.stringify(m));
+
+/** A socket's attachment: the person, and their Realtime session, which never leaves here. */
+type Seat = Peer & { rtc?: Rtc };
+/** A cursor session: its own channel once connected, and the one hearing each person, by `who`. */
+type Rtc = { session: string; own?: number; hears: Record<string, number> };
+const peerOf = ({ rtc: _, ...peer }: Seat): Peer => peer;
+const off = (why: Extract<RtcDown, { k: 'off' }>['why']): RtcDown => ({ k: 'off', why });
 
 /** Dice are rolled here, never in a browser that could roll again. */
 const roll = (sides: number) => 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % sides);
@@ -52,6 +69,8 @@ export class Room extends DurableObject<Env> {
 	private seen = new Set<string>();
 	/** Presence messages each socket sent this second, so no one client keeps the room awake. */
 	private rates = new WeakMap<WebSocket, { at: number; n: number }>();
+	/** Realtime calls go one at a time, so two people connecting at once still hear each other. */
+	private line: Promise<void> = Promise.resolve();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -153,7 +172,7 @@ export class Room extends DurableObject<Env> {
 		if (request.headers.get('Upgrade') !== 'websocket') return Response.json({ name });
 
 		const { 0: client, 1: server } = new WebSocketPair();
-		const here = this.peers();
+		const here = this.seats().map(([, s]) => peerOf(s));
 		const me: Peer = { who: newId(), color: firstFree(here.map((p) => p.color)) };
 		this.ctx.acceptWebSocket(server);
 		// Kept with the socket, through hibernation, so presence is never stored.
@@ -165,9 +184,22 @@ export class Room extends DurableObject<Env> {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
+	private seatOf = (ws: WebSocket) => ws.deserializeAttachment() as Seat | null;
+
 	/** Sockets accepted before presence have no attachment. */
-	private peers(): Peer[] {
-		return this.ctx.getWebSockets().flatMap((ws) => ws.deserializeAttachment() ?? []);
+	private seats(): [WebSocket, Seat][] {
+		return this.ctx.getWebSockets().flatMap((ws) => {
+			const seat = this.seatOf(ws);
+			return seat ? [[ws, seat] as [WebSocket, Seat]] : [];
+		});
+	}
+
+	/** Rewrites a seat from what it holds now, since a presence message may have come meanwhile. */
+	private reseat(ws: WebSocket, fn: (s: Seat) => Seat) {
+		const seat = this.seatOf(ws);
+		try {
+			if (seat) ws.serializeAttachment(fn(seat));
+		} catch {}
 	}
 
 	/** Passes on what someone is doing, without reading or writing the doc. */
@@ -177,16 +209,131 @@ export class Room extends DurableObject<Env> {
 		if (rate && now - rate.at < 1000) {
 			if (++rate.n > 20) return;
 		} else this.rates.set(ws, { at: now, n: 1 });
-		const was = ws.deserializeAttachment() as Peer | null;
+		const was = this.seatOf(ws);
 		if (!was) return;
 		const peer: Peer = { ...p, who: was.who, color: was.color };
-		ws.serializeAttachment(peer);
+		ws.serializeAttachment({ ...peer, rtc: was.rtc });
 		this.others(ws, { t: 'peer', peer });
 	}
 
-	private leave(ws: WebSocket) {
-		const peer = ws.deserializeAttachment() as Peer | null;
-		if (peer) this.others(ws, { t: 'left', who: peer.who });
+	private async leave(ws: WebSocket) {
+		const seat = this.seatOf(ws);
+		if (!seat) return;
+		this.others(ws, { t: 'left', who: seat.who });
+		if (seat.rtc) await this.queue(() => this.hangUp(ws, seat.who, seat.rtc!));
+	}
+
+	private queue(fn: () => Promise<void>) {
+		return (this.line = this.line.then(fn).catch((e) => console.error('realtime', e)));
+	}
+
+	private tell(ws: WebSocket, rtc: RtcDown) {
+		try {
+			send(ws, { t: 'rtc', rtc });
+		} catch {}
+	}
+
+	/** Books Realtime use with the Worker's one meter; a meter that cannot answer is a no. */
+	private book(bytes: number): Promise<boolean> {
+		return this.env.METER.get(this.env.METER.idFromName('realtime'))
+			.book(bytes)
+			.catch(() => false);
+	}
+
+	/** A browser's cursor connection, made and wired through the room, which books each step. */
+	private async cursor(ws: WebSocket, m: RtcUp) {
+		const seat = this.seatOf(ws);
+		if (!seat) return;
+		const rt = realtime(this.env);
+		try {
+			if (m.k === 'start') {
+				if (seat.rtc) await this.hangUp(ws, seat.who, seat.rtc);
+				if (!this.env.CF_REALTIME_ID || !this.env.CF_REALTIME_KEY) {
+					return this.tell(ws, off('unavailable'));
+				}
+				if (this.seats().filter(([, s]) => s.rtc).length >= ROOM_MAX) {
+					return this.tell(ws, off('full'));
+				}
+				if (!(await this.book(seatBytes(0)))) return this.tell(ws, off('allowance'));
+				const { session, offer } = await rt.open();
+				this.reseat(ws, (s) => ({ ...s, rtc: { session, hears: {} } }));
+				if ((await this.ctx.storage.getAlarm()) === null) {
+					await this.ctx.storage.setAlarm(Date.now() + PERIOD);
+				}
+				this.tell(ws, { k: 'offer', sdp: offer.sdp });
+			} else if (m.k === 'answer') {
+				if (seat.rtc) await rt.answer(seat.rtc.session, m.sdp);
+			} else if (m.k === 'ready') {
+				const rtc = seat.rtc;
+				if (!rtc || rtc.own !== undefined) return;
+				const others = this.seats().filter(([w, s]) => w !== ws && s.rtc?.own !== undefined);
+				if (!(await this.book(2 * others.length * listenBytes))) {
+					return this.cut([[ws, seat]], 'allowance');
+				}
+				const own = await rt.publish(rtc.session);
+				const ids = await rt.hear(
+					rtc.session,
+					others.map(([, s]) => s.rtc!.session)
+				);
+				const hears = Object.fromEntries(others.map(([, s], i) => [s.who, ids[i]]));
+				this.reseat(ws, (s) => ({ ...s, rtc: { ...rtc, own, hears } }));
+				this.tell(ws, { k: 'channels', own, hears });
+				for (const [w, s] of others) {
+					const [id] = await rt.hear(s.rtc!.session, [rtc.session]);
+					this.reseat(w, (t) =>
+						t.rtc ? { ...t, rtc: { ...t.rtc, hears: { ...t.rtc.hears, [seat.who]: id } } } : t
+					);
+					this.tell(w, { k: 'channels', hears: { [seat.who]: id } });
+				}
+			} else if (m.k === 'stop') {
+				if (seat.rtc) await this.hangUp(ws, seat.who, seat.rtc);
+			} else {
+				const fast = this.seats().find(([, s]) => s.who === m.who && s.rtc);
+				if (fast) await this.cut([fast], 'too fast');
+			}
+		} catch (e) {
+			console.error('realtime', e);
+			const now = this.seatOf(ws);
+			if (now?.rtc) await this.hangUp(ws, now.who, now.rtc);
+			this.tell(ws, off('failed'));
+		}
+	}
+
+	/** Ends someone's cursor connection: their channels, and every channel that heard them. */
+	private async hangUp(ws: WebSocket, who: string, rtc: Rtc) {
+		const rt = realtime(this.env);
+		this.reseat(ws, (s) => ({ ...s, rtc: undefined }));
+		const mine = Object.values(rtc.hears);
+		await rt.close(rtc.session, rtc.own === undefined ? mine : [rtc.own, ...mine]);
+		for (const [w, s] of this.seats()) {
+			const id = s.rtc?.hears[who];
+			if (id === undefined) continue;
+			await rt.close(s.rtc!.session, [id]);
+			this.reseat(w, (t) => {
+				if (!t.rtc) return t;
+				const { [who]: _, ...hears } = t.rtc.hears;
+				return { ...t, rtc: { ...t.rtc, hears } };
+			});
+			this.tell(w, { k: 'gone', who });
+		}
+	}
+
+	private async cut(seats: [WebSocket, Seat][], why: 'allowance' | 'too fast') {
+		for (const [ws, s] of seats) {
+			if (s.rtc) await this.hangUp(ws, s.who, s.rtc);
+			this.tell(ws, off(why));
+		}
+	}
+
+	/** Books the next period for every cursor connection here, or ends them all. */
+	async alarm() {
+		await this.queue(async () => {
+			const live = this.seats().filter(([, s]) => s.rtc);
+			if (!live.length) return;
+			const bytes = live.reduce((n, [, s]) => n + seatBytes(Object.keys(s.rtc!.hears).length), 0);
+			if (await this.book(bytes)) await this.ctx.storage.setAlarm(Date.now() + PERIOD);
+			else await this.cut(live, 'allowance');
+		});
 	}
 
 	/** Rooms made before proposals have no table for them until the first is sent. */
@@ -225,6 +372,8 @@ export class Room extends DurableObject<Env> {
 		}
 		const presence = presenceIn(change);
 		if (presence) return this.present(ws, presence);
+		const rtc = rtcIn(change);
+		if (rtc) return this.queue(() => this.cursor(ws, rtc));
 		if (isAct(change)) return this.act(ws, change.id, change.act);
 		if (isPropose(change)) {
 			return this.propose({ id: change.id, ...change.propose, at: Date.now() });
@@ -291,10 +440,10 @@ export class Room extends DurableObject<Env> {
 		try {
 			ws.close(code);
 		} catch {}
-		this.leave(ws);
+		await this.leave(ws);
 	}
 
 	async webSocketError(ws: WebSocket) {
-		this.leave(ws);
+		await this.leave(ws);
 	}
 }
