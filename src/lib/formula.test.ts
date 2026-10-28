@@ -396,6 +396,10 @@ describe('functions', () => {
 		expect(calc('MID("abcdef", 2, 3)')).toBe('bcd');
 		expect(calc('UPPER("a")&LOWER("B")')).toBe('Ab');
 		expect(calc('CONCAT("a", 1, TRUE)')).toBe('a1TRUE');
+		expect(calc('REPT("x.", 2.9)')).toBe('x.x.');
+		expect(calc('LEFT(REPT(".x", 50), 5)')).toBe('.x.x.');
+		expect(code('REPT("a", -1)')).toBe('#VALUE!');
+		expect(code('REPT("ab", 20000)')).toBe('#VALUE!');
 		expect(calc('TEXTJOIN("、", TRUE, 性相)', sheet(['性相', 'tags', ['拳', '', '自我']]))).toBe(
 			'拳、自我'
 		);
@@ -494,7 +498,13 @@ describe('parse', () => {
 });
 
 describe('what rules add', () => {
-	const s = sheet(['HP', 'resource', { cur: 5, max: 8 }], ['Odds', 'formula'], ['Notes', 'text']);
+	const s = sheet(
+		['HP', 'resource', { cur: 5, max: 8 }],
+		['Odds', 'formula'],
+		['Notes', 'text'],
+		['Wait', 'track', [true, false, true]],
+		['Marks', 'tags', ['Poisoned']]
+	);
 	const turn = { id: 'k', name: 'Turn', now: 3 };
 	const statuses: Field = {
 		id: 'st',
@@ -529,6 +539,10 @@ describe('what rules add', () => {
 		});
 	});
 
+	it("reads a track's boxes as x and .", () => {
+		expect(calc('Wait.boxes & "/" & Wait & "/" & Wait.max', s)).toBe('x.x/2/3');
+	});
+
 	it('rolls dice only in rules', () => {
 		expect(code('1d6+1')).toBe('#VALUE!');
 		const faces = [2, 5];
@@ -542,6 +556,10 @@ describe('what rules add', () => {
 		expect(() => parseLine('HP - = 1')).toThrow(/expected =, \+= or -=/);
 		expect(() => compileLine('Odds = 1', known)).toThrow(/can't be changed/);
 		expect(() => compileLine('Notes += "x"', known)).toThrow(/takes only =/);
+		expect(compileLine('Wait.boxes = "x.x."', known)).toBe('@f3.boxes = "x.x."');
+		expect(() => compileLine('Wait.boxes += "x"', known)).toThrow(/only = for its .boxes/);
+		expect(compileLine('Marks -= "Poisoned"', known)).toBe('@f4 -= "Poisoned"');
+		expect(() => compileLine('Marks.max = 1', known)).toThrow(/has no .max/);
 		expect(() => compileLine('Turn += 1', known)).toThrow(/presses Next/);
 		expect(() => compileLine('Nobody = 1', known)).toThrow(/nothing is called/);
 	});

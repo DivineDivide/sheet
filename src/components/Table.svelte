@@ -11,6 +11,7 @@
 	import {
 		cellOf,
 		globalId,
+		tagsIn,
 		uniqueLabel,
 		type Cell,
 		type Character,
@@ -294,10 +295,7 @@
 									aria-label={c.name}
 									placeholder={t('a, b')}
 									onchange={(e) => {
-										const tags = e.currentTarget.value
-											.split(/[,，、]/)
-											.map((s) => s.trim())
-											.filter(Boolean);
+										const tags = tagsIn(e.currentTarget.value);
 										put(row, c.id, tags.length ? tags : undefined);
 									}}
 								/>

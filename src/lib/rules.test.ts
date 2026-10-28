@@ -292,3 +292,88 @@ describe('a table: a sacrifice button and a cooldown in every row', () => {
 		expect(doc.log!.at(-1)!.text).toContain('碎片库 空: 冷却 — → 1/4');
 	});
 });
+
+describe('a track flipped between odd and even boxes, and tags added and taken', () => {
+	const doc = newDoc();
+	const c = newCharacter('Ash');
+	doc.characters.push(c);
+	const ids = { name: newId(), wait: newId(), flip: newId(), marks: newId() };
+	const lib = add(c, '碎片库', 'table');
+	lib.columns = [
+		{ id: ids.name, name: '名称', kind: 'text' },
+		{ id: ids.wait, name: '冷却', kind: 'track' },
+		{ id: ids.flip, name: '翻转', kind: 'button' },
+		{ id: ids.marks, name: '标记', kind: 'tags' }
+	];
+	const blank6 = Array<boolean>(6).fill(false);
+	c.values[lib.id] = [
+		{ id: 'r1', cells: { [ids.name]: '怀表', [ids.wait]: blank6 } },
+		{ id: 'r2', cells: { [ids.name]: '旧伤', [ids.wait]: [true, false, false] } }
+	];
+	const known = [...rowNames(lib), ...names(sheetOf(doc, c))];
+	lib.columns[1].rules = [
+		compileRule(
+			{
+				id: newId(),
+				when: { press: ids.flip },
+				then: [
+					'冷却.boxes = IF(LEFT(冷却.boxes, 1) = "x", LEFT(REPT(".x", 50), 冷却.max), LEFT(REPT("x.", 50), 冷却.max))'
+				]
+			},
+			known
+		)
+	];
+	const press = (row: string) =>
+		fire(doc, { press: { character: c.id, field: lib.id, column: ids.flip, row } }, dice(1));
+	const cell = (row: number, id: string) => (c.values[lib.id] as Row[])[row].cells[id];
+
+	it("flips only the pressed row's boxes, and logs a flip that keeps the count by its boxes", () => {
+		press('r1');
+		expect(cell(0, ids.wait)).toEqual([true, false, true, false, true, false]);
+		press('r1');
+		expect(cell(0, ids.wait)).toEqual([false, true, false, true, false, true]);
+		expect(cell(1, ids.wait)).toEqual([true, false, false]);
+		expect(doc.log!.at(-1)!.text).toBe(
+			'翻转 · 碎片库 怀表 · Ash: 碎片库 怀表: 冷却 x.x.x. → .x.x.x'
+		);
+	});
+
+	it('sets boxes from x and . only', () => {
+		lib.columns![1].rules = [
+			compileRule({ id: newId(), when: { press: ids.flip }, then: ['冷却.boxes = "xo"'] }, known)
+		];
+		press('r2');
+		expect(cell(1, ids.wait)).toEqual([true, false, false]);
+		expect(doc.log!.at(-1)!.text).toContain('boxes are x (ticked) and . (empty), not "xo"');
+	});
+
+	it('adds a tag once and takes one away, however it is capitalised', () => {
+		const marks = add(c, 'Marks', 'tags', ['Poisoned']);
+		const cleanse = add(c, 'Cleanse', 'button');
+		rule(
+			doc,
+			c,
+			marks,
+			{ press: cleanse.id },
+			'',
+			'Marks += "Blessed、Calm"',
+			'Marks -= "poisoned"',
+			'Marks += "calm"'
+		);
+		fire(doc, { press: { character: c.id, field: cleanse.id } }, dice(1));
+		expect(get(c, marks)).toEqual(['Blessed', 'Calm']);
+		expect(doc.log!.at(-1)!.text).toBe('Cleanse · Ash: Marks Poisoned → Blessed, Calm');
+		rule(doc, c, marks, { press: cleanse.id }, '', 'Marks = ""');
+		fire(doc, { press: { character: c.id, field: cleanse.id } }, dice(1));
+		expect(get(c, marks)).toEqual([]);
+	});
+
+	it('leaves an empty tags cell empty when there is nothing to take', () => {
+		lib.columns![3].rules = [
+			compileRule({ id: newId(), when: { press: ids.flip }, then: ['标记 -= "x"'] }, known)
+		];
+		lib.columns![1].rules = [];
+		press('r1');
+		expect(cell(0, ids.marks)).toBeUndefined();
+	});
+});

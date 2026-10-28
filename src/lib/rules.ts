@@ -6,6 +6,7 @@
 import {
 	cellOf,
 	newId,
+	tagsIn,
 	valueOf,
 	type Character,
 	type Column,
@@ -28,6 +29,7 @@ import {
 	num,
 	parse,
 	parseLine,
+	pattern,
 	render,
 	rolls,
 	rowNames,
@@ -136,8 +138,15 @@ const listensTo = (r: Rule, w: When) =>
 type Listener = { rule: Rule; owner: string; row?: InRow };
 
 /** The kinds a rule can change, and so the only fields and columns whose rules run. */
-export const ruled: Field['kind'][] = ['number', 'resource', 'track', 'text'];
-export const ruledColumns: Column['kind'][] = ['number', 'resource', 'track', 'text', 'choice'];
+export const ruled: Field['kind'][] = ['number', 'resource', 'track', 'text', 'tags'];
+export const ruledColumns: Column['kind'][] = [
+	'number',
+	'resource',
+	'track',
+	'text',
+	'choice',
+	'tags'
+];
 
 /** A row as the log names it: by its first text, or its place. */
 function rowName(table: Field, row: Row, rows: Row[]) {
@@ -246,6 +255,12 @@ function changed(kind: Name['kind'], now: unknown, op: Line['op'], v: Val, prop?
 		}
 		case 'track': {
 			const boxes = now as boolean[];
+			if (prop === 'boxes') {
+				const s = text(v);
+				if (!/^[x.]*$/i.test(s)) throw new Stop(`boxes are x (ticked) and . (empty), not "${s}"`);
+				if (s.length > 100) throw new Stop('a track holds at most 100 boxes');
+				return [...s].map((ch) => ch !== '.');
+			}
 			if (prop === 'max') {
 				const n = Math.min(100, Math.max(0, Math.round(calc(op, boxes.length, number(v)))));
 				return Array.from({ length: n }, (_, i) => boxes[i] ?? false);
@@ -253,12 +268,27 @@ function changed(kind: Name['kind'], now: unknown, op: Line['op'], v: Val, prop?
 			const n = Math.round(calc(op, boxes.filter(Boolean).length, number(v)));
 			return boxes.map((_, i) => i < n);
 		}
-		default: {
-			const s = str(v);
-			if (isErr(s)) throw new Stop(why(s));
-			return s;
+		case 'tags': {
+			const tags = (now as string[] | undefined) ?? [];
+			const given = tagsIn(text(v));
+			const next =
+				op === '='
+					? given
+					: op === '+='
+						? [...tags, ...given.filter((g) => !tags.some((x) => same(x, g)))]
+						: tags.filter((x) => !given.some((g) => same(x, g)));
+			// An empty cell stays empty rather than storing no tags.
+			return next.length || now !== undefined ? next : now;
 		}
+		default:
+			return text(v);
 	}
+}
+
+function text(v: Val): string {
+	const s = str(v);
+	if (isErr(s)) throw new Stop(why(s));
+	return s;
 }
 
 /**
@@ -353,9 +383,18 @@ function shown(kind: Name['kind'], v: unknown): string {
 	if (v === undefined) return '—';
 	if (kind === 'resource') return `${(v as Resource).cur}/${(v as Resource).max}`;
 	if (kind === 'track' && Array.isArray(v)) return `${v.filter(Boolean).length}/${v.length}`;
+	if (kind === 'tags' && Array.isArray(v)) return v.length ? v.join(', ') : '—';
 	if (typeof v === 'number') return show(v);
 	if (typeof v === 'string') return `"${v.length > 24 ? `${v.slice(0, 23)}…` : v}"`;
 	return String(v);
+}
+
+/** A change as the log shows it; a track whose count stays shows its boxes instead. */
+function change(kind: Name['kind'], was: unknown, now: unknown): string {
+	const [a, b] = [shown(kind, was), shown(kind, now)];
+	return kind === 'track' && a === b && Array.isArray(was) && Array.isArray(now)
+		? `${pattern(was)} → ${pattern(now)}`
+		: `${a} → ${b}`;
 }
 
 /** What changed, one part per character. The clock that moved is the title's. */
@@ -371,10 +410,10 @@ function describe(doc: Doc, w: Writes, reports: Map<string, Report>): string[] {
 			const row = rows.find((r) => r.id === p[4])!;
 			const col = f.columns?.find((x) => x.id === p[6]);
 			const label = `${f.label} ${rowName(f, row, rows)}: ${col?.name}`;
-			add(c.id, `${label} ${shown(col?.kind, was)} → ${shown(col?.kind, now)}`);
+			add(c.id, `${label} ${change(col?.kind, was, now)}`);
 			continue;
 		}
-		add(c.id, `${f?.label} ${shown(f?.kind, was)} → ${shown(f?.kind, now)}`);
+		add(c.id, `${f?.label} ${change(f?.kind, was, now)}`);
 	}
 	for (const [who, r] of reports) for (const n of r.notes) add(who, n);
 	return [...parts].map(([who, changes]) => {

@@ -230,6 +230,13 @@ export function uniqueLabel(label: string, fields: Pick<Field, 'id' | 'label'>[]
 	return `${base} ${n}`;
 }
 
+/** Tags as typed in one box, split at commas, Chinese ones too. */
+export const tagsIn = (text: string) =>
+	text
+		.split(/[,，、]/)
+		.map((s) => s.trim())
+		.filter(Boolean);
+
 export function blank(kind: Kind): Value {
 	switch (kind) {
 		case 'number':

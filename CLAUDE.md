@@ -106,7 +106,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   logs each event. It returns the ops and the ops that take
   them back, which the presser's ⌘Z sends as an ordinary edit. A tick's log line keeps
   both, so Back takes the last tick to this reading back, its rules' effects with it. No
-  rule sets off another event, so every event ends. Dice roll only in rules: a formula
+  rule sets off another event, so every event ends. A line sets a track by its count, ticked
+  from the left, or by its `.boxes`, text of `x` and `.`; tags take `+=` and `-=` a tag at a
+  time. Dice roll only in rules: a formula
   field that rolls shows #VALUE!. Its spec is the map-step cooldown and poison, a rule on
   the Statuses table.
 - **`src/lib/agent/`** — the chat's draft tools, from `notes/trpg/plan-sheet-agent.md`.

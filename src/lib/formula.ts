@@ -693,6 +693,20 @@ const FNS: Record<string, Def> = {
 			return isErr(s) ? s : s.toLowerCase();
 		}
 	},
+	REPT: {
+		min: 2,
+		max: 2,
+		fn: ([v, k]) => {
+			const s = str(v);
+			const n = num(k);
+			if (isErr(s)) return s;
+			if (isErr(n)) return n;
+			if (n < 0) return E('#VALUE!', 'a negative count');
+			// Excel's cap, checked before the text is made.
+			if (s.length * Math.trunc(n) > 32767) return E('#VALUE!', 'longer than 32,767 characters');
+			return s.repeat(Math.trunc(n));
+		}
+	},
 	CONCAT: {
 		min: 1,
 		max: Infinity,
@@ -837,6 +851,7 @@ function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 		}
 		case 'track': {
 			const t = v as boolean[];
+			if (prop === 'boxes') return pattern(t);
 			return prop === 'max' ? t.length : !prop ? t.filter(Boolean).length : none;
 		}
 	}
@@ -859,6 +874,9 @@ function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 	}
 }
 
+/** A track's boxes as text, x for a ticked one and . for an empty one, as `x.x.`. */
+export const pattern = (boxes: boolean[]) => boxes.map((b) => (b ? 'x' : '.')).join('');
+
 export const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** One cell as a formula reads it: a resource its current, a track its ticks, tags joined. */
@@ -867,7 +885,7 @@ function cell(table: Field, col: Column, r: Row, ctx: Ctx, prop?: string): Val {
 	const has =
 		!p ||
 		(col.kind === 'resource' && (p === 'max' || p === 'cur')) ||
-		(col.kind === 'track' && p === 'max');
+		(col.kind === 'track' && (p === 'max' || p === 'boxes'));
 	if (!has) return E('#VALUE!', `${col.name} has no .${prop}`);
 	if (col.kind === 'formula') return runCell(table, col, r, ctx);
 	if (col.kind === 'button') return null;
@@ -876,6 +894,7 @@ function cell(table: Field, col: Column, r: Row, ctx: Ctx, prop?: string): Val {
 	if (col.kind === 'resource') return p === 'max' ? (v as Resource).max : (v as Resource).cur;
 	if (col.kind === 'track') {
 		const boxes = v as boolean[];
+		if (p === 'boxes') return pattern(boxes);
 		return p === 'max' ? boxes.length : boxes.filter(Boolean).length;
 	}
 	if (col.kind === 'tags') return (v as string[]).join(', ') || null;
@@ -1146,7 +1165,10 @@ export function unwritable(
 		case 'resource':
 			return !p || p === 'cur' || p === 'max' ? null : `has no .${prop}`;
 		case 'track':
+			if (p === 'boxes') return op === '=' ? null : 'takes only = for its .boxes';
 			return !p || p === 'max' ? null : `has no .${prop}`;
+		case 'tags':
+			return p ? `has no .${prop}` : null;
 		case 'text':
 		case 'choice':
 			return p ? `has no .${prop}` : op === '=' ? null : 'takes only =';
