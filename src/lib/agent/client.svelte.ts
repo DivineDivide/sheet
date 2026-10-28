@@ -2,6 +2,7 @@
 // the session shows in place of the room until it is applied or discarded.
 
 import type { Doc } from '../doc';
+import { t } from '../i18n.svelte';
 import { mod } from '../keys';
 import { session } from '../session.svelte';
 import { changes } from './changes';
@@ -53,9 +54,9 @@ session.onSettled = (id, ok) => {
 	waiting = null;
 	if (ok) {
 		forget();
-		note('The GM applied the draft.');
+		note(t('The GM applied the draft.'));
 	} else {
-		note('The GM turned the draft down. Change it and send it again, or discard it.');
+		note(t('The GM turned the draft down. Change it and send it again, or discard it.'));
 	}
 };
 
@@ -83,7 +84,7 @@ async function ask(prompt: string) {
 		});
 		if (!res.ok || !res.body) {
 			const body = await res.json().catch(() => ({}));
-			reply.error = body.error ?? `The server answered ${res.status}.`;
+			reply.error = body.error ?? t('The server answered {status}.', { status: res.status });
 			return;
 		}
 		const lines = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -98,7 +99,7 @@ async function ask(prompt: string) {
 			}
 		}
 	} catch {
-		reply.error = 'The chat could not be reached.';
+		reply.error = t('The chat could not be reached.');
 	} finally {
 		busy = false;
 	}
@@ -137,10 +138,10 @@ export const chat = {
 			session.draft = null;
 			session.land(ops);
 			forget();
-			note(`Applied. ${mod}Z takes it back.`);
+			note(t('Applied. {mod}Z takes it back.', { mod }));
 		} else {
 			waiting = session.propose(ops, asked.join('\n').slice(0, 2000));
-			if (waiting) note('Sent to the GM, who will apply it or turn it down.');
+			if (waiting) note(t('Sent to the GM, who will apply it or turn it down.'));
 		}
 	},
 	discard() {
@@ -150,7 +151,7 @@ export const chat = {
 			session.settle(id, false);
 		}
 		forget();
-		note('Discarded.');
+		note(t('Discarded.'));
 	},
 	/** Takes a draft back from the GM, to change it. */
 	withdraw() {
@@ -158,7 +159,7 @@ export const chat = {
 		const id = waiting;
 		waiting = null;
 		session.settle(id, false);
-		note('Taken back from the GM.');
+		note(t('Taken back from the GM.'));
 	},
 	clear() {
 		if (session.draft) this.discard();

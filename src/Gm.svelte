@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from './lib/i18n.svelte';
 	import type { RoomInfo } from './lib/rooms';
 
 	let rooms = $state<RoomInfo[] | null>(null);
@@ -28,7 +29,8 @@
 		});
 		if (res.status === 204) return null;
 		const data = await res.json().catch(() => ({}));
-		if (!res.ok) throw new Error(data.error ?? `the server answered ${res.status}`);
+		if (!res.ok)
+			throw new Error(data.error ?? t('the server answered {status}', { status: res.status }));
 		return data;
 	}
 
@@ -42,7 +44,7 @@
 		error = '';
 		try {
 			const text = from === 'browser' ? saved : from === 'file' ? await file?.text() : undefined;
-			if (from !== 'blank' && !text) throw new Error('choose a file first');
+			if (from !== 'blank' && !text) throw new Error(t('choose a file first'));
 			const r: RoomInfo = await call('POST', '/gm/api/rooms', { name, text });
 			rooms = [r, ...(rooms ?? [])];
 			name = '';
@@ -53,7 +55,10 @@
 	}
 
 	async function remove(r: RoomInfo) {
-		if (!confirm(`Delete "${r.name}" for everyone at the table? This cannot be undone.`)) return;
+		const ask = t('Delete "{name}" for everyone at the table? This cannot be undone.', {
+			name: r.name
+		});
+		if (!confirm(ask)) return;
 		try {
 			await call('DELETE', `/gm/api/rooms/${r.token}`);
 			rooms = rooms!.filter((x) => x.token !== r.token);
@@ -69,22 +74,26 @@
 </script>
 
 <main class="page">
-	<h1>Rooms</h1>
+	<h1>{t('Rooms')}</h1>
 	<p class="muted">
-		Players need only a room's link, and anyone with it can edit. Send it to your table, not
-		further.
+		{t(
+			"Players need only a room's link, and anyone with it can edit. Send it to your table, not further."
+		)}
 	</p>
 
 	<form class="panel" onsubmit={create}>
-		<input bind:value={name} placeholder="Room name" aria-label="Room name" />
+		<input bind:value={name} placeholder={t('Room name')} aria-label={t('Room name')} />
 		<fieldset>
-			<label><input type="radio" bind:group={from} value="blank" /> Blank</label>
+			<label><input type="radio" bind:group={from} value="blank" /> {t('Blank')}</label>
 			{#if saved}
 				<label>
-					<input type="radio" bind:group={from} value="browser" /> This browser's saved session
+					<input type="radio" bind:group={from} value="browser" />
+					{t("This browser's saved session")}
 				</label>
 			{/if}
-			<label><input type="radio" bind:group={from} value="file" /> From an exported file</label>
+			<label
+				><input type="radio" bind:group={from} value="file" /> {t('From an exported file')}</label
+			>
 			{#if from === 'file'}
 				<input
 					type="file"
@@ -93,15 +102,15 @@
 				/>
 			{/if}
 		</fieldset>
-		<button disabled={busy}>Make room</button>
+		<button disabled={busy}>{t('Make room')}</button>
 	</form>
 
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
 
 	{#if rooms === null}
-		{#if !error}<p class="muted">Loading…</p>{/if}
+		{#if !error}<p class="muted">{t('Loading…')}</p>{/if}
 	{:else if !rooms.length}
-		<p class="muted">No rooms yet.</p>
+		<p class="muted">{t('No rooms yet.')}</p>
 	{:else}
 		<ul>
 			{#each rooms as r (r.token)}
@@ -110,8 +119,10 @@
 					<a href="/r/{r.token}?gm">{r.name}</a>
 					<span class="muted">{r.creator} · {new Date(r.created).toLocaleDateString()}</span>
 					<span class="actions">
-						<button onclick={() => copy(r)}>{copied === r.token ? 'Copied' : 'Copy link'}</button>
-						<button onclick={() => remove(r)}>Delete</button>
+						<button onclick={() => copy(r)}
+							>{copied === r.token ? t('Copied') : t('Copy link')}</button
+						>
+						<button onclick={() => remove(r)}>{t('Delete')}</button>
 					</span>
 				</li>
 			{/each}

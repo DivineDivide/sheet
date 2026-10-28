@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
+	import { t } from '../lib/i18n.svelte';
 	import { markdown } from '../lib/markdown';
 	import { COLORS } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
@@ -11,7 +12,7 @@
 	let {
 		value,
 		label,
-		empty = 'Click to write. Markdown works.',
+		empty,
 		line = false,
 		at,
 		onchange
@@ -24,6 +25,8 @@
 		onchange: (text: string) => void;
 	} = $props();
 
+	// Not a default of the prop, which would keep the language it first rendered in.
+	const blank = $derived(empty ?? t('Click to write. Markdown works.'));
 	let writing = $state(false);
 	const draft = $derived(at && !writing ? presence.draftAt(at) : undefined);
 	const shown = $derived(draft ? draft.text + (draft.cut ? '…' : '') : value);
@@ -42,7 +45,7 @@
 		rows={line ? 1 : undefined}
 		value={untrack(() => value)}
 		aria-label={label}
-		placeholder={line ? empty : 'Markdown: **bold**, *italic*, - lists, # headings'}
+		placeholder={line ? blank : t('Markdown: **bold**, *italic*, - lists, # headings')}
 		{@attach focusAtEnd}
 		onkeydown={(e) => {
 			if (!line || e.key !== 'Enter') return;
@@ -73,7 +76,7 @@
 		onfocus={() => (writing = true)}
 		onpointerdown={(e) => (e.target as Element).closest('a') && e.preventDefault()}
 	>
-		{#if shown}{@html markdown(shown)}{:else}<span class="hint">{empty}</span>{/if}
+		{#if shown}{@html markdown(shown)}{:else}<span class="hint">{blank}</span>{/if}
 	</div>
 {/if}
 

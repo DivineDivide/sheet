@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { newId, type Clock, type Doc, type Rule } from '../lib/doc';
 	import { refText } from '../lib/formula';
+	import { t } from '../lib/i18n.svelte';
 	import { session } from '../lib/session.svelte';
 	import Icon from './Icon.svelte';
 	import Log from './Log.svelte';
 
 	const doc = $derived(session.doc);
 	const clockOf = (d: Doc, id: string) => d.clocks.find((k) => k.id === id)!;
-	const offline = $derived(session.status === 'open' ? null : 'Waiting for the room to come back');
+	const offline = $derived(
+		session.status === 'open' ? null : t('Waiting for the room to come back')
+	);
 
 	/** Fields and columns with a rule on the clock's tick, or a formula or rule reading it. */
 	function tied(k: Clock): string[] {
@@ -35,7 +38,7 @@
 			<input
 				class="name"
 				value={clock.name}
-				aria-label="Clock name"
+				aria-label={t('Clock name')}
 				onchange={(e) => {
 					const name = e.currentTarget.value.trim();
 					if (name) session.change((d) => (clockOf(d, clock.id).name = name));
@@ -45,7 +48,8 @@
 			<button
 				title={offline ?? (i === 0 ? 'B' : undefined)}
 				disabled={!!offline}
-				onclick={() => session.act({ back: { clock: clock.id, at: clock.now } })}>Back</button
+				onclick={() => session.act({ back: { clock: clock.id, at: clock.now } })}
+				>{t('Back')}</button
 			>
 			<span class="now">{clock.now}</span>
 			<button
@@ -54,14 +58,14 @@
 				disabled={!!offline}
 				onclick={() => session.act({ tick: { clock: clock.id, at: clock.now } })}
 			>
-				Next
+				{t('Next')}
 			</button>
 			<button
 				class="tie"
 				class:idle={!uses.length}
 				popovertarget="clock-uses-{clock.id}"
-				aria-label="What uses {clock.name}"
-				title="What uses {clock.name}"
+				aria-label={t('What uses {name}', { name: clock.name })}
+				title={t('What uses {name}', { name: clock.name })}
 				><Icon name="link" />{#if uses.length}<span>{uses.length}</span>{/if}</button
 			>
 			<div id="clock-uses-{clock.id}" class="pop" popover>
@@ -70,14 +74,14 @@
 						{#each uses as use, j (j)}<li>{use}</li>{/each}
 					</ul>
 				{:else}
-					<p class="muted">Nothing uses {clock.name} yet.</p>
+					<p class="muted">{t('Nothing uses {name} yet.', { name: clock.name })}</p>
 				{/if}
 			</div>
 			{#if doc.clocks.length > 1}
 				<button
 					class="x"
-					aria-label="Delete clock {clock.name}"
-					title="Delete clock"
+					aria-label={t('Delete clock {name}', { name: clock.name })}
+					title={t('Delete clock')}
 					onclick={() =>
 						session.change((d) => (d.clocks = d.clocks.filter((k) => k.id !== clock.id)))}>×</button
 				>
@@ -87,10 +91,10 @@
 	<button
 		onclick={() =>
 			session.change((d) =>
-				d.clocks.push({ id: newId(), name: `Clock ${d.clocks.length + 1}`, now: 1 })
+				d.clocks.push({ id: newId(), name: t('Clock {n}', { n: d.clocks.length + 1 }), now: 1 })
 			)}
 	>
-		+ Clock
+		{t('+ Clock')}
 	</button>
 	<Log />
 </section>

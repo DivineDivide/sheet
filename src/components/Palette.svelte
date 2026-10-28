@@ -1,7 +1,8 @@
 <script lang="ts" module>
 	import type { Kind } from '../lib/doc';
+	import type { Phrase } from '../lib/i18n.svelte';
 
-	export const hints: Record<Kind, string> = {
+	export const hints: Record<Kind, Phrase> = {
 		number: 'a single value',
 		resource: 'current / max, with − and +',
 		track: 'a row of boxes to tick',
@@ -17,6 +18,7 @@
 
 <script lang="ts">
 	import { kinds } from '../lib/doc';
+	import { t } from '../lib/i18n.svelte';
 	import Icon from './Icon.svelte';
 
 	let { grab, add }: { grab: (e: PointerEvent, kind: Kind) => void; add: (kind: Kind) => void } =
@@ -25,18 +27,21 @@
 
 <!-- Two columns, as in SAO's menu: round icons, and beside each a bar naming it, which
      slides out as its icon is hovered. -->
-<aside class="rail" aria-label="Add a field">
+<aside class="rail" aria-label={t('Add a field')}>
 	{#each kinds as kind (kind)}
 		<button
 			class="kind"
-			aria-label="Add {kind}: {hints[kind]}. Drag onto the sheet, or click."
+			aria-label={t('Add {kind}: {hint}. Drag onto the sheet, or click.', {
+				kind: t(kind),
+				hint: t(hints[kind])
+			})}
 			onpointerdown={(e) => grab(e, kind)}
 			onclick={(e) => e.detail === 0 && add(kind)}
 		>
 			<span class="dot"><Icon name={kind} /></span>
 			<span class="bar" aria-hidden="true">
-				<b>{kind}</b>
-				<small>{hints[kind]}</small>
+				<b>{t(kind)}</b>
+				<small>{t(hints[kind])}</small>
 			</span>
 		</button>
 	{/each}

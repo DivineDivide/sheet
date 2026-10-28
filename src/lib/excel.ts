@@ -16,6 +16,7 @@ import {
 	type Value
 } from './doc';
 import { render, result, show } from './formula';
+import { t } from './i18n.svelte';
 import { clamp, settle } from './layout';
 
 /** Room for a label over a line of its value, smaller than a field may be dragged to. */
@@ -394,7 +395,7 @@ export function fromBook(book: Book, pictures: string[]): Imported {
 		}
 	}
 
-	if (!tabs.length) throw new Error('found nothing to make fields from');
+	if (!tabs.length) throw new Error(t('found nothing to make fields from'));
 	const character: Character = {
 		...newCharacter(name || book.name || 'Imported'),
 		tabs,

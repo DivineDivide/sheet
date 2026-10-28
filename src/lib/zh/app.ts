@@ -1,0 +1,37 @@
+// Traditional Chinese, as used in Taiwan, for the top bar, drafts and the page's own notices.
+export default {
+	'Imported {name}. Undo puts the previous session back.':
+		'已匯入 {name}。按復原可回到之前的內容。',
+	'{name} was not imported: {why}.': '{name} 未能匯入：{why}。',
+	unreadable: '無法讀取',
+	'This room was deleted': '這個房間已被刪除',
+	Offline: '離線',
+	'Offline · {n} unsent': '離線 · {n} 項未送出',
+	Theme: '主題',
+	Language: '語言',
+	System: '跟隨系統',
+	Light: '淺色',
+	Dark: '深色',
+	Grimoire: '魔典',
+	Undo: '復原',
+	Redo: '重做',
+	Export: '匯出',
+	Import: '匯入',
+	'{mod}O, or drop a file anywhere on the page': '{mod}O，或把檔案拖到頁面任何地方',
+	'Keyboard shortcuts': '鍵盤快速鍵',
+	"Claude's draft": 'Claude 的草稿',
+	"Claude's draft: {n} change": 'Claude 的草稿：{n} 項變更',
+	"Claude's draft: {n} changes": 'Claude 的草稿：{n} 項變更',
+	'Waiting for the GM…': '等待 GM…',
+	'Take back': '收回',
+	Apply: '套用',
+	'Send to the GM': '送交 GM',
+	Discard: '捨棄',
+	"A player's draft": '玩家的草稿',
+	"A player's draft: {asked}": '玩家的草稿：{asked}',
+	'Turn down': '駁回',
+	'No characters yet. Press + at the top left to start one from a template, or blank, or':
+		'還沒有角色。按左上角的 + 從範本或空白建立一個，或',
+	'ask the chat': '請對話助手幫忙',
+	'.': '。'
+} as const;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { columnKinds, type Column, type Field, type When } from '../lib/doc';
 	import { compile, type Name } from '../lib/formula';
+	import { t } from '../lib/i18n.svelte';
 	import { ruledColumns } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
 	import { sources } from '../lib/source';
@@ -44,14 +45,14 @@
 			.filter(Boolean);
 </script>
 
-<h2>Column {column.name}</h2>
+<h2>{t('Column {name}', { name: column.name })}</h2>
 <label>
-	<span class="muted">Holds</span>
+	<span class="muted">{t('Holds')}</span>
 	<select
 		value={column.kind}
 		onchange={(e) => put({ kind: e.currentTarget.value as Column['kind'] })}
 	>
-		{#each columnKinds as k (k)}<option value={k}>{k}</option>{/each}
+		{#each columnKinds as k (k)}<option value={k}>{t(k)}</option>{/each}
 	</select>
 </label>
 {#if column.kind === 'choice'}
@@ -59,34 +60,36 @@
 	{#if tables.length}
 		<label
 			{@attach tip(
-				"Another table's rows as the choices: choosing one fills the row's cells of the same name, which then follow that row"
+				t(
+					"Another table's rows as the choices: choosing one fills the row's cells of the same name, which then follow that row"
+				)
 			)}
 		>
-			<span class="muted">From</span>
+			<span class="muted">{t('From')}</span>
 			<select
 				value={column.from ?? ''}
 				onchange={(e) => put({ from: e.currentTarget.value || undefined })}
 			>
-				<option value="">Typed choices</option>
+				<option value="">{t('Typed choices')}</option>
 				{#each tables as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
 			</select>
 		</label>
 	{/if}
 	{#if !column.from}
 		<label>
-			<span class="muted">Choices</span>
+			<span class="muted">{t('Choices')}</span>
 			<input
 				value={(column.choices ?? []).join(', ')}
-				placeholder="持有, 已献祭, 已消耗"
+				placeholder={t('Held, Sacrificed, Spent')}
 				onchange={(e) => put({ choices: split(e.currentTarget.value) })}
 			/>
 		</label>
 	{/if}
 {:else if column.kind === 'formula'}
-	<label for="formula-{column.id}"><span class="muted">Formula</span></label>
+	<label for="formula-{column.id}"><span class="muted">{t('Formula')}</span></label>
 	<CodeInput
 		id="formula-{column.id}"
-		label="Formula"
+		label={t('Formula')}
 		value={column.formula ?? ''}
 		names={known}
 		prefix="="
@@ -95,19 +98,19 @@
 		onsave={(stored) => put({ formula: stored || undefined })}
 	/>
 {:else if column.kind === 'resource'}
-	<label {@attach tip('A bar is pressed or dragged to set the current')}>
-		<span class="muted">Shows as</span>
+	<label {@attach tip(t('A bar is pressed or dragged to set the current'))}>
+		<span class="muted">{t('Shows as')}</span>
 		<select
 			value={column.bar ? 'bar' : 'numbers'}
 			onchange={(e) => put({ bar: e.currentTarget.value === 'bar' || undefined })}
 		>
-			<option value="numbers">Numbers</option>
-			<option value="bar">Bar</option>
+			<option value="numbers">{t('Numbers')}</option>
+			<option value="bar">{t('Bar')}</option>
 		</select>
 	</label>
 {/if}
 {#if ruledColumns.includes(column.kind)}
-	<span class="muted">Rules</span>
+	<span class="muted">{t('Rules')}</span>
 	{#key column.id}
 		<Rules
 			rules={column.rules ?? []}
@@ -118,7 +121,9 @@
 		/>
 	{/key}
 {/if}
-<button onclick={() => change((cs) => cs.filter((c) => c.id !== column.id))}>Delete column</button>
+<button onclick={() => change((cs) => cs.filter((c) => c.id !== column.id))}
+	>{t('Delete column')}</button
+>
 
 <style>
 	h2 {

@@ -6,6 +6,7 @@
 	import { mod, plain, typing } from './lib/keys';
 	import { presence } from './lib/presence.svelte';
 	import { session } from './lib/session.svelte';
+	import { lang, languages, t, type LangId } from './lib/i18n.svelte';
 	import { theme, themes, type ThemeId } from './lib/theme.svelte';
 	import { ui } from './lib/ui.svelte';
 	import Chat from './components/Chat.svelte';
@@ -51,9 +52,15 @@
 		if (!file) return;
 		try {
 			session.replace(parse(await file.text()));
-			session.notice = `Imported ${file.name}. Undo puts the previous session back.`;
+			session.notice = t('Imported {name}. Undo puts the previous session back.', {
+				name: file.name
+			});
 		} catch (e) {
-			session.notice = `${file.name} was not imported: ${e instanceof ImportError ? e.message : 'unreadable'}.`;
+			// The reason is the parser's, which the Worker shares, so it stays English.
+			session.notice = t('{name} was not imported: {why}.', {
+				name: file.name,
+				why: e instanceof ImportError ? e.message : t('unreadable')
+			});
 		}
 	}
 
@@ -108,33 +115,47 @@
 			{#if session.status !== 'open'}
 				<span class="status" role="status">
 					{session.status === 'missing'
-						? 'This room was deleted'
-						: `Offline${session.unsent ? ` · ${session.unsent} unsent` : ''}`}
+						? t('This room was deleted')
+						: session.unsent
+							? t('Offline · {n} unsent', { n: session.unsent })
+							: t('Offline')}
 				</span>
 			{/if}
 			<select
 				value={theme.id}
-				aria-label="Theme"
-				title="Theme"
+				aria-label={t('Theme')}
+				title={t('Theme')}
 				onchange={(e) => (theme.id = e.currentTarget.value as ThemeId)}
 			>
-				{#each themes as t (t.id)}
-					<option value={t.id}>{t.name}</option>
+				{#each themes as th (th.id)}
+					<option value={th.id}>{t(th.name)}</option>
 				{/each}
 			</select>
-			<button disabled={!session.canUndo} onclick={() => session.undo()} title="{mod}Z">Undo</button
+			<select
+				value={lang.id}
+				aria-label={t('Language')}
+				title={t('Language')}
+				onchange={(e) => (lang.id = e.currentTarget.value as LangId)}
+			>
+				{#each languages as l (l.id)}
+					<option value={l.id}>{l.name}</option>
+				{/each}
+			</select>
+			<button disabled={!session.canUndo} onclick={() => session.undo()} title="{mod}Z"
+				>{t('Undo')}</button
 			>
 			<button disabled={!session.canRedo} onclick={() => session.redo()} title="⇧{mod}Z"
-				>Redo</button
+				>{t('Redo')}</button
 			>
-			<button onclick={exportFile} title="{mod}S">Export</button>
-			<button onclick={() => picker.click()} title="{mod}O, or drop a file anywhere on the page"
-				>Import</button
+			<button onclick={exportFile} title="{mod}S">{t('Export')}</button>
+			<button
+				onclick={() => picker.click()}
+				title={t('{mod}O, or drop a file anywhere on the page', { mod })}>{t('Import')}</button
 			>
 			<button
 				onclick={() => keys.toggle()}
-				aria-label="Keyboard shortcuts"
-				title="Keyboard shortcuts">?</button
+				aria-label={t('Keyboard shortcuts')}
+				title={t('Keyboard shortcuts')}>?</button
 			>
 			<input
 				bind:this={picker}
@@ -154,31 +175,35 @@
 	<Toast />
 
 	{#if chat.changes}
-		<div class="draft" role="region" aria-label="Claude's draft">
+		<div class="draft" role="region" aria-label={t("Claude's draft")}>
 			<details>
 				<summary>
-					Claude's draft: {chat.changes.lines.length}
-					{chat.changes.lines.length === 1 ? 'change' : 'changes'}
+					{t(
+						chat.changes.lines.length === 1
+							? "Claude's draft: {n} change"
+							: "Claude's draft: {n} changes",
+						{ n: chat.changes.lines.length }
+					)}
 				</summary>
 				<ul>
 					{#each chat.changes.lines as line, i (i)}<li>{line}</li>{/each}
 				</ul>
 			</details>
 			{#if chat.waiting}
-				<span class="muted">Waiting for the GM…</span>
-				<button onclick={() => chat.withdraw()}>Take back</button>
+				<span class="muted">{t('Waiting for the GM…')}</span>
+				<button onclick={() => chat.withdraw()}>{t('Take back')}</button>
 			{:else}
 				<button class="primary" disabled={chat.busy} onclick={() => chat.apply()}
-					>{session.gm ? 'Apply' : 'Send to the GM'}</button
+					>{session.gm ? t('Apply') : t('Send to the GM')}</button
 				>
 			{/if}
-			<button disabled={chat.busy} onclick={() => chat.discard()}>Discard</button>
+			<button disabled={chat.busy} onclick={() => chat.discard()}>{t('Discard')}</button>
 		</div>
 	{/if}
 	{#each asks as p (p.id)}
-		<div class="draft" role="region" aria-label="A player's draft">
+		<div class="draft" role="region" aria-label={t("A player's draft")}>
 			<details>
-				<summary>A player's draft: {p.asked.split('\n')[0]}</summary>
+				<summary>{t("A player's draft: {asked}", { asked: p.asked.split('\n')[0] })}</summary>
 				{#if p.asked.includes('\n')}<p class="asked">{p.asked}</p>{/if}
 				<ul>
 					{#each p.lines as line, i (i)}<li>{line}</li>{/each}
@@ -189,9 +214,9 @@
 				onclick={() => {
 					session.land(p.ops);
 					session.settle(p.id, true);
-				}}>Apply</button
+				}}>{t('Apply')}</button
 			>
-			<button onclick={() => session.settle(p.id, false)}>Turn down</button>
+			<button onclick={() => session.settle(p.id, false)}>{t('Turn down')}</button>
 		</div>
 	{/each}
 
@@ -204,8 +229,10 @@
 			{/key}
 		{:else}
 			<p class="empty">
-				No characters yet. Press + at the top left to start one from a template, or blank, or
-				<button class="link" onclick={() => (ui.panel = 'chat')}>ask the chat</button>.
+				{t('No characters yet. Press + at the top left to start one from a template, or blank, or')}
+				<button class="link" onclick={() => (ui.panel = 'chat')}>{t('ask the chat')}</button>{t(
+					'.'
+				)}
 			</p>
 		{/if}
 

@@ -6,6 +6,7 @@
 	import { COLORS, nameOf } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
+	import { t } from '../lib/i18n.svelte';
 	import ExcelImport from './ExcelImport.svelte';
 	import Icon from './Icon.svelte';
 	import Preview from './Preview.svelte';
@@ -33,7 +34,7 @@
 
 	function create(templateId: string) {
 		const template = doc.templates.find((t) => t.id === templateId);
-		const name = newName.trim() || `Character ${doc.characters.length + 1}`;
+		const name = newName.trim() || t('Character {n}', { n: doc.characters.length + 1 });
 		place(newCharacter(name, template && $state.snapshot(template)));
 		from = templateId;
 		newName = '';
@@ -79,7 +80,7 @@
 		class="strip"
 		class:fade-left={more.left}
 		class:fade-right={more.right}
-		aria-label="Characters"
+		aria-label={t('Characters')}
 		bind:this={strip}
 		onscroll={edges}
 		onscrollend={() => (goal = null)}
@@ -90,7 +91,7 @@
 				class="chip"
 				class:active={c.id === character?.id}
 				class:hidden={c.hidden}
-				title={c.hidden ? 'GM only: players do not see this character' : undefined}
+				title={c.hidden ? t('GM only: players do not see this character') : undefined}
 				aria-current={c.id === character?.id}
 				onclick={() => (current = c.id)}
 				animate:flip={{ duration: 200 }}
@@ -101,7 +102,7 @@
 					<span
 						class="here"
 						style:--peer="var(--peer-{p.color % COLORS})"
-						title="{nameOf(p)} is here"
+						title={t('{name} is here', { name: nameOf(p) })}
 					></span>
 				{/each}
 			</button>
@@ -109,8 +110,8 @@
 	</nav>
 	<button
 		class="dot plus"
-		aria-label="New character"
-		title="New character"
+		aria-label={t('New character')}
+		title={t('New character')}
 		onclick={() => dialog.showModal()}><Icon name="plus" /></button
 	>
 </div>
@@ -123,7 +124,7 @@
 	onclick={(e) => e.target === dialog && dialog.close()}
 >
 	<div class="inner">
-		<h2 id="new-title">New character</h2>
+		<h2 id="new-title">{t('New character')}</h2>
 		<form
 			onsubmit={(e) => {
 				e.preventDefault();
@@ -132,29 +133,29 @@
 		>
 			<input
 				bind:value={newName}
-				placeholder="Character {doc.characters.length + 1}"
-				aria-label="Name"
+				placeholder={t('Character {n}', { n: doc.characters.length + 1 })}
+				aria-label={t('Name')}
 			/>
-			<button type="submit">Create</button>
+			<button type="submit">{t('Create')}</button>
 		</form>
-		<p class="muted">Pick what to start from. Enter starts from the one outlined.</p>
+		<p class="muted">{t('Pick what to start from. Enter starts from the one outlined.')}</p>
 		<div class="cards">
 			<button class="card" class:chosen={chosen === ''} onclick={() => create('')}>
 				<Preview layout={null} />
-				<span class="tname">Blank</span>
+				<span class="tname">{t('Blank')}</span>
 			</button>
-			{#each doc.templates as t (t.id)}
+			{#each doc.templates as tp (tp.id)}
 				<div class="wrap">
-					<button class="card" class:chosen={chosen === t.id} onclick={() => create(t.id)}>
-						<Preview layout={t} />
-						<span class="tname">{t.name}</span>
+					<button class="card" class:chosen={chosen === tp.id} onclick={() => create(tp.id)}>
+						<Preview layout={tp} />
+						<span class="tname">{tp.name}</span>
 					</button>
 					<button
 						class="x del"
-						aria-label="Delete template {t.name}"
-						title="Delete template. Characters made from it keep their layout."
+						aria-label={t('Delete template {name}', { name: tp.name })}
+						title={t('Delete template. Characters made from it keep their layout.')}
 						onclick={() =>
-							session.change((d) => (d.templates = d.templates.filter((x) => x.id !== t.id)))}
+							session.change((d) => (d.templates = d.templates.filter((x) => x.id !== tp.id)))}
 						>×</button
 					>
 				</div>

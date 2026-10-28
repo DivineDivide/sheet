@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '../lib/i18n.svelte';
 	import { shortcuts } from '../lib/keys';
 
 	let dialog: HTMLDialogElement;
@@ -17,25 +18,25 @@
 	onclick={(e) => e.target === dialog && dialog.close()}
 >
 	<div class="inner">
-		<h2 id="keys-title">Keyboard shortcuts</h2>
-		<p class="muted">Single keys work while no text box has the cursor.</p>
+		<h2 id="keys-title">{t('Keyboard shortcuts')}</h2>
+		<p class="muted">{t('Single keys work while no text box has the cursor.')}</p>
 		{#each shortcuts as [title, rows] (title)}
-			<h3>{title}</h3>
+			<h3>{t(title)}</h3>
 			<table>
 				<tbody>
 					{#each rows as [keys, does] (does)}
 						<tr>
 							<td>
-								{#each keys as k (k)}<kbd>{k}</kbd>{/each}
+								{#each keys as k (k)}<kbd>{typeof k === 'string' ? k : t(k.word)}</kbd>{/each}
 							</td>
-							<td>{does}</td>
+							<td>{t(does)}</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
 		{/each}
 		<form method="dialog">
-			<button>Close</button>
+			<button>{t('Close')}</button>
 		</form>
 	</div>
 </dialog>

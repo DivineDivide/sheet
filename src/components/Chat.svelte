@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import { chat, models } from '../lib/agent/client.svelte';
+	import { t, type Phrase } from '../lib/i18n.svelte';
 	import { markdown } from '../lib/markdown';
 	import { tip } from '../lib/tip';
 	import Icon from './Icon.svelte';
@@ -8,7 +9,7 @@
 	let input = $state('');
 	let log = $state<HTMLElement>();
 
-	const verbs: Record<string, string> = {
+	const verbs: Record<string, Phrase> = {
 		read: 'Read',
 		add_character: 'Added',
 		edit_character: 'Changed',
@@ -41,14 +42,16 @@
 	}
 </script>
 
-<section class="panel chat" aria-label="Chat" transition:fly={{ y: 16, duration: 160 }}>
+<section class="panel chat" aria-label={t('Chat')} transition:fly={{ y: 16, duration: 160 }}>
 	<header>
-		<h2>Chat</h2>
+		<h2>{t('Chat')}</h2>
 		<select
 			bind:value={chat.model}
-			aria-label="Model"
+			aria-label={t('Model')}
 			disabled={chat.started || chat.busy}
-			{@attach tip(chat.started ? 'A chat keeps its model' : 'The model that makes the draft')}
+			{@attach tip(
+				chat.started ? t('A chat keeps its model') : t('The model that makes the draft')
+			)}
 		>
 			{#each models as m (m.id)}
 				<option value={m.id}>{m.name}</option>
@@ -56,9 +59,9 @@
 		</select>
 		<button
 			class="dot"
-			aria-label="New chat"
+			aria-label={t('New chat')}
 			disabled={chat.busy || !chat.said.length}
-			{@attach tip('New chat: discards the draft')}
+			{@attach tip(t('New chat: discards the draft'))}
 			onclick={() => chat.clear()}><Icon name="plus" /></button
 		>
 	</header>
@@ -66,8 +69,9 @@
 	<div class="log" bind:this={log}>
 		{#if !chat.said.length}
 			<p class="muted">
-				Say what to change on any character, template or clock, in any language. Claude reads this
-				room's text, never its pictures, and makes a draft to look over before it reaches the room.
+				{t(
+					"Say what to change on any character, template or clock, in any language. Claude reads this room's text, never its pictures, and makes a draft to look over before it reaches the room."
+				)}
 			</p>
 		{/if}
 		{#each chat.said as s, i (i)}
@@ -77,17 +81,17 @@
 				<p class="note">{s.text}</p>
 			{:else}
 				<div class="claude">
-					{#each s.tools as t, j (j)}
-						<p class="tool" class:bad={!t.ok} {@attach tip(t.text)}>
-							{t.ok ? '✓' : '✗'}
-							{verbs[t.name] ?? t.name}
-							{t.about}
+					{#each s.tools as tool, j (j)}
+						<p class="tool" class:bad={!tool.ok} {@attach tip(tool.text)}>
+							{tool.ok ? '✓' : '✗'}
+							{verbs[tool.name] ? t(verbs[tool.name]) : tool.name}
+							{tool.about}
 						</p>
 					{/each}
 					{#if s.text}<div class="md">{@html markdown(s.text)}</div>{/if}
 					{#if s.error}<p class="error">{s.error}</p>{/if}
 					{#if chat.busy && i === chat.said.length - 1 && !s.text && !s.error}
-						<p class="muted">Working…</p>
+						<p class="muted">{t('Working…')}</p>
 					{/if}
 				</div>
 			{/if}
@@ -98,14 +102,14 @@
 		<textarea
 			bind:value={input}
 			rows="2"
-			aria-label="Say what to change"
-			placeholder={chat.waiting ? 'Waiting for the GM…' : 'Say what to change'}
+			aria-label={t('Say what to change')}
+			placeholder={chat.waiting ? t('Waiting for the GM…') : t('Say what to change')}
 			disabled={chat.waiting}
 			onkeydown={(e) => {
 				// Not while an input method is still composing, as for Chinese.
 				if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) send(e);
 			}}></textarea>
-		<button disabled={chat.busy || chat.waiting || !input.trim()}>Send</button>
+		<button disabled={chat.busy || chat.waiting || !input.trim()}>{t('Send')}</button>
 	</form>
 </section>
 

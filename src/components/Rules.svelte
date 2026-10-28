@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { newId, type Rule, type When } from '../lib/doc';
 	import { compile, compileLine, type Name } from '../lib/formula';
+	import { t } from '../lib/i18n.svelte';
 	import CodeInput from './CodeInput.svelte';
 
 	// Rules live on what they change, never on the button that sets them off.
@@ -34,44 +35,44 @@
 
 {#each rules as rule, i (rule.id)}
 	<fieldset class="rule">
-		<span class="muted">When</span>
+		<span class="muted">{t('When')}</span>
 		<div class="head">
 			<select
 				value={key(rule.when)}
-				aria-label="When"
+				aria-label={t('When')}
 				onchange={(e) => put(i, { when: when(e.currentTarget.value) })}
 			>
 				{#each whens as w (key(w.when))}
 					<option value={key(w.when)}>{w.text}</option>
 				{/each}
 				{#if !whens.some((w) => key(w.when) === key(rule.when))}
-					<option value={key(rule.when)}>something deleted</option>
+					<option value={key(rule.when)}>{t('something deleted')}</option>
 				{/if}
 			</select>
 			<button
 				class="x"
-				aria-label="Delete rule"
+				aria-label={t('Delete rule')}
 				onclick={() => onchange(rules.filter((r) => r.id !== rule.id))}>×</button
 			>
 		</div>
-		<span class="muted">If</span>
+		<span class="muted">{t('If')}</span>
 		<div>
 			<CodeInput
 				id="if-{rule.id}"
-				label="If"
+				label={t('If')}
 				value={rule.if ?? ''}
 				{names}
-				placeholder="always"
+				placeholder={t('always')}
 				compile={cond}
 				onsave={(stored) => put(i, { if: stored || undefined })}
 			/>
 		</div>
-		<span class="muted">Then</span>
+		<span class="muted">{t('Then')}</span>
 		<div class="then">
 			{#each rule.then as text, j (j)}
 				<CodeInput
 					id="then-{rule.id}-{j}"
-					label="Then, line {j + 1}"
+					label={t('Then, line {n}', { n: j + 1 })}
 					value={text}
 					{names}
 					placeholder="HP -= 1d6"
@@ -84,15 +85,17 @@
 						})}
 				/>
 			{/each}
-			<button class="more" onclick={() => put(i, { then: [...rule.then, ''] })}>+ Line</button>
+			<button class="more" onclick={() => put(i, { then: [...rule.then, ''] })}
+				>{t('+ Line')}</button
+			>
 		</div>
 	</fieldset>
 {/each}
 <button
 	disabled={!whens.length}
-	title={whens.length ? undefined : 'Add a button or a clock first'}
+	title={whens.length ? undefined : t('Add a button or a clock first')}
 	onclick={() => onchange([...rules, { id: newId(), when: whens[0].when, then: [fresh] }])}
-	>+ Rule</button
+	>{t('+ Rule')}</button
 >
 
 <style>

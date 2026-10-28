@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Character } from '../lib/doc';
 	import { fromBook, type Imported } from '../lib/excel';
+	import { t } from '../lib/i18n.svelte';
 	import { shrink } from '../lib/picture';
 	import { session } from '../lib/session.svelte';
 	import { readBook } from '../lib/xlsx';
@@ -26,7 +27,10 @@
 			name = found.character.name;
 			dialog!.showModal();
 		} catch (e) {
-			session.notice = `${file.name} could not be imported: ${e instanceof Error ? e.message : e}.`;
+			session.notice = t('{name} could not be imported: {why}.', {
+				name: file.name,
+				why: e instanceof Error ? e.message : String(e)
+			});
 		}
 		busy = false;
 	}
@@ -39,7 +43,7 @@
 </script>
 
 <button class="from" disabled={busy} onclick={() => picker?.click()}>
-	{busy ? 'Reading…' : 'From an Excel file…'}
+	{busy ? t('Reading…') : t('From an Excel file…')}
 </button>
 <input
 	bind:this={picker}
@@ -62,15 +66,15 @@
 	{#if found}
 		{@const c = found.character}
 		<div class="inner">
-			<h2 id="import-title">Import from Excel</h2>
+			<h2 id="import-title">{t('Import from Excel')}</h2>
 			<form
 				onsubmit={(e) => {
 					e.preventDefault();
 					add();
 				}}
 			>
-				<input bind:value={name} aria-label="Name" />
-				<button type="submit">Add character</button>
+				<input bind:value={name} aria-label={t('Name')} />
+				<button type="submit">{t('Add character')}</button>
 			</form>
 
 			<div class="tabs">
@@ -79,36 +83,41 @@
 					<section>
 						<Preview layout={{ tabs: [tab], fields }} />
 						<h3>{tab.name}</h3>
-						<p class="muted">{fields.map((f) => `${f.label} · ${f.kind}`).join(', ')}</p>
+						<p class="muted">{fields.map((f) => `${f.label} · ${t(f.kind)}`).join(t(', '))}</p>
 					</section>
 				{/each}
 			</div>
 
 			{#if found.checks.length}
-				<h3>Formulas</h3>
+				<h3>{t('Formulas')}</h3>
 				<ul>
 					{#each found.checks as k (k.sheet + k.at)}
 						<li class:bad={k.ok === false}>
 							<code>{k.formula}</code>
 							<span class="muted">
-								{k.sheet}!{k.at} · Excel {k.excel || '—'}, here {k.ours}
-								{k.ok === null ? '' : k.ok ? '✓' : '✗ differs'}
+								{k.sheet}!{k.at} · {t('Excel {excel}, here {ours}', {
+									excel: k.excel || '—',
+									ours: k.ours
+								})}
+								{k.ok === null ? '' : k.ok ? '✓' : t('✗ differs')}
 							</span>
 						</li>
 					{/each}
 				</ul>
 			{/if}
 
-			<h3>Left out</h3>
+			<h3>{t('Left out')}</h3>
 			{#if found.left.length}
-				<p class="muted">No field took these cells. Copy what you need by hand.</p>
+				<p class="muted">{t('No field took these cells. Copy what you need by hand.')}</p>
 				<ul>
 					{#each found.left as l (l.sheet + l.at)}
 						<li><span class="muted">{l.sheet}!{l.at}</span> {l.text}</li>
 					{/each}
 				</ul>
 			{:else}
-				<p class="muted">Nothing: every cell with something in it became part of a field.</p>
+				<p class="muted">
+					{t('Nothing: every cell with something in it became part of a field.')}
+				</p>
 			{/if}
 		</div>
 	{/if}

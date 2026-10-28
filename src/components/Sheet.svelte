@@ -17,6 +17,7 @@
 	import { keep, kept, type Clip } from '../lib/clip';
 	import { cursors } from '../lib/cursors.svelte';
 	import { lift, place } from '../lib/group';
+	import { t } from '../lib/i18n.svelte';
 	import { free, mod } from '../lib/keys';
 	import { SNAP, bounds, clamp, defaultSize, readingOrder, type Box } from '../lib/layout';
 	import { COLORS, nameOf, type Peer } from '../lib/presence';
@@ -134,10 +135,16 @@
 		// Without a drop point, in the middle of what is on screen.
 		const box = clamp(at ?? { x: view.x - size.w / 2, y: view.y - size.h / 2, ...size });
 		edit((c) => {
-			c.fields.push({ id, label: uniqueLabel(`New ${kind}`, c.fields), kind, tab: tab.id, box });
+			c.fields.push({
+				id,
+				label: uniqueLabel(t('New {kind}', { kind: t(kind) }), c.fields),
+				kind,
+				tab: tab.id,
+				box
+			});
 			// A table starts with a column, so it has rows to add.
 			if (kind === 'table')
-				c.fields.at(-1)!.columns = [{ id: newId(), name: 'Name', kind: 'text' }];
+				c.fields.at(-1)!.columns = [{ id: newId(), name: t('Name'), kind: 'text' }];
 			c.values[id] = blank(kind);
 		});
 		chosen = [id];
@@ -148,7 +155,8 @@
 		editField(id, (f) => {
 			const cols = f.columns ?? [];
 			const named = cols.map((c) => ({ id: c.id, label: c.name }));
-			const name = uniqueLabel(kind[0].toUpperCase() + kind.slice(1), named);
+			const shown = t(kind);
+			const name = uniqueLabel(shown[0].toUpperCase() + shown.slice(1), named);
 			cols.splice(at, 0, { id: col, name, kind });
 			f.columns = cols;
 		});
@@ -168,8 +176,11 @@
 		const g = lift(character, session.doc.clocks, ids, true, session.doc.characters);
 		const { x, y } = bounds(group.map((f) => f.box));
 		keep({ ...g, at: { x, y } });
-		const what = ids.length === 1 ? g.fields[0].label : `${ids.length} fields`;
-		session.notice = `Copied ${what}. ${mod}V pastes in Edit layout, on any character.`;
+		const what = ids.length === 1 ? g.fields[0].label : t('{n} fields', { n: ids.length });
+		session.notice = t('Copied {what}. {mod}V pastes in Edit layout, on any character.', {
+			what,
+			mod
+		});
 	}
 
 	/** Where the fields were copied from, off any field already there, so pastes fan out. */
@@ -184,12 +195,12 @@
 			const { tabs, fields } = $state.snapshot(live(d));
 			d.templates.push({ id: newId(), name, tabs, fields });
 		});
-		session.notice = `Saved "${name}" as a template.`;
+		session.notice = t('Saved "{name}" as a template.', { name });
 	}
 
 	function addTab() {
 		const id = newId();
-		edit((c) => c.tabs.push({ id, name: `Tab ${c.tabs.length + 1}` }));
+		edit((c) => c.tabs.push({ id, name: t('Tab {n}', { n: c.tabs.length + 1 }) }));
 		tabId = id;
 	}
 
@@ -358,7 +369,7 @@
 		// clipboard write that starts after the click has returned.
 		if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
 			navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]).then(
-				() => (session.notice = `Copied ${name} as an image. Paste it into the chat.`),
+				() => (session.notice = t('Copied {name} as an image. Paste it into the chat.', { name })),
 				() => download(png, name)
 			);
 		} else {
@@ -374,9 +385,12 @@
 			a.download = `${name}.png`;
 			a.click();
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
-			session.notice = `This browser would not copy the image, so ${name}.png was downloaded instead.`;
+			session.notice = t(
+				'This browser would not copy the image, so {name}.png was downloaded instead.',
+				{ name }
+			);
 		} catch {
-			session.notice = `The image of ${name} could not be made.`;
+			session.notice = t('The image of {name} could not be made.', { name });
 		}
 	}
 
@@ -442,7 +456,7 @@
 		<input
 			class="name"
 			value={character.name}
-			aria-label="Character name"
+			aria-label={t('Character name')}
 			onchange={(e) => {
 				const text = e.currentTarget.value.trim();
 				if (text) edit((c) => (c.name = text));
@@ -452,68 +466,72 @@
 			<button
 				class:on={character.hidden}
 				aria-pressed={!!character.hidden}
-				title="Players do not see a GM-only character, but their sheets can still draw on its tables"
+				title={t(
+					'Players do not see a GM-only character, but their sheets can still draw on its tables'
+				)}
 				onclick={() => edit((c) => (c.hidden ? delete c.hidden : (c.hidden = true)))}
-				>GM only</button
+				>{t('GM only')}</button
 			>
 		{/if}
 		<button
 			disabled={sharing}
-			title="Copy every tab, with each value in full, as an image to paste into a chat"
-			onclick={copyImage}>{sharing ? 'Copying…' : 'Copy image'}</button
+			title={t('Copy every tab, with each value in full, as an image to paste into a chat')}
+			onclick={copyImage}>{sharing ? t('Copying…') : t('Copy image')}</button
 		>
 		<button
 			class:on={editing}
 			aria-pressed={editing}
 			disabled={stacked}
-			title={stacked ? 'Widen the window to lay out fields' : 'Add, move and resize fields (E)'}
-			onclick={toggleEditing}>{editing ? 'Done' : 'Edit layout'}</button
+			title={stacked
+				? t('Widen the window to lay out fields')
+				: t('Add, move and resize fields (E)')}
+			onclick={toggleEditing}>{editing ? t('Done') : t('Edit layout')}</button
 		>
 		<button
 			class="x"
-			aria-label="Delete {character.name}"
-			title="Delete character"
+			aria-label={t('Delete {name}', { name: character.name })}
+			title={t('Delete character')}
 			onclick={() =>
 				session.change((d) => (d.characters = d.characters.filter((c) => c.id !== character.id)))}
 			>×</button
 		>
 	</header>
 
-	<nav class="tabs" aria-label="Tabs">
-		{#each character.tabs as t (t.id)}
-			{#if laying && t.id === tab.id}
+	<nav class="tabs" aria-label={t('Tabs')}>
+		{#each character.tabs as tb (tb.id)}
+			{#if laying && tb.id === tab.id}
 				<input
 					class="tab active"
-					value={t.name}
-					aria-label="Tab name"
+					value={tb.name}
+					aria-label={t('Tab name')}
 					onchange={(e) => {
 						const text = e.currentTarget.value.trim();
-						if (text) edit((c) => (c.tabs.find((x) => x.id === t.id)!.name = text));
+						if (text) edit((c) => (c.tabs.find((x) => x.id === tb.id)!.name = text));
 					}}
 				/>
 				{#if character.tabs.length > 1}
 					<button
 						class="x"
-						aria-label="Delete tab {t.name}"
+						aria-label={t('Delete tab {name}', { name: tb.name })}
 						disabled={onTab.length > 0}
-						title={onTab.length ? 'Move or delete its fields first' : 'Delete tab'}
-						onclick={() => edit((c) => (c.tabs = c.tabs.filter((x) => x.id !== t.id)))}>×</button
+						title={onTab.length ? t('Move or delete its fields first') : t('Delete tab')}
+						onclick={() => edit((c) => (c.tabs = c.tabs.filter((x) => x.id !== tb.id)))}>×</button
 					>
 				{/if}
 			{:else}
 				<button
 					class="tab"
-					class:active={t.id === tab.id}
-					aria-current={t.id === tab.id}
+					class:active={tb.id === tab.id}
+					aria-current={tb.id === tab.id}
 					onclick={() => {
-						tabId = t.id;
+						tabId = tb.id;
 						chosen = [];
-					}}>{t.name}</button
+					}}>{tb.name}</button
 				>
 			{/if}
 		{/each}
 		{#if laying}
-			<button class="tab more" onclick={addTab}>+ Tab</button>
+			<button class="tab more" onclick={addTab}>{t('+ Tab')}</button>
 		{/if}
 	</nav>
 
@@ -535,11 +553,11 @@
 		<div class="viewport" style:--ox="{ox}px" style:--oy="{oy}px" style:--dots="{16 * view.z}px">
 			{#if !onTab.length && !drag}
 				<p class="empty">
-					Nothing on this tab yet.{stacked
-						? ''
+					{stacked
+						? t('Nothing on this tab yet.')
 						: laying
-							? ' Drag a field in from the left.'
-							: ' Edit layout to add fields.'}
+							? t('Nothing on this tab yet. Drag a field in from the left.')
+							: t('Nothing on this tab yet. Edit layout to add fields.')}
 				</p>
 			{/if}
 			<div
@@ -559,7 +577,11 @@
 							style:--y="{b.y}px"
 							style:--w="{b.w}px"
 							style:--peer={peer}
-							>{eyes.map((e) => nameOf(e.peer) + (e.writing ? ' is writing' : '')).join(', ')}</span
+							>{eyes
+								.map((e) =>
+									e.writing ? t('{name} is writing', { name: nameOf(e.peer) }) : nameOf(e.peer)
+								)
+								.join(', ')}</span
 						>
 					{/if}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex: tabindex comes only with role="button" -->
@@ -580,7 +602,10 @@
 						role={laying ? 'button' : undefined}
 						tabindex={laying ? 0 : undefined}
 						aria-label={laying
-							? `${f.label}, ${f.kind}. Arrow keys move it, Shift with arrows resizes it.`
+							? t('{label}, {kind}. Arrow keys move it, Shift with arrows resizes it.', {
+									label: f.label,
+									kind: t(f.kind)
+								})
 							: undefined}
 						onpointerdown={laying ? (e) => grab(e, 'move', f.id, f.kind) : undefined}
 						onfocus={laying ? () => (chosen = [f.id]) : undefined}
@@ -635,7 +660,7 @@
 						style:--w="{drag.box.w}px"
 						style:--h="{drag.box.h}px"
 					>
-						New {drag.kind}
+						{t('New {kind}', { kind: t(drag.kind) })}
 					</div>
 				{/if}
 			</div>
@@ -647,31 +672,40 @@
 		{#if laying}
 			<Toolbar {character} {field} {group} {column} {editField} {remove} {saveTemplate} />
 		{/if}
-		<div class="zoom" role="group" aria-label="Zoom and chat">
+		<div class="zoom" role="group" aria-label={t('Zoom and chat')}>
 			{#if !stacked}
-				<button class="dot" aria-label="Zoom out" title="Zoom out (−)" onclick={() => zoomBy(0.8)}
-					><Icon name="minus" /></button
+				<button
+					class="dot"
+					aria-label={t('Zoom out')}
+					title={t('Zoom out (−)')}
+					onclick={() => zoomBy(0.8)}><Icon name="minus" /></button
 				>
-				<button class="pct" title="Back to 100%" onclick={() => look(zoomAt(view, 1))}
+				<button class="pct" title={t('Back to 100%')} onclick={() => look(zoomAt(view, 1))}
 					>{Math.round(view.z * 100)}%</button
-				>
-				<button class="dot" aria-label="Zoom in" title="Zoom in (+)" onclick={() => zoomBy(1.25)}
-					><Icon name="plus" /></button
-				>
-				<button class="dot" aria-label="Fit the tab" title="Fit the tab (⇧1)" onclick={fitTab}
-					><Icon name="fit" /></button
 				>
 				<button
 					class="dot"
-					aria-label="Go to 0,0"
-					title="0,0 at 100% (⇧0)"
+					aria-label={t('Zoom in')}
+					title={t('Zoom in (+)')}
+					onclick={() => zoomBy(1.25)}><Icon name="plus" /></button
+				>
+				<button
+					class="dot"
+					aria-label={t('Fit the tab')}
+					title={t('Fit the tab (⇧1)')}
+					onclick={fitTab}><Icon name="fit" /></button
+				>
+				<button
+					class="dot"
+					aria-label={t('Go to 0,0')}
+					title={t('0,0 at 100% (⇧0)')}
 					onclick={() => look(HOME)}><Icon name="home" /></button
 				>
 			{/if}
 			<button
 				class="dot"
-				aria-label="Chat"
-				title="Ask Claude to change the room"
+				aria-label={t('Chat')}
+				title={t('Ask Claude to change the room')}
 				aria-expanded={ui.panel === 'chat'}
 				onclick={() => (ui.panel = ui.panel === 'chat' ? null : 'chat')}
 				><Icon name="chat" /></button

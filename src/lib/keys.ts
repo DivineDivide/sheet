@@ -1,3 +1,5 @@
+import type { Phrase } from './i18n.svelte';
+
 // Shortcuts are read on the window: App's apply to the whole session, Sheet's to the sheet
 // on screen. `shortcuts` is what `?` lists, so a key added to either belongs here too.
 
@@ -12,7 +14,11 @@ export const free = (e: KeyboardEvent) => !typing(e) && !document.querySelector(
 /** A key with no ⌘, Ctrl or Alt, pressed where shortcuts are free to act. */
 export const plain = (e: KeyboardEvent) => !e.metaKey && !e.ctrlKey && !e.altKey && free(e);
 
-export const shortcuts: [title: string, rows: [keys: string[], does: string][]][] = [
+// A `word` is a gesture rather than a key's cap, so it shows in the page's language.
+export const shortcuts: [
+	title: Phrase,
+	rows: [keys: (string | { word: Phrase })[], does: Phrase][]
+][] = [
 	[
 		'Anywhere',
 		[
@@ -31,9 +37,9 @@ export const shortcuts: [title: string, rows: [keys: string[], does: string][]][
 	[
 		'Canvas',
 		[
-			[['drag'], 'Pan, from empty space or with the middle button'],
-			[['wheel'], 'Pan, or scroll a long field'],
-			[[mod.replace('+', ''), 'wheel'], 'Zoom at the pointer; a pinch does too'],
+			[[{ word: 'drag' }], 'Pan, from empty space or with the middle button'],
+			[[{ word: 'wheel' }], 'Pan, or scroll a long field'],
+			[[mod.replace('+', ''), { word: 'wheel' }], 'Zoom at the pointer; a pinch does too'],
 			[['+', '−'], 'Zoom in / out'],
 			[['⇧1'], 'Fit the tab'],
 			[['⇧0'], '0,0 at 100%']
@@ -44,9 +50,9 @@ export const shortcuts: [title: string, rows: [keys: string[], does: string][]][
 		[
 			[['Esc'], 'Deselect the field, then Done'],
 			[['←', '→', '↑', '↓'], 'Move the selected field'],
-			[['⇧', 'arrows'], 'Resize it'],
+			[['⇧', { word: 'arrows' }], 'Resize it'],
 			[['Delete'], 'Delete it'],
-			[['⇧', 'click'], 'Select another field too'],
+			[['⇧', { word: 'click' }], 'Select another field too'],
 			[[`${mod}C`], 'Copy the selected fields, with their values'],
 			[[`${mod}V`], 'Paste them on this tab, of any character']
 		]

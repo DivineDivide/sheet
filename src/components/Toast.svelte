@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
 	import { session } from '../lib/session.svelte';
+	import { t } from '../lib/i18n.svelte';
 
 	let held = $state(false);
 
@@ -28,7 +29,9 @@
 				onpointerleave={() => (held = false)}
 			>
 				<span>{session.notice}</span>
-				<button class="x" aria-label="Dismiss" onclick={() => (session.notice = null)}>×</button>
+				<button class="x" aria-label={t('Dismiss')} onclick={() => (session.notice = null)}
+					>×</button
+				>
 			</div>
 		{/key}
 	{/if}

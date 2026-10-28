@@ -3,6 +3,7 @@
 	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
 	import { shown } from '../lib/doc';
+	import { t } from '../lib/i18n.svelte';
 
 	// Who is here, each in their colour; your own circle renames you.
 	let renaming = $state(false);
@@ -14,13 +15,14 @@
 		shown(session.doc.characters, session.gm).find((c) => c.id === p.character)?.name;
 </script>
 
-<div class="peers" role="group" aria-label="Here now">
+<div class="peers" role="group" aria-label={t('Here now')}>
 	{#each presence.others as p (p.who)}
 		{@const where = on(p)}
 		<span
 			class="peer"
 			style:--peer="var(--peer-{p.color % COLORS})"
-			title={nameOf(p) + (where ? `, on ${where}` : '')}>{badge(p)}</span
+			title={where ? t('{name}, on {where}', { name: nameOf(p), where }) : nameOf(p)}
+			>{badge(p)}</span
 		>
 	{/each}
 	{#if self}
@@ -29,7 +31,7 @@
 				class="rename"
 				value={presence.name}
 				placeholder={nameOf({ ...self, name: undefined })}
-				aria-label="Your name"
+				aria-label={t('Your name')}
 				{@attach (el) => el.select()}
 				onkeydown={(e) => {
 					if (e.key === 'Enter') e.currentTarget.blur();
@@ -44,7 +46,7 @@
 			<button
 				class="peer me"
 				style:--peer="var(--peer-{self.color % COLORS})"
-				title="You, as {nameOf(self)}: press to rename"
+				title={t('You, as {name}: press to rename', { name: nameOf(self) })}
 				onclick={() => (renaming = true)}>{badge(self)}</button
 			>
 		{/if}

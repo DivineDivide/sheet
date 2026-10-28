@@ -11,6 +11,7 @@
 		type When
 	} from '../lib/doc';
 	import { compileLine, nameOf, names as namesOf, rowNames, type Name } from '../lib/formula';
+	import { t } from '../lib/i18n.svelte';
 	import { session } from '../lib/session.svelte';
 	import { sources } from '../lib/source';
 	import { tip } from '../lib/tip';
@@ -41,7 +42,7 @@
 		saveTemplate: (name: string) => void;
 	} = $props();
 
-	const names = { field: 'Selected field', template: 'Save as template' };
+	const names = { field: 'Selected field', template: 'Save as template' } as const;
 	const open = $derived(ui.panel === 'chat' ? null : ui.panel);
 	const toggle = (p: Panel) => (ui.panel = open === p ? null : p);
 
@@ -62,21 +63,32 @@
 	const buttons = $derived<Whens>(
 		character.fields
 			.filter((f) => f.kind === 'button')
-			.map((b) => ({ when: { press: b.id }, text: `${b.label} pressed` }))
+			.map((b) => ({ when: { press: b.id }, text: t('{label} pressed', { label: b.label }) }))
 	);
 	const ticks = $derived<Whens>(
-		session.doc.clocks.map((k) => ({ when: { tick: k.id }, text: `${k.name} ticks` }))
+		session.doc.clocks.map((k) => ({
+			when: { tick: k.id },
+			text: t('{name} ticks', { name: k.name })
+		}))
 	);
 	const whens = $derived<Whens>([
 		...buttons,
 		...character.fields
-			.filter((t) => t.kind === 'table')
-			.flatMap((t) => pressed(t, (c) => `${t.label} ${c.name} pressed`)),
+			.filter((f) => f.kind === 'table')
+			.flatMap((f) =>
+				pressed(f, (c) => t('{table} {column} pressed', { table: f.label, column: c.name }))
+			),
 		...ticks
 	]);
 	// A column's rules hear only its own table's buttons, each in the row pressed.
 	const columnWhens = $derived<Whens>(
-		field ? [...pressed(field, (c) => `${c.name} pressed, in its row`), ...buttons, ...ticks] : []
+		field
+			? [
+					...pressed(field, (c) => t('{column} pressed, in its row', { column: c.name })),
+					...buttons,
+					...ticks
+				]
+			: []
 	);
 	const rowKnown = $derived(field ? [...rowNames(field), ...known] : known);
 	function fresh(label: string, kind: string, names: Name[]) {
@@ -94,8 +106,8 @@
 		{#each ['field', 'template'] as const as p (p)}
 			<button
 				class="dot"
-				aria-label={names[p]}
-				title={names[p]}
+				aria-label={t(names[p])}
+				title={t(names[p])}
 				aria-expanded={open === p}
 				onclick={() => toggle(p)}><Icon name={p} /></button
 			>
@@ -105,12 +117,12 @@
 	{#if open}
 		<section class="panel" transition:fly={{ x: 16, duration: 160 }}>
 			{#if open === 'field'}
-				<h2>Selected</h2>
+				<h2>{t('Selected')}</h2>
 				{#if group.length > 1}
 					<p class="muted">{group.map((f) => f.label).join(', ')}</p>
 				{:else if field}
 					<label>
-						<span class="muted">Label</span>
+						<span class="muted">{t('Label')}</span>
 						<input
 							value={field.label}
 							onchange={(e) => {
@@ -118,7 +130,10 @@
 								if (!text) return;
 								const label = uniqueLabel(text, character.fields, field.id);
 								if (label !== text) {
-									session.notice = `Another field is labelled ${text}, so this one is ${label}.`;
+									session.notice = t('Another field is labelled {text}, so this one is {label}.', {
+										text,
+										label
+									});
 									e.currentTarget.value = label;
 								}
 								editField(field.id, (f) => (f.label = label));
@@ -126,19 +141,19 @@
 						/>
 					</label>
 					<label>
-						<span class="muted">Kind</span>
+						<span class="muted">{t('Kind')}</span>
 						<select
 							value={field.kind}
 							onchange={(e) => editField(field.id, (f) => (f.kind = e.currentTarget.value as Kind))}
 						>
 							{#each kinds as kind (kind)}
-								<option value={kind}>{kind}</option>
+								<option value={kind}>{t(kind)}</option>
 							{/each}
 						</select>
 					</label>
 					{#if field.kind === 'table' || field.kind === 'entries'}
-						<label {@attach tip('A page holds as many rows as fit the box')}>
-							<span class="muted">Long lists</span>
+						<label {@attach tip(t('A page holds as many rows as fit the box'))}>
+							<span class="muted">{t('Long lists')}</span>
 							<select
 								value={field.pages ? 'pages' : 'scroll'}
 								onchange={(e) => {
@@ -146,14 +161,14 @@
 									editField(field.id, (f) => (paged ? (f.pages = true) : delete f.pages));
 								}}
 							>
-								<option value="scroll">Scroll</option>
-								<option value="pages">Flip pages</option>
+								<option value="scroll">{t('Scroll')}</option>
+								<option value="pages">{t('Flip pages')}</option>
 							</select>
 						</label>
 					{/if}
 					{#if field.kind === 'resource'}
-						<label {@attach tip('A bar is pressed or dragged to set the current')}>
-							<span class="muted">Shows as</span>
+						<label {@attach tip(t('A bar is pressed or dragged to set the current'))}>
+							<span class="muted">{t('Shows as')}</span>
 							<select
 								value={field.bar ? 'bar' : 'numbers'}
 								onchange={(e) => {
@@ -161,8 +176,8 @@
 									editField(field.id, (f) => (bar ? (f.bar = true) : delete f.bar));
 								}}
 							>
-								<option value="numbers">Numbers</option>
-								<option value="bar">Bar</option>
+								<option value="numbers">{t('Numbers')}</option>
+								<option value="bar">{t('Bar')}</option>
 							</select>
 						</label>
 					{/if}
@@ -177,10 +192,12 @@
 						{#if tables.length}
 							<label
 								{@attach tip(
-									"The table whose rows this one's + offers; a row added from it follows that row"
+									t(
+										"The table whose rows this one's + offers; a row added from it follows that row"
+									)
 								)}
 							>
-								<span class="muted">Rows from</span>
+								<span class="muted">{t('Rows from')}</span>
 								<select
 									value={field.from ?? ''}
 									onchange={(e) => {
@@ -188,7 +205,7 @@
 										editField(field.id, (f) => (from ? (f.from = from) : delete f.from));
 									}}
 								>
-									<option value="">No table</option>
+									<option value="">{t('No table')}</option>
 									{#each tables as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
 								</select>
 							</label>
@@ -206,7 +223,7 @@
 						{/if}
 					{/if}
 					{#if ruled.includes(field.kind)}
-						<span class="muted">Rules</span>
+						<span class="muted">{t('Rules')}</span>
 						{#key field.id}
 							<Rules
 								rules={field.rules ?? []}
@@ -223,7 +240,7 @@
 					{/if}
 					{#if character.tabs.length > 1}
 						<label>
-							<span class="muted">Tab</span>
+							<span class="muted">{t('Tab')}</span>
 							<select
 								value={field.tab}
 								onchange={(e) => editField(field.id, (f) => (f.tab = e.currentTarget.value))}
@@ -234,12 +251,12 @@
 							</select>
 						</label>
 					{/if}
-					<button onclick={() => remove(field.id)}>Delete field</button>
+					<button onclick={() => remove(field.id)}>{t('Delete field')}</button>
 				{:else}
-					<p class="muted">Nothing selected.</p>
+					<p class="muted">{t('Nothing selected.')}</p>
 				{/if}
 			{:else}
-				<h2>Template</h2>
+				<h2>{t('Template')}</h2>
 				<form
 					onsubmit={(e) => {
 						e.preventDefault();
@@ -250,12 +267,12 @@
 					<input
 						bind:value={templateName}
 						placeholder={character.name}
-						aria-label="Template name"
+						aria-label={t('Template name')}
 					/>
-					<button type="submit">Save</button>
+					<button type="submit">{t('Save')}</button>
 				</form>
 				<p class="muted">
-					Copies these tabs and fields, without values, to start new characters from.
+					{t('Copies these tabs and fields, without values, to start new characters from.')}
 				</p>
 			{/if}
 		</section>

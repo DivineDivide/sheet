@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import type { Row } from '../lib/doc';
+	import { t } from '../lib/i18n.svelte';
 	import { itemText, type Source } from '../lib/source';
 	import Icon from './Icon.svelte';
 
@@ -89,7 +90,7 @@
 	class="menu panel"
 	class:shown
 	role="dialog"
-	aria-label="Rows of {src.name}"
+	aria-label={t('Rows of {name}', { name: src.name })}
 	tabindex="-1"
 	bind:this={menu}
 	{@attach onStage}
@@ -101,17 +102,24 @@
 		anchor?.focus();
 	}}
 >
-	<button class="item blank" onclick={() => take(onblank)}><Icon name="plus" /> Blank row</button>
-	<input type="search" bind:value={q} placeholder="Search {src.name}" aria-label="Search" />
+	<button class="item blank" onclick={() => take(onblank)}
+		><Icon name="plus" /> {t('Blank row')}</button
+	>
+	<input
+		type="search"
+		bind:value={q}
+		placeholder={t('Search {name}', { name: src.name })}
+		aria-label={t('Search')}
+	/>
 	<div class="items">
 		{#each found as r (r.id)}
-			{@const t = itemText(src, r)}
+			{@const item = itemText(src, r)}
 			<button class="item" onclick={() => take(() => onpick(r))}>
-				<span>{t.title}</span>
-				{#if t.rest}<small>{t.rest}</small>{/if}
+				<span>{item.title}</span>
+				{#if item.rest}<small>{item.rest}</small>{/if}
 			</button>
 		{:else}
-			<p>Nothing matches.</p>
+			<p>{t('Nothing matches.')}</p>
 		{/each}
 	</div>
 </div>

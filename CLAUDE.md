@@ -162,6 +162,11 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   document. `index.html` applies the saved one before paint. Themes are token sets in
   `app.css`, and components read only tokens, so a theme can reshape tags or track boxes
   without editing them.
+- **`src/lib/i18n.svelte.ts`** — the language is this browser's too, English or Traditional
+  Chinese, switched beside the theme (`notes/trpg/sheet-zh.md`, with its glossary). A phrase
+  is its English text, `t('Add a box')`, and `src/lib/zh/` maps it to Chinese; a phrase
+  missing there fails `npm run check`. Modules the Worker loads never import it, so what
+  they say (the log, the room's refusals, `io.ts`'s errors) stays English.
 - **`src/components/`** — `CodeInput` is the coloured, completing box for formulas, rule
   conditions and lines; `Rules` edits a list of rules with it. `App` holds the top bar,
   where `Roster` shows three characters at a time and a + that opens the new-character

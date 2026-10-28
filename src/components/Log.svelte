@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '../lib/i18n.svelte';
 	import { session } from '../lib/session.svelte';
 
 	// What the room did for each press and tick, newest first. Only the room writes it.
@@ -7,8 +8,8 @@
 		new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 </script>
 
-<button popovertarget="room-log" disabled={!lines.length} title="What presses and ticks did"
-	>Log</button
+<button popovertarget="room-log" disabled={!lines.length} title={t('What presses and ticks did')}
+	>{t('Log')}</button
 >
 <div id="room-log" popover>
 	<ol>

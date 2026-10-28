@@ -11,6 +11,7 @@
 		type Value
 	} from '../lib/doc';
 	import { isErr, names, render, result, show } from '../lib/formula';
+	import { t } from '../lib/i18n.svelte';
 	import { markdown } from '../lib/markdown';
 	import { shrink } from '../lib/picture';
 	import { hint, ready, sheetOf } from '../lib/rules';
@@ -51,7 +52,7 @@
 			? true
 			: session.status === 'open'
 				? ready(session.doc, character, field.id)
-				: 'Waiting for the room to come back.'
+				: t('Waiting for the room to come back.')
 	);
 
 	// In Edit layout only the label's toggle is live, but a table edits its headers in place
@@ -90,17 +91,35 @@
 	const blankRow = () => append({ id: newId(), cells: {} });
 
 	// A field holding a list adds to it from a + by its label, not a button under the list.
+	// `to` names the + with the label, a phrase of its own since Chinese puts the label first.
 	const add = $derived.by(() => {
+		const label = field.label;
 		if (field.kind === 'entries')
-			return { what: 'Add an entry', run: () => append({ name: '', text: '' }) };
+			return {
+				what: t('Add an entry'),
+				to: t('Add an entry to {label}', { label }),
+				run: () => append({ name: '', text: '' })
+			};
 		if (field.kind === 'table' && !laying && field.columns?.length)
 			return {
-				what: src ? `Add a row, or one of ${src.name}` : 'Add a row',
+				what: src ? t('Add a row, or one of {name}', { name: src.name }) : t('Add a row'),
+				to: src
+					? t('Add a row, or one of {name} to {label}', { name: src.name, label })
+					: t('Add a row to {label}', { label }),
 				run: (e: MouseEvent) => (src ? menu?.open(e.currentTarget as HTMLElement) : blankRow())
 			};
-		if (field.kind === 'tags') return { what: 'Add a tag', run: () => (adding = true) };
+		if (field.kind === 'tags')
+			return {
+				what: t('Add a tag'),
+				to: t('Add a tag to {label}', { label }),
+				run: () => (adding = true)
+			};
 		if (field.kind === 'track')
-			return { what: 'Add a box', run: () => set([...(v as boolean[]), false]) };
+			return {
+				what: t('Add a box'),
+				to: t('Add a box to {label}', { label }),
+				run: () => set([...(v as boolean[]), false])
+			};
 		return null;
 	});
 
@@ -109,7 +128,7 @@
 		try {
 			set(await shrink(file));
 		} catch {
-			session.notice = `${file.name} could not be read as a picture.`;
+			session.notice = t('{name} could not be read as a picture.', { name: file.name });
 		}
 	}
 
@@ -138,19 +157,18 @@
 					<button
 						class="icon toggle"
 						class:off={field.hideLabel}
-						aria-label="{field.hideLabel ? 'Show' : 'Hide'} {field.label}'s label"
-						{@attach tip(field.hideLabel ? 'Show the label' : 'Hide the label, for everyone')}
+						aria-label={t(field.hideLabel ? "Show {label}'s label" : "Hide {label}'s label", {
+							label: field.label
+						})}
+						{@attach tip(field.hideLabel ? t('Show the label') : t('Hide the label, for everyone'))}
 						onpointerdown={(e) => e.stopPropagation()}
 						onclick={toggleLabel}><Icon name={field.hideLabel ? 'label-off' : 'label'} /></button
 					>
 				{/if}
 				<div class="controls" inert={dead || undefined}>
 					{#if add}
-						<button
-							class="icon"
-							aria-label="{add.what} to {field.label}"
-							{@attach tip(add.what)}
-							onclick={add.run}><Icon name="plus" /></button
+						<button class="icon" aria-label={add.to} {@attach tip(add.what)} onclick={add.run}
+							><Icon name="plus" /></button
 						>
 						{#if src}
 							<Picker
@@ -164,17 +182,17 @@
 					{#if paged}
 						{@const at = globalId(character, field)}
 						{@const page = pageOf(at, pageCount)}
-						<nav class="pager" aria-label="Pages of {field.label}">
+						<nav class="pager" aria-label={t('Pages of {label}', { label: field.label })}>
 							<button
 								class="icon"
-								aria-label="Previous page"
+								aria-label={t('Previous page')}
 								disabled={page === 0}
 								onclick={() => (ui.pages[at] = page - 1)}><Icon name="prev" /></button
 							>
 							<span>{page + 1} / {pageCount}</span>
 							<button
 								class="icon"
-								aria-label="Next page"
+								aria-label={t('Next page')}
 								disabled={page === pageCount - 1}
 								onclick={() => (ui.pages[at] = page + 1)}><Icon name="next" /></button
 							>
@@ -184,9 +202,9 @@
 						{@const boxes = v as boolean[]}
 						<button
 							class="icon"
-							aria-label="Remove a box from {field.label}"
+							aria-label={t('Remove a box from {label}', { label: field.label })}
 							disabled={boxes.length === 0}
-							{@attach tip('Remove a box')}
+							{@attach tip(t('Remove a box'))}
 							onclick={() => set(boxes.slice(0, -1))}><Icon name="minus" /></button
 						>
 					{/if}
@@ -206,7 +224,9 @@
 		{:else if field.kind === 'number'}
 			{@const n = v as number}
 			<div class="row">
-				<button aria-label="{field.label} down" onclick={() => set(n - 1)}>−</button>
+				<button aria-label={t('{label} down', { label: field.label })} onclick={() => set(n - 1)}
+					>−</button
+				>
 				<input
 					class="short"
 					type="number"
@@ -214,21 +234,24 @@
 					aria-label={field.label}
 					onchange={(e) => set(num(e.currentTarget.value, n))}
 				/>
-				<button aria-label="{field.label} up" onclick={() => set(n + 1)}>+</button>
+				<button aria-label={t('{label} up', { label: field.label })} onclick={() => set(n + 1)}
+					>+</button
+				>
 			</div>
 		{:else if field.kind === 'resource' && field.bar}
 			<div class="row"><Bar value={v as Resource} label={field.label} {set} /></div>
 		{:else if field.kind === 'resource'}
 			{@const r = v as Resource}
 			<div class="row">
-				<button aria-label="{field.label} down" onclick={() => set({ ...r, cur: r.cur - 1 })}
-					>−</button
+				<button
+					aria-label={t('{label} down', { label: field.label })}
+					onclick={() => set({ ...r, cur: r.cur - 1 })}>−</button
 				>
 				<input
 					class="short"
 					type="number"
 					value={r.cur}
-					aria-label="{field.label} current"
+					aria-label={t('{label} current', { label: field.label })}
 					onchange={(e) => set({ ...r, cur: num(e.currentTarget.value, r.cur) })}
 				/>
 				<span class="of">/</span>
@@ -236,11 +259,12 @@
 					class="short"
 					type="number"
 					value={r.max}
-					aria-label="{field.label} max"
+					aria-label={t('{label} max', { label: field.label })}
 					onchange={(e) => set({ ...r, max: num(e.currentTarget.value, r.max) })}
 				/>
-				<button aria-label="{field.label} up" onclick={() => set({ ...r, cur: r.cur + 1 })}
-					>+</button
+				<button
+					aria-label={t('{label} up', { label: field.label })}
+					onclick={() => set({ ...r, cur: r.cur + 1 })}>+</button
 				>
 			</div>
 		{:else if field.kind === 'track'}
@@ -250,7 +274,7 @@
 					<button
 						class="box"
 						class:on
-						aria-label="{field.label} box {i + 1}"
+						aria-label={t('{label} box {n}', { label: field.label, n: i + 1 })}
 						aria-pressed={on}
 						onclick={() => set(boxes.map((b, j) => (j === i ? !b : b)))}
 					></button>
@@ -265,7 +289,7 @@
 					>{show(out)}</output
 				>
 			{:else}
-				<span class="none">No formula yet. Set one in Edit layout.</span>
+				<span class="none">{t('No formula yet. Set one in Edit layout.')}</span>
 			{/if}
 		{:else if field.kind === 'text'}
 			<Prose
@@ -293,21 +317,21 @@
 									line
 									value={entry.name}
 									at="{globalId(character, field)}/{i}/name"
-									label="{field.label} name"
-									empty="Name"
+									label={t('{label} name', { label: field.label })}
+									empty={t('Name')}
 									onchange={(name) => put(i, { name })}
 								/>
 								<button
 									class="x"
-									aria-label="Remove {entry.name}"
+									aria-label={t('Remove {name}', { name: entry.name })}
 									onclick={() => set(entries.filter((_, j) => j !== i))}>×</button
 								>
 							</div>
 							<Prose
 								value={entry.text}
 								at="{globalId(character, field)}/{i}/text"
-								label="{entry.name} description"
-								empty="Description, in Markdown."
+								label={t('{name} description', { name: entry.name })}
+								empty={t('Description, in Markdown.')}
 								onchange={(text) => put(i, { text })}
 							/>
 						</li>
@@ -353,11 +377,13 @@
 				{#if src}
 					<img {src} alt={field.label} />
 					<span class="tools">
-						<button onclick={() => picker?.click()}>Replace</button>
-						<button class="x" aria-label="Remove the picture" onclick={() => set('')}>×</button>
+						<button onclick={() => picker?.click()}>{t('Replace')}</button>
+						<button class="x" aria-label={t('Remove the picture')} onclick={() => set('')}>×</button
+						>
 					</span>
 				{:else}
-					<button class="pick" onclick={() => picker?.click()}>Pick, drop or paste a picture</button
+					<button class="pick" onclick={() => picker?.click()}
+						>{t('Pick, drop or paste a picture')}</button
 					>
 				{/if}
 				<input
@@ -379,7 +405,7 @@
 						{tag}
 						<button
 							class="x"
-							aria-label="Remove {tag}"
+							aria-label={t('Remove {name}', { name: tag })}
 							onclick={() => set(tags.filter((_, j) => j !== i))}>×</button
 						>
 					</span>
@@ -388,7 +414,7 @@
 					<!-- Stays open after Enter for the next tag; closes when it loses focus. -->
 					<input
 						class="add"
-						aria-label="Add to {field.label}"
+						aria-label={t('Add to {label}', { label: field.label })}
 						{@attach (el) => el.focus()}
 						onblur={() => (adding = false)}
 						onkeydown={(e) => {

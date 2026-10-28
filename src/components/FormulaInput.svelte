@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Character, Field } from '../lib/doc';
 	import { compile, isErr, names, result, show } from '../lib/formula';
+	import { t } from '../lib/i18n.svelte';
 	import { sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
 	import CodeInput from './CodeInput.svelte';
@@ -20,10 +21,10 @@
 	const out = $derived(result(sheet, field.id));
 </script>
 
-<label for="formula-{field.id}"><span class="muted">Formula</span></label>
+<label for="formula-{field.id}"><span class="muted">{t('Formula')}</span></label>
 <CodeInput
 	id="formula-{field.id}"
-	label="Formula"
+	label={t('Formula')}
 	value={field.formula ?? ''}
 	names={known}
 	prefix="="

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from './lib/i18n.svelte';
 	import { visits } from './lib/session.svelte';
 
 	const rooms = visits();
@@ -7,16 +8,16 @@
 <main class="page">
 	<h1>sheet</h1>
 	{#if rooms.length}
-		<p>Rooms this browser has opened:</p>
+		<p>{t('Rooms this browser has opened:')}</p>
 		<ul>
 			{#each rooms as r (r.token)}
 				<li><a href="/r/{r.token}">{r.name}</a></li>
 			{/each}
 		</ul>
 	{:else}
-		<p>Every session lives in a room. Ask your GM for the link to yours.</p>
+		<p>{t('Every session lives in a room. Ask your GM for the link to yours.')}</p>
 	{/if}
-	<p class="muted"><a href="/gm">GMs: make and manage rooms</a></p>
+	<p class="muted"><a href="/gm">{t('GMs: make and manage rooms')}</a></p>
 </main>
 
 <style>

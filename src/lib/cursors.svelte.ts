@@ -1,4 +1,5 @@
 import { Gauge, SEND_RATE, decode, encode } from './cursor';
+import { t } from './i18n.svelte';
 import { session } from './session.svelte';
 
 // Pointers over Cloudflare Realtime: the room wires the channels, then moves never touch it.
@@ -131,7 +132,7 @@ session.onRtc = async (m) => {
 		hangUp();
 		refused = true;
 		if (m.why === 'allowance') {
-			session.notice = "Cursors are off: this month's free Realtime allowance is booked up.";
+			session.notice = t("Cursors are off: this month's free Realtime allowance is booked up.");
 		}
 	}
 };

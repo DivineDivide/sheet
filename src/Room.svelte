@@ -1,5 +1,6 @@
 <script lang="ts">
 	import App from './App.svelte';
+	import { t } from './lib/i18n.svelte';
 	import { session } from './lib/session.svelte';
 </script>
 
@@ -8,8 +9,8 @@
 {:else}
 	<p class="wait">
 		{session.status === 'missing'
-			? 'There is no room at this link. Ask your GM for a new one.'
-			: 'Connecting…'}
+			? t('There is no room at this link. Ask your GM for a new one.')
+			: t('Connecting…')}
 	</p>
 {/if}
 

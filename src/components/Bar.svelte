@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { curAt, fullness } from '../lib/bar';
 	import type { Resource } from '../lib/doc';
+	import { t } from '../lib/i18n.svelte';
 
 	// A resource as a bar: a press or a drag along it sets the current, written once, on
 	// release. Both numbers stay boxes before it, as a resource shows without the bar.
@@ -58,12 +59,17 @@
 </script>
 
 <span class="bar" class:compact>
-	<input type="number" value={cur} aria-label="{label} current" onchange={(e) => typed(e, 'cur')} />
+	<input
+		type="number"
+		value={cur}
+		aria-label={t('{label} current', { label })}
+		onchange={(e) => typed(e, 'cur')}
+	/>
 	<span class="of">/</span>
 	<input
 		type="number"
 		value={value.max}
-		aria-label="{label} max"
+		aria-label={t('{label} max', { label })}
 		onchange={(e) => typed(e, 'max')}
 	/>
 	<span

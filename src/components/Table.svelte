@@ -20,6 +20,7 @@
 		type Row
 	} from '../lib/doc';
 	import { cellResult, isErr, show } from '../lib/formula';
+	import { t } from '../lib/i18n.svelte';
 	import { hint, ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
 	import { choose, fromSource, keyOf, sources, type Source } from '../lib/source';
@@ -94,7 +95,12 @@
 			cols.map((c) => ({ id: c.id, label: c.name })),
 			col.id
 		);
-		if (name !== text) session.notice = `${field.label} already has ${text}, so this is ${name}.`;
+		if (name !== text)
+			session.notice = t('{label} already has {text}, so this is {name}.', {
+				label: field.label,
+				text,
+				name
+			});
 		columns((cs) => cs.map((c) => (c.id === col.id ? { ...c, name } : c)));
 	}
 
@@ -149,14 +155,17 @@
 							<span class="head">
 								<button
 									class="kind"
-									aria-label="{c.name}, {c.kind}. Press to set it up, drag to move it."
-									title="{c.kind}: press to set it up, drag to move it"
+									aria-label={t('{name}, {kind}. Press to set it up, drag to move it.', {
+										name: c.name,
+										kind: t(c.kind)
+									})}
+									title={t('{kind}: press to set it up, drag to move it', { kind: t(c.kind) })}
 									onpointerdown={(e) => hold(e, i)}
 									onclick={(e) => e.detail === 0 && onpick?.(c.id)}><Icon name={c.kind} /></button
 								>
 								<input
 									value={c.name}
-									aria-label="Column name"
+									aria-label={t('Column name')}
 									onpointerdown={(e) => e.stopPropagation()}
 									onchange={(e) => {
 										const text = e.currentTarget.value.trim();
@@ -170,8 +179,8 @@
 						{/if}
 					</th>
 				{/each}
-				<th class:before={mark === cols.length} aria-label="Remove">
-					{#if laying && !cols.length}<span class="none">Drop a kind here</span>{/if}
+				<th class:before={mark === cols.length} aria-label={t('Remove')}>
+					{#if laying && !cols.length}<span class="none">{t('Drop a kind here')}</span>{/if}
 				</th>
 			</tr>
 		</thead>
@@ -219,14 +228,14 @@
 										class="short"
 										type="number"
 										value={r.cur}
-										aria-label="{c.name} current"
+										aria-label={t('{label} current', { label: c.name })}
 										onchange={(e) =>
 											put(row, c.id, { ...r, cur: num(e.currentTarget.value) ?? r.cur })}
 									/><span class="of">/</span><input
 										class="short"
 										type="number"
 										value={r.max}
-										aria-label="{c.name} max"
+										aria-label={t('{label} max', { label: c.name })}
 										onchange={(e) =>
 											put(row, c.id, { ...r, max: num(e.currentTarget.value) ?? r.max })}
 									/>
@@ -238,7 +247,7 @@
 										<button
 											class="box"
 											class:on
-											aria-label="{c.name} box {i + 1}"
+											aria-label={t('{label} box {n}', { label: c.name, n: i + 1 })}
 											aria-pressed={on}
 											onclick={() =>
 												put(
@@ -250,13 +259,13 @@
 									{/each}
 									<button
 										class="x"
-										aria-label="Remove a box"
+										aria-label={t('Remove a box')}
 										disabled={!boxes.length}
 										onclick={() => put(row, c.id, boxes.slice(0, -1))}>−</button
 									>
 									<button
 										class="x"
-										aria-label="Add a box"
+										aria-label={t('Add a box')}
 										onclick={() => put(row, c.id, [...boxes, false])}>+</button
 									>
 								</span>
@@ -269,7 +278,7 @@
 								{@const why =
 									session.status === 'open'
 										? ready(session.doc, character, c.id, { table: field, row })
-										: 'Waiting for the room to come back.'}
+										: t('Waiting for the room to come back.')}
 								<button
 									class="press"
 									disabled={why !== true}
@@ -283,7 +292,7 @@
 								<input
 									value={((v as string[] | undefined) ?? []).join(', ')}
 									aria-label={c.name}
-									placeholder="a, b"
+									placeholder={t('a, b')}
 									onchange={(e) => {
 										const tags = e.currentTarget.value
 											.split(/[,，、]/)
@@ -307,8 +316,10 @@
 						{#if follows}
 							<button
 								class="x"
-								aria-label="Stop following {follows.name}"
-								{@attach tip(`Follows ${follows.name}. Press to keep it as it is now.`)}
+								aria-label={t('Stop following {name}', { name: follows.name })}
+								{@attach tip(
+									t('Follows {name}. Press to keep it as it is now.', { name: follows.name })
+								)}
 								onclick={() =>
 									set(rows.map((r) => (r.id === row.id ? { id: r.id, cells: r.cells } : r)))}
 								><Icon name="link" /></button
@@ -316,7 +327,7 @@
 						{/if}
 						<button
 							class="x"
-							aria-label="Remove this row"
+							aria-label={t('Remove this row')}
 							onclick={() => set(rows.filter((r) => r.id !== row.id))}>×</button
 						>
 					</td>
@@ -326,7 +337,7 @@
 	</table>
 {:else}
 	<span class="none"
-		>No columns yet. In Edit layout, drag a kind from the left onto this table.</span
+		>{t('No columns yet. In Edit layout, drag a kind from the left onto this table.')}</span
 	>
 {/if}
 

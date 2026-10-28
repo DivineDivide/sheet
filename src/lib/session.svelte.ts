@@ -1,6 +1,7 @@
 import type { RtcDown, RtcUp } from './cursor';
 import { newId, type Doc } from './doc';
 import { History } from './history';
+import { t } from './i18n.svelte';
 import type { Presence } from './presence';
 import type { Act } from './rules';
 import { follow } from './source';
@@ -117,7 +118,10 @@ function receive(m: Down) {
 	} else {
 		replica!.reject(m.id);
 		doc = replica!.rebuild();
-		notice = { text: `Not saved: ${m.reason}. Your change was taken back.`, n: ++told };
+		notice = {
+			text: t('Not saved: {reason}. Your change was taken back.', { reason: m.reason }),
+			n: ++told
+		};
 	}
 	settle();
 }
@@ -125,7 +129,7 @@ function receive(m: Down) {
 /** Sends a message that is not an edit: one the room only passes on, so it waits for nothing. */
 function tell(m: object): boolean {
 	if (socket?.readyState !== WebSocket.OPEN) {
-		notice = { text: 'The room is not connected. Try again in a moment.', n: ++told };
+		notice = { text: t('The room is not connected. Try again in a moment.'), n: ++told };
 		return false;
 	}
 	socket.send(JSON.stringify(m));
@@ -134,7 +138,7 @@ function tell(m: object): boolean {
 
 /** Edits wait while a draft is shown, so nobody edits what isn't the room. */
 function held(): boolean {
-	if (draft) notice = { text: "This is Claude's draft. Apply or discard it first.", n: ++told };
+	if (draft) notice = { text: t("This is Claude's draft. Apply or discard it first."), n: ++told };
 	return draft !== null;
 }
 
@@ -279,7 +283,7 @@ export const session = {
 	act(a: Act) {
 		if (held()) return;
 		if (socket?.readyState !== WebSocket.OPEN) {
-			this.notice = 'Presses and clocks wait for the room, which is not connected.';
+			this.notice = t('Presses and clocks wait for the room, which is not connected.');
 			return;
 		}
 		socket.send(JSON.stringify({ id: newId(), act: a }));
