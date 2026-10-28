@@ -1,10 +1,13 @@
 /*
- * Themes are sets of the tokens below, chosen by `data-theme` on <html>. Components read
+ * Themes are sets of the tokens below, chosen by `data-theme` on <html>, or on any element
+ * that shows a theme other than the page's, as the theme picker's options do. Components read
  * only tokens, so a theme reshapes tags, track boxes and field cards without touching them.
  */
 
-/* Light: the site's palette of paper, ink, moss and one clay accent. */
-:root {
+/* Light: the site's palette of paper, ink, moss and one clay accent. Every themed element
+   takes the whole set first, so no token of the page's theme leaks into another's. */
+:root,
+[data-theme] {
 	--page: #f4f3ee;
 	--surface: #fbfaf5;
 	--ink: #23281f;
@@ -53,7 +56,7 @@
 
 /* Dark is declared twice: once for System when the OS is dark, once when picked outright. */
 @media (prefers-color-scheme: dark) {
-	:root[data-theme='system'],
+	[data-theme='system'],
 	:root:not([data-theme]) {
 		--page: #151713;
 		--surface: #1b1e19;
@@ -68,7 +71,7 @@
 	}
 }
 
-:root[data-theme='dark'] {
+[data-theme='dark'] {
 	--page: #151713;
 	--surface: #1b1e19;
 	--ink: #e3e5dc;
@@ -86,7 +89,7 @@
  * black), bone-coloured text and brass trim, set in a CJK serif. Tags are cut as shards;
  * track boxes turn into diamonds, like the faces of a fate die.
  */
-:root[data-theme='void'] {
+[data-theme='void'] {
 	--page: #0e0b0b;
 	--surface: #161211;
 	--ink: #e6dcc8;
@@ -218,6 +221,21 @@ select {
 		background: color-mix(in oklab, var(--accent) 14%, transparent);
 	}
 	option:checked {
+		color: var(--accent);
+	}
+	/* The theme picker's options, each a field card drawn in the theme it names. */
+	option[data-theme] {
+		margin: 0.15rem 0;
+		border: var(--field-border);
+		background: var(--field-bg);
+		box-shadow: var(--field-shadow);
+		color: var(--ink);
+		font-family: var(--font-body);
+	}
+	option[data-theme]:is(:hover, :focus-visible) {
+		border-color: var(--accent);
+	}
+	option[data-theme]:checked {
 		color: var(--accent);
 	}
 }

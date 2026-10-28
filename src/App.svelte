@@ -128,7 +128,7 @@
 				onchange={(e) => (theme.id = e.currentTarget.value as ThemeId)}
 			>
 				{#each themes as th (th.id)}
-					<option value={th.id}>{t(th.name)}</option>
+					<option value={th.id} data-theme={th.id}>{t(th.name)}</option>
 				{/each}
 			</select>
 			<select
