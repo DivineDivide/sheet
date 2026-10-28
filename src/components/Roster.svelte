@@ -44,6 +44,23 @@
 		};
 	}
 
+	// A mouse wheel only scrolls up and down: each notch, or a trackpad's swipe of a third of
+	// a character, moves one character along. Steps go from where the last one is headed, so
+	// a quick run of them is not cut short by a scroll still under way.
+	let wheeled = 0;
+	let goal: number | null = null;
+	function wheel(e: WheelEvent) {
+		if (e.deltaX) return;
+		wheeled += e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaY;
+		const [a, b] = strip.querySelectorAll<HTMLElement>('.chip');
+		const step = b ? b.offsetLeft - a.offsetLeft : 0;
+		if (!step || Math.abs(wheeled) < step / 3) return;
+		const end = strip.scrollWidth - strip.clientWidth;
+		goal = Math.max(0, Math.min(end, (goal ?? strip.scrollLeft) + Math.sign(wheeled) * step));
+		wheeled = 0;
+		strip.scrollTo({ left: goal });
+	}
+
 	// Keeps the open character in sight however it was picked, by [ and ] too.
 	$effect(() => {
 		void character?.id;
@@ -63,10 +80,8 @@
 		aria-label="Characters"
 		bind:this={strip}
 		onscroll={edges}
-		onwheel={(e) => {
-			// A mouse wheel only scrolls up and down; turn that sideways here.
-			if (!e.deltaX) strip.scrollLeft += e.deltaY;
-		}}
+		onscrollend={() => (goal = null)}
+		onwheel={wheel}
 	>
 		{#each shown(doc.characters, session.gm) as c (c.id)}
 			<button
@@ -168,6 +183,12 @@
 	}
 	.strip::-webkit-scrollbar {
 		display: none;
+	}
+	/* Gliding to a character, by the wheel or by [ and ]; at once for those who ask so. */
+	@media (prefers-reduced-motion: no-preference) {
+		.strip {
+			scroll-behavior: smooth;
+		}
 	}
 	.fade-left {
 		--l: transparent;
