@@ -3,7 +3,7 @@
 	import type { Resource } from '../lib/doc';
 
 	// A resource as a bar: a press or a drag along it sets the current, written once, on
-	// release. Both numbers stay boxes beside it, as a resource shows without the bar.
+	// release. Both numbers stay boxes before it, as a resource shows without the bar.
 	let {
 		value,
 		label,
@@ -58,6 +58,14 @@
 </script>
 
 <span class="bar" class:compact>
+	<input type="number" value={cur} aria-label="{label} current" onchange={(e) => typed(e, 'cur')} />
+	<span class="of">/</span>
+	<input
+		type="number"
+		value={value.max}
+		aria-label="{label} max"
+		onchange={(e) => typed(e, 'max')}
+	/>
 	<span
 		class="track"
 		role="slider"
@@ -76,14 +84,6 @@
 			><span class="fill" style:width="{fullness({ cur, max: value.max })}%"></span></span
 		>
 	</span>
-	<input type="number" value={cur} aria-label="{label} current" onchange={(e) => typed(e, 'cur')} />
-	<span class="of">/</span>
-	<input
-		type="number"
-		value={value.max}
-		aria-label="{label} max"
-		onchange={(e) => typed(e, 'max')}
-	/>
 </span>
 
 <style>
@@ -101,7 +101,7 @@
 		align-items: center;
 		min-width: 3rem;
 		height: 1.6rem;
-		margin-right: 0.3rem;
+		margin-left: 0.3rem;
 		cursor: pointer;
 		touch-action: none;
 	}
