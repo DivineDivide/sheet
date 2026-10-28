@@ -22,6 +22,7 @@
 	import { COLORS, nameOf, type Peer } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
+	import { tip } from '../lib/tip';
 	import { ui } from '../lib/ui.svelte';
 	import { HOME, fit, toSheet, zoomAt, type View } from '../lib/view';
 	import FieldValue from './FieldValue.svelte';
@@ -325,9 +326,9 @@
 			}
 			// A long field scrolls its own content first, as a page inside the sheet would; so
 			// does a paged list's one row too tall for its box.
-			const slot = (e.target as Element).closest('.slot');
-			const own = slot && (e.target as Element).closest('[data-scroll]');
-			if (!laying && slot && [own, slot].some((el) => el && scrolls(el, dx, dy))) return;
+			const box = (e.target as Element).closest('.slot')?.querySelector(':scope > .content');
+			const own = box && (e.target as Element).closest('[data-scroll]');
+			if (!laying && box && [own, box].some((el) => el && scrolls(el, dx, dy))) return;
 			e.preventDefault();
 			look({ ...view, x: view.x + dx / view.z, y: view.y + dy / view.z });
 		};
@@ -608,6 +609,20 @@
 								aria-hidden="true"
 								onpointerdown={(e) => grab(e, 'size', f.id, f.kind)}
 							></span>
+							<!-- On the box, not in the field, whose content is inert while laying out. -->
+							{#if f.kind !== 'button'}
+								<button
+									class="eye"
+									class:off={f.hideLabel}
+									aria-label="{f.hideLabel ? 'Show' : 'Hide'} {f.label}'s label"
+									{@attach tip(f.hideLabel ? 'Show the label' : 'Hide the label, for everyone')}
+									onpointerdown={(e) => e.stopPropagation()}
+									onclick={() =>
+										editField(f.id, (x) =>
+											x.hideLabel ? delete x.hideLabel : (x.hideLabel = true)
+										)}><Icon name={f.hideLabel ? 'eye-off' : 'eye'} /></button
+								>
+							{/if}
 						{/if}
 					</div>
 				{/each}
@@ -813,8 +828,6 @@
 		top: var(--y);
 		width: var(--w);
 		height: var(--h);
-		padding: 0.45rem 0.6rem;
-		overflow: auto;
 		border: var(--field-border);
 		border-radius: var(--radius);
 		background: var(--field-bg);
@@ -822,9 +835,11 @@
 		cursor: auto;
 	}
 	.laying .slot {
-		overflow: hidden;
 		cursor: grab;
 		user-select: none;
+	}
+	.laying .content {
+		overflow: hidden;
 	}
 	.slot.selected,
 	.slot.target,
@@ -892,8 +907,13 @@
 		cursor: grabbing;
 		opacity: 0.9;
 	}
+	/* The box's content scrolls, not the box, so what sits on its edge (a hidden label's
+	   controls) is not clipped. */
 	.content {
 		height: 100%;
+		padding: 0.45rem 0.6rem;
+		overflow: auto;
+		border-radius: inherit;
 	}
 	/* Never under the pointer, so a drop can find the table beneath it. */
 	.ghost {
@@ -931,6 +951,36 @@
 		border-color: var(--accent);
 		opacity: 1;
 	}
+	/* Shown while the box is hovered or selected, and always once its label is hidden. */
+	.eye {
+		position: absolute;
+		top: 3px;
+		right: 3px;
+		display: grid;
+		place-items: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: var(--field-bg);
+		color: var(--muted);
+		cursor: pointer;
+		opacity: 0;
+	}
+	.slot:hover .eye,
+	.slot.selected .eye,
+	.eye:focus-visible,
+	.eye.off {
+		opacity: 1;
+	}
+	.eye:hover {
+		color: var(--accent);
+	}
+	.eye :global(svg) {
+		width: 0.85rem;
+		height: 0.85rem;
+	}
 	.zoom {
 		position: absolute;
 		right: 12px;
@@ -961,8 +1011,11 @@
 		gap: 0.75rem;
 	}
 	.stacked .slot {
-		position: static;
+		position: relative;
 		width: auto;
+		height: auto;
+	}
+	.stacked .content {
 		height: auto;
 		overflow: visible;
 	}

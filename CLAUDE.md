@@ -147,7 +147,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   which every write goes through. A tab runs on in every direction from 0,0, so boxes may
   be negative; layouts made before that sit right of and below 0,0, unmoved. Boxes may
   overlap; nothing settles them. A field's box is its size in play too, and content beyond
-  it scrolls. A table or entries list with `pages` flips pages instead (`Pages`): every row
+  it scrolls, inside the box (`.content`), so what sits on its edge is never clipped: a
+  `hideLabel` field's controls float there on hover, and the eye that hides a label sits on
+  the box in Edit layout, since its content is inert then. A table or entries list with `pages` flips pages instead (`Pages`): every row
   stays drawn and measured, `pageStarts` fits whole rows to the box, and rows off the page
   carry `data-off`. Each browser keeps its own page in `ui.pages`. Narrower than 640px the
   sheet ignores boxes and stacks fields in `readingOrder`.

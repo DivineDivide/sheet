@@ -597,7 +597,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_field',
 		description:
-			"Changes a field's label, kind, tab, place, size or formula, or whether a long list flips pages. A value left from its old kind reads as blank.",
+			"Changes a field's label, kind, tab, place, size or formula, whether its label shows, or whether a long list flips pages. A value left from its old kind reads as blank.",
 		input_schema: obj(
 			{
 				...who,
@@ -610,6 +610,11 @@ export const tools: Tool[] = [
 					type: 'boolean',
 					description:
 						'A table or entries list: true flips pages, each holding as many rows as fit its box; false scrolls'
+				},
+				hide_label: {
+					type: 'boolean',
+					description:
+						"true hides the field's label from everyone, its + and other controls showing on hover; false shows it. A button's label is its text, so it has none to hide"
 				}
 			},
 			['character', 'field']
@@ -639,6 +644,11 @@ export const tools: Tool[] = [
 					fail(`only a table or an entries list has pages, and ${f.label} is a ${f.kind}`);
 				if (i.pages) f.pages = true;
 				else delete f.pages;
+			}
+			if (typeof i.hide_label === 'boolean') {
+				if (f.kind === 'button') fail(`${f.label} is a button, whose label is its text`);
+				if (i.hide_label) f.hideLabel = true;
+				else delete f.hideLabel;
 			}
 			return `Changed.${asked ? renamed(asked, f.label) : ''}${shows(doc, c, f)}${overlaps(c, f)}\n${fieldView(doc, c, f)}`;
 		}

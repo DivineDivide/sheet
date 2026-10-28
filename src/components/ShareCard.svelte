@@ -70,7 +70,7 @@
 						style:min-height="{f.box.h}px"
 						style:height={f.kind === 'image' ? `${f.box.h}px` : undefined}
 					>
-						<div class="label md">{@html markdown(f.label)}</div>
+						{#if !f.hideLabel}<div class="label md">{@html markdown(f.label)}</div>{/if}
 						{#if f.kind === 'number'}
 							<span class="big">{v}</span>
 						{:else if f.kind === 'resource'}

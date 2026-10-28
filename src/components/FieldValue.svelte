@@ -109,59 +109,58 @@
 	{@attach tip(field.kind === 'button' ? hint(session.doc, character, field.id, why) : '')}
 >
 	{#if field.kind !== 'button'}
-		<div class="head">
-			<div class="label md">{@html markdown(field.label)}</div>
-			{#if add}
-				<button
-					class="icon"
-					aria-label="{add.what} to {field.label}"
-					{@attach tip(add.what)}
-					onclick={add.run}><Icon name="plus" /></button
-				>
-				{#if src}
-					<Picker
-						bind:this={menu}
-						{src}
-						onblank={blankRow}
-						onpick={(item) => append(rowFrom(src, item, field.columns ?? []))}
-					/>
+		<!-- In Edit layout the pager would sit under the label's eye, and nothing here is live. -->
+		{@const paged = !!field.pages && pageCount > 1 && !laying}
+		{#if !field.hideLabel || (!laying && (add || paged || field.kind === 'track'))}
+			<div class="head" class:bare={field.hideLabel}>
+				{#if !field.hideLabel}<div class="label md">{@html markdown(field.label)}</div>{/if}
+				{#if add}
+					<button
+						class="icon"
+						aria-label="{add.what} to {field.label}"
+						{@attach tip(add.what)}
+						onclick={add.run}><Icon name="plus" /></button
+					>
+					{#if src}
+						<Picker
+							bind:this={menu}
+							{src}
+							onblank={blankRow}
+							onpick={(item) => append(rowFrom(src, item, field.columns ?? []))}
+						/>
+					{/if}
 				{/if}
-			{/if}
-			{#if field.pages && pageCount > 1}
-				{@const at = globalId(character, field)}
-				{@const page = pageOf(at, pageCount)}
-				<!-- Its presses stay its own, so in Edit layout they flip pages, not grab the field. -->
-				<nav
-					class="pager"
-					aria-label="Pages of {field.label}"
-					onpointerdown={(e) => e.stopPropagation()}
-				>
+				{#if paged}
+					{@const at = globalId(character, field)}
+					{@const page = pageOf(at, pageCount)}
+					<nav class="pager" aria-label="Pages of {field.label}">
+						<button
+							class="icon"
+							aria-label="Previous page"
+							disabled={page === 0}
+							onclick={() => (ui.pages[at] = page - 1)}><Icon name="prev" /></button
+						>
+						<span>{page + 1} / {pageCount}</span>
+						<button
+							class="icon"
+							aria-label="Next page"
+							disabled={page === pageCount - 1}
+							onclick={() => (ui.pages[at] = page + 1)}><Icon name="next" /></button
+						>
+					</nav>
+				{/if}
+				{#if field.kind === 'track'}
+					{@const boxes = v as boolean[]}
 					<button
 						class="icon"
-						aria-label="Previous page"
-						disabled={page === 0}
-						onclick={() => (ui.pages[at] = page - 1)}><Icon name="prev" /></button
+						aria-label="Remove a box from {field.label}"
+						disabled={boxes.length === 0}
+						{@attach tip('Remove a box')}
+						onclick={() => set(boxes.slice(0, -1))}><Icon name="minus" /></button
 					>
-					<span>{page + 1} / {pageCount}</span>
-					<button
-						class="icon"
-						aria-label="Next page"
-						disabled={page === pageCount - 1}
-						onclick={() => (ui.pages[at] = page + 1)}><Icon name="next" /></button
-					>
-				</nav>
-			{/if}
-			{#if field.kind === 'track'}
-				{@const boxes = v as boolean[]}
-				<button
-					class="icon"
-					aria-label="Remove a box from {field.label}"
-					disabled={boxes.length === 0}
-					{@attach tip('Remove a box')}
-					onclick={() => set(boxes.slice(0, -1))}><Icon name="minus" /></button
-				>
-			{/if}
-		</div>
+				{/if}
+			</div>
+		{/if}
 	{/if}
 
 	{#if field.kind === 'button'}
@@ -367,6 +366,35 @@
 		flex-direction: column;
 		gap: 0.25rem;
 		height: 100%;
+	}
+	/* A hidden label's line keeps its controls, on the box's top edge at the right, as a
+	   legend sits, so they cover no row. Placed against the box, not this, whose content
+	   scrolls and would clip them. Shown while the box is hovered or one has focus, and
+	   always where nothing can hover; faded, not gone, so the menu a + opens can follow it. */
+	.head.bare {
+		position: absolute;
+		top: 0;
+		right: 0.6rem;
+		z-index: 1;
+		translate: 0 -50%;
+		padding: 0 0.15rem;
+		border: var(--field-border);
+		border-radius: var(--radius);
+		background: var(--field-bg);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.12s;
+	}
+	:global(.slot:hover) .head.bare,
+	.head.bare:focus-within {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	@media (hover: none) {
+		.head.bare {
+			opacity: 1;
+			pointer-events: auto;
+		}
 	}
 	/* Fills its box, down to the 3×3 smallest, and clips a label too long for it. */
 	.press {

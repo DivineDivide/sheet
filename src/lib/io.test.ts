@@ -83,6 +83,14 @@ describe('parse', () => {
 		expect(() => parse(mangle((d) => (d.characters[0].fields[0].pages = 'yes')))).toThrow(/pages/);
 	});
 
+	it('keeps a hidden label, and refuses any other setting', () => {
+		const kept = parse(mangle((d) => (d.characters[0].fields[0].hideLabel = true)));
+		expect(kept.characters[0].fields[0].hideLabel).toBe(true);
+		expect(() => parse(mangle((d) => (d.characters[0].fields[0].hideLabel = 1)))).toThrow(
+			/label shows/
+		);
+	});
+
 	it('refuses an unknown field kind', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/

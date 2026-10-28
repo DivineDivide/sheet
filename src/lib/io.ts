@@ -153,6 +153,9 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		if (f.pages !== undefined && f.pages !== true) {
 			throw new ImportError(`"${f.label}" on ${name} says wrongly whether it has pages`);
 		}
+		if (f.hideLabel !== undefined && f.hideLabel !== true) {
+			throw new ImportError(`"${f.label}" on ${name} says wrongly whether its label shows`);
+		}
 	}
 }
 

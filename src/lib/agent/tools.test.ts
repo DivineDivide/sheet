@@ -347,3 +347,25 @@ describe('a long list in pages', () => {
 		);
 	});
 });
+
+describe('a hidden label', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	const hp = () => doc.characters[0].fields.find((f) => f.label === 'HP')!;
+
+	it('hides a label and says so, then shows it again', () => {
+		expect(ok(doc, 'edit_field', { character: 'Ash', field: 'HP', hide_label: true })).toContain(
+			'label hidden'
+		);
+		expect(hp().hideLabel).toBe(true);
+		ok(doc, 'edit_field', { character: 'Ash', field: 'HP', hide_label: false });
+		expect(hp().hideLabel).toBeUndefined();
+	});
+
+	it("refuses to hide a button's label, which is its text", () => {
+		ok(doc, 'add_field', { character: 'Ash', label: 'Rest', kind: 'button' });
+		expect(
+			refused(doc, 'edit_field', { character: 'Ash', field: 'Rest', hide_label: true })
+		).toMatch(/button/);
+	});
+});

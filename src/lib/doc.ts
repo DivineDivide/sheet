@@ -85,6 +85,8 @@ export type Field = {
 	from?: string;
 	/** A table's or entries list's rows flip by page, as many as fit its box, not scroll. */
 	pages?: true;
+	/** Its label is hidden from everyone, and its label's controls float on hover. */
+	hideLabel?: true;
 	rules?: Rule[];
 };
 /** Tabs and the fields on them: what a character is shaped like, apart from its values. */
