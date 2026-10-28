@@ -325,6 +325,22 @@ describe("a GM's page, as each asker's chat sees it", () => {
 		expect(text).toContain('It shows 5.');
 		expect(text).toContain('=GM![Party bonus] + 3 → 5');
 	});
+
+	it('copies a character the asker sees, values and all, after it', () => {
+		const room = structuredClone(doc);
+		expect(ok(room, 'add_character', { name: 'Bea', copy_of: 'Bea' }, false)).toContain(
+			'It is called "Bea 2"'
+		);
+		const [, bea, copy] = room.characters;
+		expect(copy.name).toBe('Bea 2');
+		expect(copy.values).toEqual(bea.values);
+		expect(refused(room, 'add_character', { name: 'X', copy_of: 'GM' }, false)).toBe(
+			'no character is called "GM" (there are: Bea, Bea 2)'
+		);
+		ok(room, 'add_character', { name: 'GM copy', copy_of: 'GM' });
+		expect(room.characters[1]).toMatchObject({ name: 'GM copy', hidden: true });
+		expect(() => validate(room)).not.toThrow();
+	});
 });
 
 describe('a long list in pages', () => {

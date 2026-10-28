@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { blank, newCharacter, newDoc, uniqueLabel, valueOf, type Character } from './doc';
+import {
+	blank,
+	duplicate,
+	globalId,
+	newCharacter,
+	newDoc,
+	uniqueLabel,
+	valueOf,
+	type Character,
+	type Row
+} from './doc';
 
 describe('valueOf', () => {
 	const ch = (values: Character['values']) => ({ values });
@@ -39,6 +49,43 @@ describe('newCharacter', () => {
 		const c = newCharacter('Ash');
 		expect(c.tabs).toHaveLength(1);
 		expect(c.fields).toEqual([]);
+	});
+});
+
+describe('duplicate', () => {
+	const gm = newCharacter('GM', { tabs: [], fields: [] });
+	const ash = newCharacter('Ash', newDoc().templates[0]);
+	const [hp, , statuses] = ash.fields;
+	const gear = { ...statuses, id: 'gear', label: 'Gear', from: globalId(ash, statuses) };
+	const weapons = { ...statuses, id: 'weapons', label: 'Weapons', from: 'gm-id!weapons' };
+	const sum = {
+		...hp,
+		id: 'sum',
+		label: 'Sum',
+		kind: 'formula' as const,
+		formula: `@${globalId(ash, hp)} + @${globalId(gm, hp)}`
+	};
+	ash.fields.push(gear, weapons, sum);
+	ash.values[hp.id] = { cur: 3, max: 12 };
+	ash.values.gear = [
+		{ id: 'r1', cells: {}, link: { table: globalId(ash, statuses), row: 's1' } }
+	] satisfies Row[];
+	const copy = duplicate(ash, 'Ash 2');
+
+	it('keeps every value under a new id and name, apart from the original', () => {
+		expect(copy.id).not.toBe(ash.id);
+		expect(copy.name).toBe('Ash 2');
+		expect(copy.values[hp.id]).toEqual({ cur: 3, max: 12 });
+		(copy.values[hp.id] as { cur: number }).cur = 0;
+		expect(ash.values[hp.id]).toEqual({ cur: 3, max: 12 });
+	});
+
+	it('names itself where the original named itself, and others as they were', () => {
+		const at = (id: string) => copy.fields.find((f) => f.id === id)!;
+		expect(at('sum').formula).toBe(`@${globalId(copy, hp)} + @${globalId(gm, hp)}`);
+		expect(at('gear').from).toBe(globalId(copy, statuses));
+		expect(at('weapons').from).toBe('gm-id!weapons');
+		expect((copy.values.gear as Row[])[0].link?.table).toBe(globalId(copy, statuses));
 	});
 });
 

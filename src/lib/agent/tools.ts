@@ -4,6 +4,7 @@
 import {
 	blank,
 	columnKinds,
+	duplicate,
 	globalId,
 	kinds,
 	newCharacter,
@@ -397,9 +398,15 @@ export const tools: Tool[] = [
 	},
 	{
 		name: 'add_character',
-		description: 'Adds a character, blank or from a template.',
+		description:
+			'Adds a character: blank, from a template, or as a copy of another, values and all.',
 		input_schema: obj(
-			{ name: text('Its name'), template: text('A template to start from'), gm_only },
+			{
+				name: text('Its name'),
+				template: text('A template to start from'),
+				copy_of: text('A character to copy, in place of a template'),
+				gm_only
+			},
 			['name']
 		),
 		run(doc, i, gm) {
@@ -409,10 +416,21 @@ export const tools: Tool[] = [
 				doc.characters.map((c) => ({ id: c.id, label: c.name }))
 			);
 			const from = opt(i, 'template');
-			const t = from ? named(doc.templates, from, (x) => x.name, 'template') : undefined;
-			const c = newCharacter(name, t && structuredClone(t));
-			if (hide(i, gm)) c.hidden = true;
-			doc.characters.push(c);
+			const original = opt(i, 'copy_of');
+			if (from && original) fail('give template or copy_of, not both');
+			let c: Character;
+			if (original) {
+				const o = named(shown(doc.characters, gm), original, (x) => x.name, 'character');
+				c = duplicate(o, name);
+				doc.characters.splice(doc.characters.indexOf(o) + 1, 0, c);
+			} else {
+				const t = from ? named(doc.templates, from, (x) => x.name, 'template') : undefined;
+				c = newCharacter(name, t && structuredClone(t));
+				doc.characters.push(c);
+			}
+			const hidden = hide(i, gm);
+			if (hidden) c.hidden = true;
+			else if (hidden === false) delete c.hidden;
 			return `Added.${renamed(asked, name)}\n${characterView(doc, c)}`;
 		}
 	},

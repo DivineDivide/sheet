@@ -4,6 +4,7 @@
 	import {
 		blank,
 		columnKinds,
+		duplicate,
 		newId,
 		uniqueLabel,
 		type Character,
@@ -33,7 +34,7 @@
 	import { gapAt } from './Table.svelte';
 	import Toolbar from './Toolbar.svelte';
 
-	let { character }: { character: Character } = $props();
+	let { character, open }: { character: Character; open: (id: string) => void } = $props();
 
 	// Narrower than this the fields stack in reading order, and there is no room to lay out.
 	const NARROW = 640;
@@ -150,6 +151,17 @@
 	const live = (d: Doc) => d.characters.find((c) => c.id === character.id)!;
 	const edit = (fn: (c: Character) => void) => session.change((d) => fn(live(d)));
 	const fieldOf = (c: Character, id: string) => c.fields.find((f) => f.id === id)!;
+
+	/** Puts a copy of this character, values and all, after it, and opens the copy. */
+	function duplicateCharacter() {
+		const name = uniqueLabel(
+			t('{name} copy', { name: character.name }),
+			session.doc.characters.map((c) => ({ id: c.id, label: c.name }))
+		);
+		const copy = duplicate(character, name);
+		session.change((d) => d.characters.splice(d.characters.indexOf(live(d)) + 1, 0, copy));
+		open(copy.id);
+	}
 
 	const reshape = (ids: string[], fn: (b: Box) => Box) =>
 		edit((c) => {
@@ -518,6 +530,10 @@
 			disabled={sharing}
 			title={t('Copy every tab, with each value in full, as an image to paste into a chat')}
 			onclick={copyImage}>{sharing ? t('Copying…') : t('Copy image')}</button
+		>
+		<button
+			title={t('Add a copy of this character, with every value, to start another from')}
+			onclick={duplicateCharacter}>{t('Duplicate')}</button
 		>
 		<button
 			class:on={editing}

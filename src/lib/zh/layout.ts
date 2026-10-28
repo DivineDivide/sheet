@@ -30,6 +30,10 @@ export default {
 		'把每個分頁連同完整的值複製成圖片，以便貼到聊天室',
 	'Copying…': '複製中…',
 	'Copy image': '複製圖片',
+	'Add a copy of this character, with every value, to start another from':
+		'建立這個角色連同每個值的副本，從它開始另一個角色',
+	Duplicate: '建立副本',
+	'{name} copy': '{name} 副本',
 	'Widen the window to lay out fields': '把視窗拉寬才能編排欄位',
 	'Add, move and resize fields (E)': '新增、移動欄位及調整大小（E）',
 	Done: '完成',

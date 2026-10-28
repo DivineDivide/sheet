@@ -230,7 +230,7 @@
 
 		{#if character}
 			{#key character.id}
-				<Sheet {character} />
+				<Sheet {character} open={(id) => (current = id)} />
 			{/key}
 		{:else}
 			<p class="empty">

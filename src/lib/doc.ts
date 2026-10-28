@@ -218,6 +218,17 @@ export function newCharacter(name: string, from?: Layout): Character {
 	};
 }
 
+/**
+ * `c` whole, values and all, under a new id. Where it names itself as `Name!Label`, in a
+ * formula, a source or a row's link, the copy names the copy, as a copied Excel sheet does.
+ * JSON, not structuredClone, since `c` may be live state.
+ */
+export function duplicate(c: Character, name: string): Character {
+	const id = newId();
+	const copy: Character = JSON.parse(JSON.stringify(c).split(`${c.id}!`).join(`${id}!`));
+	return { ...copy, id, name };
+}
+
 /** `label`, numbered when another field has it, so a formula's label names one field. */
 export function uniqueLabel(label: string, fields: Pick<Field, 'id' | 'label'>[], self?: string) {
 	const taken = new Set(

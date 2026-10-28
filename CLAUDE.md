@@ -30,7 +30,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
 - **`src/lib/doc.ts`** — the whole session is one versioned JSON `Doc`: clocks, templates
   and characters. Each character owns its layout (tabs, and fields placed on them) as well
   as its values, so reshaping one never touches another. A template is a layout saved from
-  a character and is never edited; `newCharacter` copies it. A status is a row of a table
+  a character and is never edited; `newCharacter` copies it. `duplicate` copies a character
+  whole, values too, and points what it names of itself (`Name!Label`, sources, links) at
+  the copy. A status is a row of a table
   (`statusTable`, which the Basic template has), whose Left a column rule counts down.
   A `hidden` character is a GM's, for their tables and cards: players' pages and exports
   leave it out (`shown`), but its data still reaches their browsers, so their sheets can
