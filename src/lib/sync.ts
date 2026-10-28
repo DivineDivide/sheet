@@ -3,6 +3,7 @@
 // changes in the order they arrive, and that order alone settles who wins the rest.
 
 import type { Doc } from './doc';
+import type { Peer } from './presence';
 
 export type Path = string[];
 export type Op =
@@ -24,7 +25,11 @@ export type Down =
 	/** Every proposal waiting, to everyone, on connect and whenever the list changes. */
 	| { t: 'proposals'; list: Proposal[] }
 	| { t: 'settled'; id: string; ok: boolean }
-	| { t: 'gone' };
+	| { t: 'gone' }
+	/** On connect: everyone present, this connection (`me`) among them. */
+	| { t: 'peers'; me: string; list: Peer[] }
+	| { t: 'peer'; peer: Peer }
+	| { t: 'left'; who: string };
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);

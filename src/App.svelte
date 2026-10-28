@@ -4,12 +4,14 @@
 	import { shown, type Doc } from './lib/doc';
 	import { ImportError, parse, serialize } from './lib/io';
 	import { mod, plain, typing } from './lib/keys';
+	import { presence } from './lib/presence.svelte';
 	import { session } from './lib/session.svelte';
 	import { theme, themes, type ThemeId } from './lib/theme.svelte';
 	import { ui } from './lib/ui.svelte';
 	import Chat from './components/Chat.svelte';
 	import Clocks from './components/Clocks.svelte';
 	import Keys from './components/Keys.svelte';
+	import Peers from './components/Peers.svelte';
 	import Roster from './components/Roster.svelte';
 	import Sheet from './components/Sheet.svelte';
 	import Toast from './components/Toast.svelte';
@@ -24,6 +26,8 @@
 				}))
 			: []
 	);
+
+	$effect(() => presence.set({ gm: session.gm || undefined }));
 
 	let current = $state('');
 	// Falls back to the first character when the open one is deleted.
@@ -100,6 +104,7 @@
 		<strong>{session.name}</strong>
 		<Roster bind:current {character} />
 		<div class="tools">
+			<Peers />
 			{#if session.status !== 'open'}
 				<span class="status" role="status">
 					{session.status === 'missing'

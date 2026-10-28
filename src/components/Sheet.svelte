@@ -18,6 +18,8 @@
 	import { lift, place } from '../lib/group';
 	import { free, mod } from '../lib/keys';
 	import { SNAP, bounds, clamp, defaultSize, readingOrder, type Box } from '../lib/layout';
+	import { COLORS, nameOf, type Peer } from '../lib/presence';
+	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
 	import { ui } from '../lib/ui.svelte';
 	import { HOME, fit, toSheet, zoomAt, type View } from '../lib/view';
@@ -66,6 +68,28 @@
 			: undefined
 	);
 	const boxOf = (f: Field) => (drag?.id === f.id ? drag.box : f.box);
+
+	// Others on this character: the fields each has selected or is writing in, writing first.
+	const seen = $derived.by(() => {
+		const by = new Map<string, { peer: Peer; writing: boolean }[]>();
+		for (const peer of presence.others) {
+			if (peer.character !== character.id) continue;
+			for (const id of new Set([...(peer.picked ?? []), ...(peer.editing ? [peer.editing] : [])])) {
+				const at = by.get(id) ?? [];
+				at.push({ peer, writing: id === peer.editing });
+				by.set(
+					id,
+					at.sort((a, b) => +b.writing - +a.writing)
+				);
+			}
+		}
+		return by;
+	});
+	const TYPED = 'input:not([type=checkbox], [type=radio], [type=file]), textarea, [role=textbox]';
+
+	$effect(() => {
+		presence.set({ character: character.id, tab: tab.id, picked: laying ? [...chosen] : [] });
+	});
 
 	// Each tab keeps where it was looking; a tab not looked at yet opens on 0,0.
 	const viewKey = $derived(`${character.id}:${tab.id}`);
@@ -514,9 +538,24 @@
 				{#if laying}<span class="origin" aria-hidden="true"></span>{/if}
 				{#each stacked ? readingOrder(onTab) : onTab as f (f.id)}
 					{@const b = boxOf(f)}
+					{@const eyes = seen.get(f.id)}
+					{@const peer = eyes && `var(--peer-${eyes[0].peer.color % COLORS})`}
+					{#if eyes}
+						<span
+							class="mark"
+							style:--x="{b.x}px"
+							style:--y="{b.y}px"
+							style:--w="{b.w}px"
+							style:--peer={peer}
+							>{eyes.map((e) => nameOf(e.peer) + (e.writing ? ' is writing' : '')).join(', ')}</span
+						>
+					{/if}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex: tabindex comes only with role="button" -->
 					<div
 						class="slot"
+						class:seen={eyes}
+						class:writing={eyes?.[0].writing}
+						style:--peer={peer}
 						class:selected={laying && chosen.includes(f.id)}
 						class:target={drop?.field === f.id}
 						class:dragging={drag?.id === f.id}
@@ -533,6 +572,9 @@
 							: undefined}
 						onpointerdown={laying ? (e) => grab(e, 'move', f.id, f.kind) : undefined}
 						onfocus={laying ? () => (chosen = [f.id]) : undefined}
+						onfocusin={(e) =>
+							(e.target as Element).matches(TYPED) && presence.set({ editing: f.id })}
+						onfocusout={() => presence.set({ editing: undefined })}
 					>
 						<!-- A table's headers are edited in place; it keeps the rest inert itself. -->
 						<div class="content" inert={(laying && f.kind !== 'table') || undefined}>
@@ -766,6 +808,31 @@
 		outline: 2px dashed var(--accent);
 		outline-offset: 2px;
 	}
+	/* Someone else's selection, dashed, or where they are writing, solid, in their colour. */
+	.slot.seen {
+		outline: 2px dashed var(--peer);
+		outline-offset: 2px;
+	}
+	.slot.writing {
+		outline-style: solid;
+	}
+	.mark {
+		position: absolute;
+		left: var(--x);
+		top: var(--y);
+		z-index: 3;
+		max-width: var(--w);
+		translate: 0 calc(-100% - 4px);
+		padding: 0 0.4em;
+		overflow: hidden;
+		border-radius: var(--radius) var(--radius) 0 0;
+		background: var(--peer);
+		color: var(--surface);
+		font-size: 0.75rem;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		pointer-events: none;
+	}
 	.slot.dragging {
 		z-index: 2;
 		cursor: grabbing;
@@ -844,6 +911,12 @@
 		width: auto;
 		height: auto;
 		overflow: visible;
+	}
+	.stacked .mark {
+		position: static;
+		justify-self: start;
+		margin-bottom: -0.6rem;
+		translate: none;
 	}
 	.stacked .empty {
 		position: static;

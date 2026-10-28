@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import { forAgent } from '../src/lib/agent/chat';
-import { VERSION, type Doc } from '../src/lib/doc';
+import { VERSION, newId, type Doc } from '../src/lib/doc';
 import { ImportError, validate } from '../src/lib/io';
+import { firstFree, presenceIn, type Peer, type Presence } from '../src/lib/presence';
 import { fire, isAct, type Act, type Done } from '../src/lib/rules';
 import {
 	apply,
@@ -49,6 +50,8 @@ export class Room extends DurableObject<Env> {
 	private doc: Doc | null = null;
 	/** Changes applied lately, so a resend after a lost ack is acked, not applied twice. */
 	private seen = new Set<string>();
+	/** Presence messages each socket sent this second, so no one client keeps the room awake. */
+	private rates = new WeakMap<WebSocket, { at: number; n: number }>();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -150,10 +153,40 @@ export class Room extends DurableObject<Env> {
 		if (request.headers.get('Upgrade') !== 'websocket') return Response.json({ name });
 
 		const { 0: client, 1: server } = new WebSocketPair();
+		const here = this.peers();
+		const me: Peer = { who: newId(), color: firstFree(here.map((p) => p.color)) };
 		this.ctx.acceptWebSocket(server);
+		// Kept with the socket, through hibernation, so presence is never stored.
+		server.serializeAttachment(me);
 		send(server, { t: 'hello', name, doc: (this.doc ??= this.load()) });
 		send(server, { t: 'proposals', list: this.proposals() });
+		send(server, { t: 'peers', me: me.who, list: [...here, me] });
+		this.others(server, { t: 'peer', peer: me });
 		return new Response(null, { status: 101, webSocket: client });
+	}
+
+	/** Sockets accepted before presence have no attachment. */
+	private peers(): Peer[] {
+		return this.ctx.getWebSockets().flatMap((ws) => ws.deserializeAttachment() ?? []);
+	}
+
+	/** Passes on what someone is doing, without reading or writing the doc. */
+	private present(ws: WebSocket, p: Presence) {
+		const now = Date.now();
+		const rate = this.rates.get(ws);
+		if (rate && now - rate.at < 1000) {
+			if (++rate.n > 20) return;
+		} else this.rates.set(ws, { at: now, n: 1 });
+		const was = ws.deserializeAttachment() as Peer | null;
+		if (!was) return;
+		const peer: Peer = { ...p, who: was.who, color: was.color };
+		ws.serializeAttachment(peer);
+		this.others(ws, { t: 'peer', peer });
+	}
+
+	private leave(ws: WebSocket) {
+		const peer = ws.deserializeAttachment() as Peer | null;
+		if (peer) this.others(ws, { t: 'left', who: peer.who });
 	}
 
 	/** Rooms made before proposals have no table for them until the first is sent. */
@@ -190,6 +223,8 @@ export class Room extends DurableObject<Env> {
 		} catch {
 			return;
 		}
+		const presence = presenceIn(change);
+		if (presence) return this.present(ws, presence);
 		if (isAct(change)) return this.act(ws, change.id, change.act);
 		if (isPropose(change)) {
 			return this.propose({ id: change.id, ...change.propose, at: Date.now() });
@@ -256,5 +291,10 @@ export class Room extends DurableObject<Env> {
 		try {
 			ws.close(code);
 		} catch {}
+		this.leave(ws);
+	}
+
+	async webSocketError(ws: WebSocket) {
+		this.leave(ws);
 	}
 }

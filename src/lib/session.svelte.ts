@@ -1,5 +1,6 @@
 import { newId, type Doc } from './doc';
 import { History } from './history';
+import type { Presence } from './presence';
 import type { Act } from './rules';
 import { follow } from './source';
 import { Replica, apply, diff, revert, type Down, type Op, type Proposal } from './sync';
@@ -39,6 +40,8 @@ let gm = $state(false);
 // Raw: ops are applied with `structuredClone`, which a state proxy would make throw.
 let proposals = $state.raw<Proposal[]>([]);
 let onSettled: (id: string, ok: boolean) => void = () => {};
+type PeerNews = Extract<Down, { t: 'peers' | 'peer' | 'left' }>;
+let onPeers: (m: PeerNews) => void = () => {};
 /** A chat's draft, as changes to the room: shown instead of the room until it is settled. */
 let draft = $state.raw<Op[] | null>(null);
 const shown = $derived.by(() => {
@@ -100,6 +103,8 @@ function receive(m: Down) {
 		proposals = m.list;
 	} else if (m.t === 'settled') {
 		onSettled(m.id, m.ok);
+	} else if (m.t === 'peers' || m.t === 'peer' || m.t === 'left') {
+		onPeers(m);
 	} else if (m.t === 'gone') {
 		status = 'missing';
 		const ws = socket;
@@ -209,6 +214,13 @@ export const session = {
 	},
 	set onSettled(fn: (id: string, ok: boolean) => void) {
 		onSettled = fn;
+	},
+	set onPeers(fn: (m: PeerNews) => void) {
+		onPeers = fn;
+	},
+	/** Tells the others what this person is doing; dropped while offline, as connecting asks again. */
+	present(p: Presence) {
+		if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ presence: p }));
 	},
 	get status() {
 		return status;

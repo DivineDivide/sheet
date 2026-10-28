@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import { markdown } from '../lib/markdown';
 
@@ -27,11 +28,12 @@
 </script>
 
 {#if writing}
-	<!-- A textarea for a line too, so a long title wraps instead of scrolling sideways. -->
+	<!-- A textarea for a line too, so a long title wraps instead of scrolling sideways. Its
+	     value is taken once: someone else saving this text must not overwrite the typing. -->
 	<textarea
 		class={line ? 'line' : 'grow'}
 		rows={line ? 1 : undefined}
-		{value}
+		value={untrack(() => value)}
 		aria-label={label}
 		placeholder={line ? empty : 'Markdown: **bold**, *italic*, - lists, # headings'}
 		{@attach focusAtEnd}

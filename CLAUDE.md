@@ -52,6 +52,16 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   own step, minus any path someone else has changed since. Write only when an edit is
   finished (on blur, change or release), never per keystroke or drag frame: each change
   is a row written, and the free plan allows 100,000 a day.
+- **Presence** — who is in a room and what each has selected or is writing in, from
+  `notes/trpg/plan-sheet-collab.md`. `presence.ts` cuts what a browser sends to size
+  (`presenceIn`). The room keeps each person's with their socket (`serializeAttachment`),
+  never in storage, and passes it on before it loads the doc, so it costs no rows read or
+  written. It names each connection and gives it the lowest free colour slot, drawn as
+  `--peer-N`. `presence.svelte.ts` holds it in the browser, apart from `session`, so it never
+  enters undo; `Sheet` sends the character, tab, Edit-layout selection and the field with
+  focus, and outlines others' in their colours. Anyone can claim anything here, so a GM
+  label grants nothing. `Prose` takes its textarea's value once, so another person's save
+  never overwrites typing.
 - **`src/lib/io.ts`** — export and import. `parse` refuses bad structure or dangling
   tab/clock references whole. Older files are checked as written, then migrated. `v1.ts`
   gives each character its own copy of its template's layout on one tab, and turns the old

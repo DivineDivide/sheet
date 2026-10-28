@@ -3,6 +3,8 @@
 	import { flip } from 'svelte/animate';
 	import { scale } from 'svelte/transition';
 	import { newCharacter, shown, type Character } from '../lib/doc';
+	import { COLORS, nameOf } from '../lib/presence';
+	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
 	import ExcelImport from './ExcelImport.svelte';
 	import Icon from './Icon.svelte';
@@ -95,6 +97,13 @@
 				in:scale={{ start: 0.6, duration: 200 }}
 			>
 				<span class="cname">{c.name}</span>
+				{#each presence.others.filter((p) => p.character === c.id) as p (p.who)}
+					<span
+						class="here"
+						style:--peer="var(--peer-{p.color % COLORS})"
+						title="{nameOf(p)} is here"
+					></span>
+				{/each}
 			</button>
 		{/each}
 	</nav>
@@ -205,6 +214,15 @@
 		border-color: transparent;
 		background: transparent;
 		scroll-snap-align: start;
+	}
+	/* Who else has this character open. */
+	.here {
+		flex: none;
+		width: 0.5rem;
+		height: 0.5rem;
+		margin-left: -0.25rem;
+		border-radius: 999px;
+		background: var(--peer);
 	}
 	.chip.active {
 		border-color: var(--line);

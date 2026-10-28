@@ -39,6 +39,15 @@
 	--code-str: #7a5b14;
 	/* Panels over the canvas are 85% see-through, so the sheet shows clearly behind them. */
 	--panel-bg: color-mix(in oklab, var(--surface) 15%, transparent);
+	/* Each person in a room, by the slot the room gives them; every theme sets color-scheme. */
+	--peer-0: light-dark(#2f6db5, #7fb0ee);
+	--peer-1: light-dark(#3d8a3d, #7fcf7f);
+	--peer-2: light-dark(#8a4fc2, #c39af0);
+	--peer-3: light-dark(#c26a12, #f0a860);
+	--peer-4: light-dark(#138585, #5fd0d0);
+	--peer-5: light-dark(#c2407e, #f08cbc);
+	--peer-6: light-dark(#8f720a, #e0c45a);
+	--peer-7: light-dark(#c23b3b, #f08080);
 	color-scheme: light;
 }
 
