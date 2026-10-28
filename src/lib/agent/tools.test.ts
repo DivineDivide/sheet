@@ -413,3 +413,38 @@ describe('a resource as a bar', () => {
 		).toMatch(/only a resource shows as a bar, and Stacks is number/);
 	});
 });
+
+describe('bound fields', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	const ash = () => doc.characters[0];
+	const field = (label: string) => ash().fields.find((f) => f.label === label)!;
+
+	it('binds fields, which the view then names together, and unbinds them', () => {
+		expect(ok(doc, 'bind_fields', { character: 'Ash', fields: ['HP', 'Notes'], bind: true })).toBe(
+			'Bound HP, Notes.'
+		);
+		expect(field('HP').bind).toBe(field('Notes').bind);
+		expect(ok(doc, 'read', { character: 'Ash' })).toMatch(/HP: .*bound with Notes/);
+
+		ok(doc, 'bind_fields', { character: 'Ash', fields: ['Notes'], bind: false });
+		expect(field('HP').bind).toBeUndefined();
+	});
+
+	it('refuses to bind one field, or fields on different tabs', () => {
+		expect(refused(doc, 'bind_fields', { character: 'Ash', fields: ['HP'], bind: true })).toMatch(
+			/two fields/
+		);
+		ok(doc, 'edit_tabs', { character: 'Ash', add: ['Gear'] });
+		ok(doc, 'edit_field', { character: 'Ash', field: 'Notes', tab: 'Gear' });
+		expect(
+			refused(doc, 'bind_fields', { character: 'Ash', fields: ['HP', 'Notes'], bind: true })
+		).toMatch(/share a tab/);
+	});
+
+	it('frees the field left when the other of two bound fields is removed', () => {
+		ok(doc, 'bind_fields', { character: 'Ash', fields: ['HP', 'Statuses'], bind: true });
+		ok(doc, 'remove_field', { character: 'Ash', field: 'Statuses' });
+		expect(field('HP').bind).toBeUndefined();
+	});
+});

@@ -14,6 +14,7 @@
 	} from '../lib/doc';
 	import type { Attachment } from 'svelte/attachments';
 	import { chat } from '../lib/agent/client.svelte';
+	import { bindAction, clicked, loosen, mates, toggleBind, toggled } from '../lib/bind';
 	import { keep, kept, type Clip } from '../lib/clip';
 	import { cursors } from '../lib/cursors.svelte';
 	import { lift, place } from '../lib/group';
@@ -42,8 +43,16 @@
 	let tabId = $state('');
 	/** The selected fields, shift-click adding to them; the last is the one inspected. */
 	let chosen = $state<string[]>([]);
-	/** A gesture in flight: `id` null is a new field still being dragged from the palette. */
-	let drag = $state<{ id: string | null; kind: Kind; box: Box } | null>(null);
+	/**
+	 * A gesture in flight: `id` null is a new field still being dragged from the palette. A
+	 * move carries `by`, how far every selected field has gone.
+	 */
+	let drag = $state<{
+		id: string | null;
+		kind: Kind;
+		box: Box;
+		by?: { x: number; y: number };
+	} | null>(null);
 	/** A kind from the palette held over a table, to land as a column at `index`. */
 	let drop = $state<{ field: string; index: number } | null>(null);
 	/** The table column the inspector shows. */
@@ -69,7 +78,23 @@
 			? field.columns?.find((c) => c.id === picked!.column)
 			: undefined
 	);
-	const boxOf = (f: Field) => (drag?.id === f.id ? drag.box : f.box);
+	/** The fields a gesture in flight moves or sizes. */
+	const moving = $derived(drag?.by ? chosen : drag?.id ? [drag.id] : []);
+	const boxOf = (f: Field) => {
+		if (!drag || !moving.includes(f.id)) return f.box;
+		return drag.by ? { ...f.box, x: f.box.x + drag.by.x, y: f.box.y + drag.by.y } : drag.box;
+	};
+	const binding = $derived(bindAction(character.fields, chosen));
+	/** Round each selected binding, so it reads as one, following a drag. */
+	const frames = $derived.by(() => {
+		const done = new Set<string>();
+		return group.flatMap((f) => {
+			const m = mates(character.fields, f.id);
+			if (m.length < 2 || done.has(f.bind!)) return [];
+			done.add(f.bind!);
+			return [bounds(character.fields.filter((x) => m.includes(x.id)).map(boxOf))];
+		});
+	});
 
 	// Others on this character: the fields each has selected or is writing in, writing first.
 	const seen = $derived.by(() => {
@@ -126,7 +151,10 @@
 	const edit = (fn: (c: Character) => void) => session.change((d) => fn(live(d)));
 	const fieldOf = (c: Character, id: string) => c.fields.find((f) => f.id === id)!;
 
-	const moveTo = (id: string, to: Box) => edit((c) => (fieldOf(c, id).box = clamp(to)));
+	const reshape = (ids: string[], fn: (b: Box) => Box) =>
+		edit((c) => {
+			for (const f of c.fields) if (ids.includes(f.id)) f.box = clamp(fn(f.box));
+		});
 	const editField = (id: string, fn: (f: Field) => void) => edit((c) => fn(fieldOf(c, id)));
 
 	function add(kind: Kind, at?: Box) {
@@ -164,13 +192,16 @@
 		picked = { field: id, column: col };
 	}
 
-	function remove(id: string) {
+	function remove(ids: string[]) {
 		edit((c) => {
-			c.fields = c.fields.filter((f) => f.id !== id);
-			delete c.values[id];
+			c.fields = c.fields.filter((f) => !ids.includes(f.id));
+			for (const id of ids) delete c.values[id];
+			loosen(c.fields);
 		});
 		chosen = [];
 	}
+
+	const bind = () => edit((c) => toggleBind(c.fields, chosen));
 
 	function copy(ids: string[]) {
 		const g = lift(character, session.doc.clocks, ids, true, session.doc.characters);
@@ -209,10 +240,12 @@
 		e.preventDefault();
 		e.stopPropagation();
 		if (id && e.shiftKey && mode === 'move') {
-			chosen = chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id];
+			chosen = toggled(character.fields, chosen, id);
 			return;
 		}
-		if (id) chosen = [id];
+		// A press on the selection keeps it, to drag it all; a click alone then narrows it.
+		const held = !!id && chosen.includes(id);
+		if (id && !held) chosen = mates(character.fields, id);
 		const sx = e.clientX;
 		const sy = e.clientY;
 		const from = id ? fieldOf(character, id).box : null;
@@ -249,11 +282,13 @@
 			}
 			const dx = (ev.clientX - sx) / view.z;
 			const dy = (ev.clientY - sy) / view.z;
-			const box =
-				mode === 'move'
-					? { ...from!, x: from!.x + dx, y: from!.y + dy }
-					: { ...from!, w: from!.w + dx, h: from!.h + dy };
-			drag = { id, kind, box: clamp(box) };
+			if (mode === 'size') {
+				drag = { id, kind, box: clamp({ ...from!, w: from!.w + dx, h: from!.h + dy }) };
+				return;
+			}
+			// The grabbed field snaps, and the rest of the selection keeps its place by it.
+			const box = clamp({ ...from!, x: from!.x + dx, y: from!.y + dy });
+			drag = { id, kind, box, by: { x: box.x - from!.x, y: box.y - from!.y } };
 		};
 
 		const onup = () => {
@@ -269,8 +304,13 @@
 				if (into) addColumn(into.field, kind as ColumnKind, into.index);
 				else if (done) add(kind, done.box);
 				else if (!moved) add(kind);
+			} else if (done?.by) {
+				const by = done.by;
+				reshape(chosen, (b) => ({ ...b, x: b.x + by.x, y: b.y + by.y }));
 			} else if (done && id) {
-				moveTo(id, done.box);
+				reshape([id], () => done.box);
+			} else if (held && !moved && mode === 'move') {
+				chosen = clicked(character.fields, chosen, id!);
 			}
 		};
 		// On the window, not the grabbed element: the release usually lands over the sheet,
@@ -416,6 +456,7 @@
 		if (e.metaKey || e.ctrlKey) {
 			if (key === 'c' && f) copy(group.map((g) => g.id));
 			else if (key === 'v' && laying && kept()) paste(kept()!);
+			else if (key === 'g' && laying && binding === (e.shiftKey ? 'unbind' : 'bind')) bind();
 			else return;
 		} else if (key === 'e') {
 			if (!stacked && !drafting) toggleEditing();
@@ -434,13 +475,13 @@
 			tabId = character.tabs[+e.key - 1].id;
 			chosen = [];
 		} else if (f && (e.key === 'Delete' || e.key === 'Backspace')) {
-			remove(f.id);
+			remove(group.map((g) => g.id));
 		} else if (f && step) {
 			const [dx, dy] = step.map((n) => n * SNAP);
-			const b = f.box;
-			moveTo(
-				f.id,
-				e.shiftKey ? { ...b, w: b.w + dx, h: b.h + dy } : { ...b, x: b.x + dx, y: b.y + dy }
+			reshape(
+				group.map((g) => g.id),
+				(b) =>
+					e.shiftKey ? { ...b, w: b.w + dx, h: b.h + dy } : { ...b, x: b.x + dx, y: b.y + dy }
 			);
 		} else {
 			return;
@@ -566,6 +607,18 @@
 				style:transform={stacked ? undefined : `translate(${ox}px, ${oy}px) scale(${view.z})`}
 			>
 				{#if laying}<span class="origin" aria-hidden="true"></span>{/if}
+				{#if laying}
+					{#each frames as b, i (i)}
+						<span
+							class="binding"
+							style:--x="{b.x}px"
+							style:--y="{b.y}px"
+							style:--w="{b.w}px"
+							style:--h="{b.h}px"
+							aria-hidden="true"
+						></span>
+					{/each}
+				{/if}
 				{#each stacked ? readingOrder(onTab) : onTab as f (f.id)}
 					{@const b = boxOf(f)}
 					{@const eyes = seen.get(f.id)}
@@ -592,7 +645,7 @@
 						style:--peer={peer}
 						class:selected={laying && chosen.includes(f.id)}
 						class:target={drop?.field === f.id}
-						class:dragging={drag?.id === f.id}
+						class:dragging={moving.includes(f.id)}
 						class:changed={chat.changes?.fields.has(f.id)}
 						data-table={f.kind === 'table' ? f.id : undefined}
 						style:--x="{b.x}px"
@@ -608,7 +661,9 @@
 								})
 							: undefined}
 						onpointerdown={laying ? (e) => grab(e, 'move', f.id, f.kind) : undefined}
-						onfocus={laying ? () => (chosen = [f.id]) : undefined}
+						onfocus={laying
+							? () => chosen.includes(f.id) || (chosen = mates(character.fields, f.id))
+							: undefined}
 						onfocusin={(e) =>
 							(e.target as Element).matches(TYPED) && presence.set({ editing: f.id })}
 						onfocusout={() => presence.set({ editing: undefined })}
@@ -667,7 +722,7 @@
 		</div>
 
 		{#if laying}
-			<Palette grab={(e, kind) => grab(e, 'new', null, kind)} {add} />
+			<Palette grab={(e, kind) => grab(e, 'new', null, kind)} {add} {binding} {bind} />
 		{/if}
 		{#if laying}
 			<Toolbar {character} {field} {group} {column} {editField} {remove} {saveTemplate} />
@@ -919,6 +974,17 @@
 		color: var(--surface);
 		font-size: 0.7rem;
 		white-space: nowrap;
+	}
+	/* Round a selected binding, clear of its fields' outlines and under a label on their edge. */
+	.binding {
+		position: absolute;
+		left: calc(var(--x) - 6px);
+		top: calc(var(--y) - 6px);
+		width: calc(var(--w) + 12px);
+		height: calc(var(--h) + 12px);
+		border: 1px dashed var(--accent);
+		border-radius: calc(var(--radius) + 4px);
+		pointer-events: none;
 	}
 	.slot.dragging {
 		z-index: 2;

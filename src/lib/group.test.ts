@@ -88,6 +88,22 @@ describe('copying fields together', () => {
 		expect(rule.then[0]).toContain(`@${by(ash, 'Armor 2').id}`);
 	});
 
+	it('pastes a bound block as a binding of its own, and frees a field copied out of one', () => {
+		const { doc, ash, block } = setup();
+		for (const f of ash.fields) if (block.includes(f.id)) f.bind = 'b';
+		const tab = ash.tabs[0].id;
+		place(lift(ash, doc.clocks, block, false), ash, doc.clocks, tab, { x: 0, y: 400 });
+		const copied = ['HP 2', 'Armor 2', 'Attack 2', 'Dodge 2'].map((l) => by(ash, l).bind);
+		expect(new Set(copied).size).toBe(1);
+		expect(copied[0]).not.toBe('b');
+
+		place(lift(ash, doc.clocks, [by(ash, 'Armor').id], false), ash, doc.clocks, tab, {
+			x: 0,
+			y: 600
+		});
+		expect(by(ash, 'Armor 3').bind).toBeUndefined();
+	});
+
 	it('reads a name it lacks once there is a field of that label', () => {
 		const { doc, ash, block } = setup();
 		const cid = newCharacter('Cid');

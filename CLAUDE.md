@@ -172,10 +172,12 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   conditions and lines; `Rules` edits a list of rules with it. `App` holds the top bar,
   where `Roster` shows three characters at a time and a + that opens the new-character
   popup, with a `Preview` of each template's first tab. `Sheet` holds tabs, the stage and the edit-mode gestures. Over the
-  stage float, in Edit layout, `Palette` (left: kinds to drag in) and `Toolbar` (right:
-  inspector and save as template), as round icons whose panels are 85% see-through
-  (`--panel-bg`). A table's + menu (`Picker`) sits on the stage as well, after
-  the viewport, so the stage clips it, its panels float over it, and it stays on its table
+  stage float, in Edit layout, `Palette` (left: kinds to drag in, then the bind tool) and
+  `Toolbar` (right: inspector and save as template), as round icons whose panels are 85%
+  see-through (`--panel-bg`). Fields sharing a `bind` on a tab are bound (`bind.ts`): a
+  click selects them all, and a drag, the arrows, ⌘C and Delete act on the whole
+  selection, so they move, copy and delete as one; a second click picks one out. A
+  table's + menu (`Picker`) sits on the stage as well, after the viewport, so the stage clips it, its panels float over it, and it stays on its table
   as the sheet pans. `Bar` draws a resource whose field or column has `bar`: a thin bar
   after the current / max boxes, where a press or drag sets the current, written on
   release. The inspector holds inputs, not explanations, and a button says what it

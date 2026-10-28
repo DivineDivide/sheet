@@ -38,7 +38,7 @@
 		/** The column of the selected table picked in its header. */
 		column: Column | undefined;
 		editField: (id: string, fn: (f: Field) => void) => void;
-		remove: (id: string) => void;
+		remove: (ids: string[]) => void;
 		saveTemplate: (name: string) => void;
 	} = $props();
 
@@ -120,6 +120,9 @@
 				<h2>{t('Selected')}</h2>
 				{#if group.length > 1}
 					<p class="muted">{group.map((f) => f.label).join(', ')}</p>
+					<button onclick={() => remove(group.map((f) => f.id))}
+						>{t('Delete {n} fields', { n: group.length })}</button
+					>
 				{:else if field}
 					<label>
 						<span class="muted">{t('Label')}</span>
@@ -251,7 +254,7 @@
 							</select>
 						</label>
 					{/if}
-					<button onclick={() => remove(field.id)}>{t('Delete field')}</button>
+					<button onclick={() => remove([field.id])}>{t('Delete field')}</button>
 				{:else}
 					<p class="muted">{t('Nothing selected.')}</p>
 				{/if}

@@ -14,6 +14,7 @@ import {
 	type Row,
 	type Rule
 } from '../doc';
+import { mates } from '../bind';
 import { cellResult, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
 import { sheetOf } from '../rules';
@@ -158,8 +159,11 @@ export function fieldView(doc: Doc, c: Character, f: Field, full = false): strin
 	const b = f.box;
 	const [first, ...rest] = valueText(doc, c, f, full);
 	const known = knownOn(doc, c);
+	const bound = mates(c.fields, f.id)
+		.slice(0, -1)
+		.map((id) => c.fields.find((x) => x.id === id)!.label);
 	return [
-		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${f.bar ? ', as a bar' : ''}${first === undefined ? '' : `: ${first}`}`,
+		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${f.bar ? ', as a bar' : ''}${bound.length ? `, bound with ${bound.join(', ')}` : ''}${first === undefined ? '' : `: ${first}`}`,
 		...rest,
 		...(f.rules ?? []).map((r) => `  rule: ${ruleText(doc, c, r, known)}`)
 	].join('\n');

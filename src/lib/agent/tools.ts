@@ -23,6 +23,7 @@ import {
 	type Rule,
 	type Value
 } from '../doc';
+import { loosen } from '../bind';
 import { FormulaError, compile, compileLine, isErr, refText, result, show } from '../formula';
 import { ImportError, validate } from '../io';
 import { GAP, clamp, defaultSize, type Box } from '../layout';
@@ -678,8 +679,43 @@ export const tools: Tool[] = [
 			const f = fieldOf(c, need(i, 'field'));
 			c.fields = c.fields.filter((x) => x !== f);
 			delete c.values[f.id];
+			loosen(c.fields);
 			const left = [f.id, ...(f.columns ?? []).map((col) => col.id)].flatMap((id) => users(c, id));
 			return `Removed ${f.label}.${left.length ? ` Still naming it: ${[...new Set(left)].join(', ')}.` : ''}`;
+		}
+	},
+	{
+		name: 'bind_fields',
+		description:
+			'Binds fields on one tab, so a person moving, copying or deleting one of them in Edit layout takes them all; or unbinds them.',
+		input_schema: obj(
+			{
+				...who,
+				fields: list({ type: 'string' }, 'The fields, by label'),
+				bind: {
+					type: 'boolean',
+					description:
+						'true binds them as one, apart from any they were bound with; false unbinds them'
+				}
+			},
+			['character', 'fields', 'bind']
+		),
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
+			const fs = texts(i, 'fields').map((l) => fieldOf(c, l));
+			const labels = fs.map((f) => f.label).join(', ');
+			if (i.bind === false) {
+				for (const f of fs) delete f.bind;
+				loosen(c.fields);
+				return `Unbound ${labels}.`;
+			}
+			if (fs.length < 2) fail('binding takes two fields or more');
+			const tabs = new Set(fs.map((f) => c.tabs.find((t) => t.id === f.tab)!.name));
+			if (tabs.size > 1) fail(`bound fields share a tab, and these are on ${[...tabs].join(', ')}`);
+			const bind = newId();
+			for (const f of fs) f.bind = bind;
+			loosen(c.fields);
+			return `Bound ${labels}.`;
 		}
 	},
 	{

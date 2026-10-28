@@ -49,12 +49,15 @@ export const shortcuts: [
 		'Edit layout',
 		[
 			[['Esc'], 'Deselect the field, then Done'],
-			[['←', '→', '↑', '↓'], 'Move the selected field'],
-			[['⇧', { word: 'arrows' }], 'Resize it'],
-			[['Delete'], 'Delete it'],
+			[['←', '→', '↑', '↓'], 'Move the selected fields'],
+			[['⇧', { word: 'arrows' }], 'Resize them'],
+			[['Delete'], 'Delete them'],
 			[['⇧', { word: 'click' }], 'Select another field too'],
 			[[`${mod}C`], 'Copy the selected fields, with their values'],
-			[[`${mod}V`], 'Paste them on this tab, of any character']
+			[[`${mod}V`], 'Paste them on this tab, of any character'],
+			[[`${mod}G`], 'Bind the selected fields, to move, copy and delete as one'],
+			[[`⇧${mod}G`], 'Unbind them'],
+			[[{ word: 'click' }, { word: 'again' }], 'Pick one field out of a selected binding']
 		]
 	]
 ];

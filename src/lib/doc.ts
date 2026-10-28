@@ -91,6 +91,8 @@ export type Field = {
 	hideLabel?: true;
 	/** A resource field shows as a bar, pressed or dragged to set its current. */
 	bar?: true;
+	/** Fields sharing it on a tab are bound: Edit layout moves, copies and deletes them as one. */
+	bind?: string;
 	rules?: Rule[];
 };
 /** Tabs and the fields on them: what a character is shaped like, apart from its values. */

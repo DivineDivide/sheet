@@ -19,15 +19,37 @@
 <script lang="ts">
 	import { kinds } from '../lib/doc';
 	import { t } from '../lib/i18n.svelte';
+	import { mod } from '../lib/keys';
 	import Icon from './Icon.svelte';
 
-	let { grab, add }: { grab: (e: PointerEvent, kind: Kind) => void; add: (kind: Kind) => void } =
-		$props();
+	let {
+		grab,
+		add,
+		binding,
+		bind
+	}: {
+		grab: (e: PointerEvent, kind: Kind) => void;
+		add: (kind: Kind) => void;
+		/** What the bind tool would do to the selected fields. */
+		binding: 'bind' | 'unbind' | null;
+		bind: () => void;
+	} = $props();
+
+	const binds = $derived(
+		binding === 'unbind'
+			? { name: 'unbind' as const, hint: t('let them move on their own (⇧{mod}G)', { mod }) }
+			: {
+					name: 'bind' as const,
+					hint: binding
+						? t('move, copy and delete them as one ({mod}G)', { mod })
+						: t('⇧-click two fields or more first')
+				}
+	);
 </script>
 
 <!-- Two columns, as in SAO's menu: round icons, and beside each a bar naming it, which
      slides out as its icon is hovered. -->
-<aside class="rail" aria-label={t('Add a field')}>
+<aside class="rail" aria-label={t('Add and bind fields')}>
 	{#each kinds as kind (kind)}
 		<button
 			class="kind"
@@ -45,6 +67,19 @@
 			</span>
 		</button>
 	{/each}
+	<hr />
+	<button
+		class="kind tool"
+		aria-label={t('{tool}: {hint}', { tool: t(binds.name), hint: binds.hint })}
+		disabled={!binding}
+		onclick={bind}
+	>
+		<span class="dot"><Icon name={binds.name} /></span>
+		<span class="bar" aria-hidden="true">
+			<b>{t(binds.name)}</b>
+			<small>{binds.hint}</small>
+		</span>
+	</button>
 </aside>
 
 <style>
@@ -65,6 +100,23 @@
 		background: none;
 		touch-action: none;
 		cursor: grab;
+	}
+	.tool {
+		cursor: pointer;
+	}
+	/* Disabled fades only the icon: its bar still says how to use it. */
+	.tool:disabled {
+		cursor: default;
+		opacity: 1;
+	}
+	.tool:disabled .dot {
+		opacity: 0.4;
+	}
+	hr {
+		width: 100%;
+		margin: 0.1rem 0;
+		border: none;
+		border-top: 1px solid var(--line);
 	}
 	.bar {
 		position: absolute;

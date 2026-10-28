@@ -23,6 +23,7 @@ import {
 	type Name,
 	type Sheet
 } from './formula';
+import { loosen } from './bind';
 import { SNAP, bounds, clamp } from './layout';
 import { compileRule } from './rules';
 
@@ -187,6 +188,14 @@ export function place(
 
 	const ids = new Map(g.fields.map((f) => [f.id, newId()]));
 	const made = make(g, c.fields, clocks, ids, (f) => ({ tab, box: boxAt(f, d) }), room, c.id);
+	// A copied binding is a new one, apart from the fields it was copied from.
+	const binds = new Map<string, string>();
+	for (const f of made) {
+		if (!f.bind) continue;
+		if (!binds.has(f.bind)) binds.set(f.bind, newId());
+		f.bind = binds.get(f.bind);
+	}
+	loosen(made);
 	for (const f of g.fields) {
 		const v = g.values?.[f.id];
 		if (v !== undefined) c.values[ids.get(f.id)!] = clone(v);

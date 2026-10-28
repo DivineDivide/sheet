@@ -160,6 +160,9 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		if (f.bar !== undefined && f.bar !== true) {
 			throw new ImportError(`"${f.label}" on ${name} says wrongly whether it shows as a bar`);
 		}
+		if (f.bind !== undefined && !isStr(f.bind)) {
+			throw new ImportError(`"${f.label}" on ${name} names wrongly what it is bound with`);
+		}
 	}
 }
 
