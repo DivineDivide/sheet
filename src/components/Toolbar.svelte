@@ -136,6 +136,21 @@
 							{/each}
 						</select>
 					</label>
+					{#if field.kind === 'table' || field.kind === 'entries'}
+						<label {@attach tip('A page holds as many rows as fit the box')}>
+							<span class="muted">Long lists</span>
+							<select
+								value={field.pages ? 'pages' : 'scroll'}
+								onchange={(e) => {
+									const paged = e.currentTarget.value === 'pages';
+									editField(field.id, (f) => (paged ? (f.pages = true) : delete f.pages));
+								}}
+							>
+								<option value="scroll">Scroll</option>
+								<option value="pages">Flip pages</option>
+							</select>
+						</label>
+					{/if}
 					{#if field.kind === 'formula'}
 						{#key field.id}
 							<FormulaInput {character} {field} {editField} />

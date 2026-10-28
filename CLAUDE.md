@@ -7,6 +7,7 @@ are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built. Form
 tables and Excel import followed, planned in `notes/trpg/plan-sheet-formulas-import.md`,
 then buttons and rules, in `notes/trpg/plan-sheet-rules.md`, which folded statuses into
 tables. A GM's page of data that other sheets draw on is `notes/trpg/plan-sheet-gm-page.md`.
+Long lists that flip pages are `notes/trpg/plan-sheet-pages.md`.
 
 ## Commands
 
@@ -146,8 +147,10 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   which every write goes through. A tab runs on in every direction from 0,0, so boxes may
   be negative; layouts made before that sit right of and below 0,0, unmoved. Boxes may
   overlap; nothing settles them. A field's box is its size in play too, and content beyond
-  it scrolls. Narrower than 640px the sheet ignores boxes and stacks fields in
-  `readingOrder`.
+  it scrolls. A table or entries list with `pages` flips pages instead (`Pages`): every row
+  stays drawn and measured, `pageStarts` fits whole rows to the box, and rows off the page
+  carry `data-off`. Each browser keeps its own page in `ui.pages`. Narrower than 640px the
+  sheet ignores boxes and stacks fields in `readingOrder`.
 - **`src/lib/view.ts`** — pan and zoom, in play and Edit layout alike. A `View` is the
   sheet point at the middle of the stage plus the zoom, so the window's size never enters
   it. `ui.svelte.ts` keeps each tab's view and the open panels outside `Sheet`, which is

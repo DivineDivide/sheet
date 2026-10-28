@@ -323,9 +323,11 @@
 				look(zoomAt(view, view.z * Math.exp(-step * 0.01), ...fromMiddle(e)));
 				return;
 			}
-			// A long field scrolls its own content first, as a page inside the sheet would.
+			// A long field scrolls its own content first, as a page inside the sheet would; so
+			// does a paged list's one row too tall for its box.
 			const slot = (e.target as Element).closest('.slot');
-			if (!laying && slot && scrolls(slot, dx, dy)) return;
+			const own = slot && (e.target as Element).closest('[data-scroll]');
+			if (!laying && slot && [own, slot].some((el) => el && scrolls(el, dx, dy))) return;
 			e.preventDefault();
 			look({ ...view, x: view.x + dx / view.z, y: view.y + dy / view.z });
 		};

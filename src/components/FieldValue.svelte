@@ -18,6 +18,7 @@
 	import { rowFrom, sourceOf } from '../lib/source';
 	import { tip } from '../lib/tip';
 	import Icon from './Icon.svelte';
+	import Pages from './Pages.svelte';
 	import Picker from './Picker.svelte';
 	import Prose from './Prose.svelte';
 	import Table from './Table.svelte';
@@ -61,14 +62,20 @@
 	/** A tag is typed into a box that the label's + opens. */
 	let adding = $state(false);
 	let menu = $state<Picker>();
+	let pages = $state<Pages>();
 	/** The table a table's + offers rows of. */
 	const src = $derived(field.kind === 'table' ? sourceOf(session.doc, field.from) : undefined);
-	const blankRow = () => set([...(v as Row[]), { id: newId(), cells: {} }]);
+	/** Adds to a list, turning a paged one to its last page, where the new row lands. */
+	const append = (item: Row | Entry) => {
+		set([...(v as (Row | Entry)[]), item] as Value);
+		pages?.last();
+	};
+	const blankRow = () => append({ id: newId(), cells: {} });
 
 	// A field holding a list adds to it from a + by its label, not a button under the list.
 	const add = $derived.by(() => {
 		if (field.kind === 'entries')
-			return { what: 'Add an entry', run: () => set([...(v as Entry[]), { name: '', text: '' }]) };
+			return { what: 'Add an entry', run: () => append({ name: '', text: '' }) };
 		if (field.kind === 'table' && !laying && field.columns?.length)
 			return {
 				what: src ? `Add a row, or one of ${src.name}` : 'Add a row',
@@ -114,7 +121,7 @@
 						bind:this={menu}
 						{src}
 						onblank={blankRow}
-						onpick={(item) => set([...(v as Row[]), rowFrom(src, item, field.columns ?? [])])}
+						onpick={(item) => append(rowFrom(src, item, field.columns ?? []))}
 					/>
 				{/if}
 			{/if}
@@ -203,36 +210,52 @@
 		{@const entries = v as Entry[]}
 		{@const put = (i: number, patch: Partial<Entry>) =>
 			set(entries.map((x, j) => (j === i ? { ...x, ...patch } : x)))}
-		<ol class="entries">
-			{#each entries as entry, i (i)}
-				<li>
-					<div class="row top">
+		<Pages
+			bind:this={pages}
+			on={!!field.pages}
+			at={globalId(character, field)}
+			rows=".entries > li"
+			label={field.label}
+		>
+			<ol class="entries">
+				{#each entries as entry, i (i)}
+					<li>
+						<div class="row top">
+							<Prose
+								line
+								value={entry.name}
+								at="{globalId(character, field)}/{i}/name"
+								label="{field.label} name"
+								empty="Name"
+								onchange={(name) => put(i, { name })}
+							/>
+							<button
+								class="x"
+								aria-label="Remove {entry.name}"
+								onclick={() => set(entries.filter((_, j) => j !== i))}>×</button
+							>
+						</div>
 						<Prose
-							line
-							value={entry.name}
-							at="{globalId(character, field)}/{i}/name"
-							label="{field.label} name"
-							empty="Name"
-							onchange={(name) => put(i, { name })}
+							value={entry.text}
+							at="{globalId(character, field)}/{i}/text"
+							label="{entry.name} description"
+							empty="Description, in Markdown."
+							onchange={(text) => put(i, { text })}
 						/>
-						<button
-							class="x"
-							aria-label="Remove {entry.name}"
-							onclick={() => set(entries.filter((_, j) => j !== i))}>×</button
-						>
-					</div>
-					<Prose
-						value={entry.text}
-						at="{globalId(character, field)}/{i}/text"
-						label="{entry.name} description"
-						empty="Description, in Markdown."
-						onchange={(text) => put(i, { text })}
-					/>
-				</li>
-			{/each}
-		</ol>
+					</li>
+				{/each}
+			</ol>
+		</Pages>
 	{:else if field.kind === 'table'}
-		<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
+		<Pages
+			bind:this={pages}
+			on={!!field.pages}
+			at={globalId(character, field)}
+			rows=".grid > tbody > tr"
+			label={field.label}
+		>
+			<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
+		</Pages>
 	{:else if field.kind === 'image'}
 		{@const src = v as string}
 		<!-- A drop stops here: on the window it would be taken for a session file to import.

@@ -597,7 +597,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_field',
 		description:
-			"Changes a field's label, kind, tab, place, size or formula. A value left from its old kind reads as blank.",
+			"Changes a field's label, kind, tab, place, size or formula, or whether a long list flips pages. A value left from its old kind reads as blank.",
 		input_schema: obj(
 			{
 				...who,
@@ -605,7 +605,12 @@ export const tools: Tool[] = [
 				label: text('Its new label'),
 				kind: { type: 'string', enum: [...kinds] },
 				...placing,
-				formula: text('Its new formula; empty removes it')
+				formula: text('Its new formula; empty removes it'),
+				pages: {
+					type: 'boolean',
+					description:
+						'A table or entries list: true flips pages, each holding as many rows as fit its box; false scrolls'
+				}
 			},
 			['character', 'field']
 		),
@@ -628,6 +633,12 @@ export const tools: Tool[] = [
 				f.formula = formula
 					? compiled(formula, () => compile(formula, knownOn(doc, c)))
 					: undefined;
+			}
+			if (typeof i.pages === 'boolean') {
+				if (f.kind !== 'table' && f.kind !== 'entries')
+					fail(`only a table or an entries list has pages, and ${f.label} is a ${f.kind}`);
+				if (i.pages) f.pages = true;
+				else delete f.pages;
 			}
 			return `Changed.${asked ? renamed(asked, f.label) : ''}${shows(doc, c, f)}${overlaps(c, f)}\n${fieldView(doc, c, f)}`;
 		}

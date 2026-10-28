@@ -76,6 +76,13 @@ describe('parse', () => {
 		expect(() => parse(mangle((d) => (d.characters[0].hidden = 'yes')))).toThrow(/malformed/);
 	});
 
+	it('keeps a list in pages, and refuses any other setting', () => {
+		expect(
+			parse(mangle((d) => (d.characters[0].fields[0].pages = true))).characters[0].fields[0].pages
+		).toBe(true);
+		expect(() => parse(mangle((d) => (d.characters[0].fields[0].pages = 'yes')))).toThrow(/pages/);
+	});
+
 	it('refuses an unknown field kind', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/

@@ -159,7 +159,7 @@ export function fieldView(doc: Doc, c: Character, f: Field, full = false): strin
 	const [first, ...rest] = valueText(doc, c, f, full);
 	const known = knownOn(doc, c);
 	return [
-		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${first === undefined ? '' : `: ${first}`}`,
+		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.pages ? ', in pages' : ''}${first === undefined ? '' : `: ${first}`}`,
 		...rest,
 		...(f.rules ?? []).map((r) => `  rule: ${ruleText(doc, c, r, known)}`)
 	].join('\n');

@@ -326,3 +326,24 @@ describe("a GM's page, as each asker's chat sees it", () => {
 		expect(text).toContain('=GM![Party bonus] + 3 → 5');
 	});
 });
+
+describe('a long list in pages', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	const statuses = () => doc.characters[0].fields.find((f) => f.label === 'Statuses')!;
+
+	it('turns pages on for a table and says so, then off again', () => {
+		expect(ok(doc, 'edit_field', { character: 'Ash', field: 'Statuses', pages: true })).toContain(
+			'in pages'
+		);
+		expect(statuses().pages).toBe(true);
+		ok(doc, 'edit_field', { character: 'Ash', field: 'Statuses', pages: false });
+		expect(statuses().pages).toBeUndefined();
+	});
+
+	it('refuses pages on a field that holds no list', () => {
+		expect(refused(doc, 'edit_field', { character: 'Ash', field: 'HP', pages: true })).toMatch(
+			/only a table or an entries list has pages/
+		);
+	});
+});

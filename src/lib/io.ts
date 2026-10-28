@@ -150,6 +150,9 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		if (f.from !== undefined && !isStr(f.from)) {
 			throw new ImportError(`"${f.label}" on ${name} names its source table wrongly`);
 		}
+		if (f.pages !== undefined && f.pages !== true) {
+			throw new ImportError(`"${f.label}" on ${name} says wrongly whether it has pages`);
+		}
 	}
 }
 
