@@ -10,10 +10,13 @@ import { supported } from './regions';
 
 export const MODELS = { opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5' } as const;
 export type Model = keyof typeof MODELS;
-/** `doc` is the room as `forAgent` gives it; a new chat starts its draft from it. */
-export type Ask = { chat: string | null; prompt: string; model: Model; doc: Doc };
+/**
+ * `doc` is the room as `forAgent` gives it; a new chat starts its draft from it. `gm` is
+ * whether a GM asks, through `/gm`; a player's chat sees no GM-only character.
+ */
+export type Ask = { chat: string | null; prompt: string; model: Model; doc: Doc; gm: boolean };
 
-type Chat = { base: Doc; draft: Doc; model: Model; at: number };
+type Chat = { base: Doc; draft: Doc; model: Model; at: number; gm?: boolean };
 const DAY = 86_400_000;
 const TOOLS = tools.map(({ name, description, input_schema }) => ({
 	name,
@@ -71,13 +74,16 @@ export class Agent extends DurableObject<Env & { ANTHROPIC_API_KEY?: string }> {
 		if (!key) return send({ t: 'error', text: 'No API key is set up for the chat.' });
 
 		const storage = this.ctx.storage;
-		const known = a.chat ? await storage.get<Chat>(`c:${a.chat}`) : undefined;
+		const kept = a.chat ? await storage.get<Chat>(`c:${a.chat}`) : undefined;
+		// A chat stays its asker's: a GM's is never continued as a player's, nor the reverse.
+		const known = kept && !!kept.gm === a.gm ? kept : undefined;
 		const id = known ? a.chat! : newId();
 		const chat: Chat = known ?? {
 			base: a.doc,
 			draft: structuredClone(a.doc),
 			model: a.model,
-			at: 0
+			at: 0,
+			gm: a.gm
 		};
 		chat.model = a.model;
 		const history = [...(await storage.list<Turn>({ prefix: `h:${id}:` })).values()];
@@ -87,7 +93,12 @@ export class Agent extends DurableObject<Env & { ANTHROPIC_API_KEY?: string }> {
 		addPrompt(history, [
 			...(known
 				? []
-				: [{ type: 'text' as const, text: `<room>\n${overview(chat.draft)}\n</room>` }]),
+				: [
+						{
+							type: 'text' as const,
+							text: `<room>\nAsked by ${a.gm ? 'the GM' : 'a player'}.\n${overview(chat.draft, a.gm)}\n</room>`
+						}
+					]),
 			{ type: 'text', text: `<ask>\n${a.prompt}\n</ask>` }
 		]);
 		send({ t: 'start', chat: id });
@@ -112,7 +123,7 @@ export class Agent extends DurableObject<Env & { ANTHROPIC_API_KEY?: string }> {
 			return stream.finalMessage();
 		};
 		try {
-			await respond(chat.draft, history, step, send);
+			await respond(chat.draft, history, step, send, a.gm);
 		} catch (e) {
 			if (!(e instanceof Anthropic.APIError)) throw e;
 			send({ t: 'error', text: said(e) });

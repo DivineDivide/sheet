@@ -546,3 +546,118 @@ describe('what rules add', () => {
 		expect(() => compileLine('Nobody = 1', known)).toThrow(/nothing is called/);
 	});
 });
+
+describe('another character, as Name!Label', () => {
+	const col = (id: string, name: string) => ({ id, name, kind: 'text' as const });
+	/** Bea's own sheet, and a GM-only character whose Weapons table and Bonus she reads. */
+	function room() {
+		const gm = {
+			id: 'gm',
+			name: 'GM',
+			fields: [
+				{
+					id: 'weapons',
+					label: 'Weapons',
+					kind: 'table' as const,
+					tab: 't',
+					box,
+					columns: [col('wn', 'Name'), col('wd', 'Damage')]
+				},
+				{ id: 'base', label: 'Base', kind: 'number' as const, tab: 't', box },
+				{
+					id: 'bonus',
+					label: 'Bonus',
+					kind: 'formula' as const,
+					tab: 't',
+					box,
+					formula: '@base * 2'
+				}
+			],
+			values: {
+				weapons: [
+					{ id: 'r1', cells: { wn: 'Longsword', wd: '1d8' } },
+					{ id: 'r2', cells: { wn: 'Dagger', wd: '1d4' } }
+				],
+				base: 3
+			}
+		};
+		const bea = { id: 'bea', name: 'Bea Lee', ...sheet(['Weapons', 'number', 1]) };
+		const s = { ...bea, others: [gm, bea] };
+		return { s, gm, bea, known: names(s) };
+	}
+	/** A formula's result on Bea's sheet, the room's other characters with it. */
+	function calcIn(text: string) {
+		const { s, known } = room();
+		const out: Field = { id: 'out', label: 'Out', kind: 'formula', tab: 't', box };
+		out.formula = compile(text, known);
+		return result({ ...s, fields: [...s.fields, out] }, 'out');
+	}
+
+	it('stores another character by id, and shows it by its name and label again', () => {
+		const { known } = room();
+		const stored = compile('XLOOKUP("Dagger", GM!Weapons[Name], gm!weapons[Damage])', known);
+		expect(stored).toBe('XLOOKUP("Dagger", @{gm!weapons}[wn], @{gm!weapons}[wd])');
+		expect(render(stored, known)).toBe('XLOOKUP("Dagger", GM!Weapons[Name], GM!Weapons[Damage])');
+		expect(compile('Weapons + 1', known)).toBe('@f0 + 1');
+	});
+
+	it("reads another character's table and formulas, each worked out on its own sheet", () => {
+		expect(calcIn('XLOOKUP("Dagger", GM!Weapons[Name], GM!Weapons[Damage])')).toBe('1d4');
+		expect(calcIn('GM!Bonus + Weapons')).toBe(7);
+		expect(calcIn('[Nobody]!HP')).toMatchObject({ err: '#NAME?' });
+	});
+
+	it('lets a character name its own field as Name!Label too, as Excel names its own sheet', () => {
+		const { gm, bea } = room();
+		const s = { ...gm, others: [gm, bea] };
+		const known = names(s);
+		const twice: Field = { id: 'twice', label: 'Twice', kind: 'formula', tab: 't', box };
+		twice.formula = compile('GM!Base * 2', known);
+		expect(twice.formula).toBe('@{gm!base} * 2');
+		expect(render(twice.formula, known)).toBe('GM!Base * 2');
+		expect(result({ ...s, fields: [...s.fields, twice] }, 'twice')).toBe(6);
+	});
+
+	it('names a character of more than one word in brackets', () => {
+		const { gm, bea } = room();
+		const known = names({ ...gm, others: [gm, bea] });
+		expect(render(compile('[Bea Lee]!Weapons * 2', known), known)).toBe('[Bea Lee]!Weapons * 2');
+	});
+
+	it('lets a rule read another character but never change it', () => {
+		const { known } = room();
+		expect(() => compileLine('GM!Base -= 1', known)).toThrow('another character');
+		expect(compileLine('Weapons = GM!Base', known)).toBe('@f0 = @{gm!base}');
+	});
+
+	it('tells apart characters made from one template, whose fields share ids', () => {
+		const made = (id: string, name: string, hp: number) => ({
+			id,
+			name,
+			...sheet(['HP', 'number', hp], ['Half', 'formula'])
+		});
+		const ash = made('ash', 'Ash', 10);
+		const bea = made('bea', 'Bea', 20);
+		const room = [ash, bea];
+		bea.fields[1].formula = '@f0 / 2';
+		const known = names({ ...ash, others: room });
+		ash.fields[1].formula = compile('Bea!Half + HP', known);
+		expect(ash.fields[1].formula).toBe('@{bea!f1} + @f0');
+		expect(render(ash.fields[1].formula, known)).toBe('Bea!Half + HP');
+		expect(result({ ...ash, others: room }, 'f1')).toBe(20);
+	});
+
+	it('colours and completes the labels after Name!', () => {
+		const { known } = room();
+		expect(highlight('GM!Bonus + GM!Nope', known).map((p) => p.paint)).toEqual([
+			'field',
+			'plain',
+			'op',
+			'plain',
+			'unknown'
+		]);
+		expect(suggest('GM!Bo', 5, known).options).toEqual(['Bonus']);
+		expect(suggest('GM!Weapons[Da', 13, known).options).toEqual(['[Damage]']);
+		expect(suggest('G', 1, known).options).toContain('GM!Weapons');
+	});
+});

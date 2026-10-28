@@ -2,6 +2,7 @@
 
 import {
 	cellOf,
+	shown,
 	valueOf,
 	type Character,
 	type Column,
@@ -16,6 +17,7 @@ import {
 import { cellResult, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
 import { sheetOf } from '../rules';
+import { keyOf, nameColumn, sourceOf } from '../source';
 
 /** The sheet's dots are 16px apart; boxes are shown and placed in them. */
 export const DOT = 16;
@@ -26,6 +28,16 @@ const dots = (px: number) => String(px / DOT);
 const cut = (s: string, full: boolean) =>
 	full || s.length <= CUT ? s : `${s.slice(0, CUT)}… (${s.length - CUT} more characters)`;
 const ticked = (b: boolean[]) => `${b.filter(Boolean).length} of ${b.length} boxes ticked`;
+
+/** A table as the chat names a source: Character!Table. */
+export function tableName(doc: Doc, id: string): string {
+	const [who, field] = id.split('!');
+	const c = doc.characters.find((x) => x.id === who);
+	const f = c?.fields.find((x) => x.id === field);
+	return c && f ? `${c.name}!${f.label}` : '(a deleted table)';
+}
+
+const gmOnly = (c: Character) => (c.hidden ? ' (GM only)' : '');
 
 /** What a formula or rule on `c` can name; on a table's column, its row's cells too. */
 export function knownOn(doc: Doc, c: Character, table?: Field): Name[] {
@@ -65,12 +77,27 @@ function cellText(doc: Doc, c: Character, table: Field, row: Row, col: Column) {
 	return String(v);
 }
 
-function columnText(col: Column, known: Name[]) {
+function columnText(doc: Doc, col: Column, known: Name[]) {
+	const src = col.kind === 'choice' ? sourceOf(doc, col.from) : undefined;
+	if (src) {
+		const key = keyOf(src, col);
+		const names = key ? src.rows.map((r) => r.cells[key.id]).filter((v) => v !== undefined) : [];
+		return `${col.name} (choice of ${tableName(doc, src.id)}'s rows: ${names.join(', ') || 'none yet'})`;
+	}
 	if (col.kind === 'choice')
 		return `${col.name} (choice of ${col.choices?.join(', ') || 'nothing yet'})`;
 	if (col.kind === 'formula')
 		return `${col.name} (formula ${col.formula?.trim() ? `=${render(col.formula, known)}` : 'not set'})`;
 	return `${col.name} (${col.kind})`;
+}
+
+/** Which source row a row follows, if any. */
+function followsText(doc: Doc, row: Row): string {
+	const src = sourceOf(doc, row.link?.table);
+	const item = src?.rows.find((r) => r.id === row.link!.row);
+	if (!src || !item) return '';
+	const key = nameColumn(src);
+	return ` (follows ${tableName(doc, src.id)}: ${key ? (item.cells[key.id] ?? '?') : '?'})`;
 }
 
 function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
@@ -108,7 +135,8 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 			const shown = full ? rows : rows.slice(0, ROWS);
 			return [
 				`${rows.length} rows`,
-				`  columns: ${cols.map((col) => columnText(col, known)).join(', ') || 'none'}`,
+				`  columns: ${cols.map((col) => columnText(doc, col, known)).join(', ') || 'none'}`,
+				...(f.from ? [`  rows from: ${tableName(doc, f.from)}`] : []),
 				...cols.flatMap((col) =>
 					(col.rules ?? []).map((r) => `  rule on ${col.name}: ${ruleText(doc, c, r, known)}`)
 				),
@@ -117,7 +145,7 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 						const t = cellText(doc, c, f, row, col);
 						return t === undefined ? [] : [`${col.name}=${cut(t, full)}`];
 					});
-					return `  ${i + 1}. ${cells.join('; ') || '(empty)'}`;
+					return `  ${i + 1}. ${cells.join('; ') || '(empty)'}${followsText(doc, row)}`;
 				}),
 				...(shown.length < rows.length ? [`  … ${rows.length - shown.length} more rows`] : [])
 			];
@@ -139,7 +167,7 @@ export function fieldView(doc: Doc, c: Character, f: Field, full = false): strin
 
 export function characterView(doc: Doc, c: Character): string {
 	return [
-		`Character ${c.name}`,
+		`Character ${c.name}${gmOnly(c)}`,
 		...c.tabs.flatMap((t) => [
 			`Tab ${t.name}`,
 			...readingOrder(c.fields.filter((f) => f.tab === t.id)).map((f) => fieldView(doc, c, f))
@@ -155,14 +183,14 @@ const layoutText = (l: Layout) =>
 		})
 		.join('; ');
 
-/** The whole room at a glance: what the chat's first message carries. */
-export function overview(doc: Doc): string {
+/** The whole room at a glance, as the asker's page shows it: what the chat's first message carries. */
+export function overview(doc: Doc, gm: boolean): string {
 	const list = (items: string[]) => (items.length ? items : ['- none']);
 	return [
 		`Clocks: ${doc.clocks.map((k) => `${k.name} (now ${k.now})`).join(', ') || 'none'}`,
 		'Templates:',
 		...list(doc.templates.map((t) => `- ${t.name}: ${layoutText(t)}`)),
 		'Characters:',
-		...list(doc.characters.map((c) => `- ${c.name}: ${layoutText(c)}`))
+		...list(shown(doc.characters, gm).map((c) => `- ${c.name}${gmOnly(c)}: ${layoutText(c)}`))
 	].join('\n');
 }

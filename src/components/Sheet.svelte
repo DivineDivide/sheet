@@ -134,7 +134,7 @@
 	}
 
 	function copy(ids: string[]) {
-		const g = lift(character, session.doc.clocks, ids, true);
+		const g = lift(character, session.doc.clocks, ids, true, session.doc.characters);
 		const { x, y } = bounds(group.map((f) => f.box));
 		keep({ ...g, at: { x, y } });
 		const what = ids.length === 1 ? g.fields[0].label : `${ids.length} fields`;
@@ -144,7 +144,7 @@
 	/** Where the fields were copied from, off any field already there, so pastes fan out. */
 	function paste(g: Clip) {
 		let ids: string[] = [];
-		session.change((d) => (ids = place(g, live(d), d.clocks, tab.id, g.at)));
+		session.change((d) => (ids = place(g, live(d), d.clocks, tab.id, g.at, d.characters)));
 		chosen = ids;
 	}
 
@@ -415,6 +415,15 @@
 				if (text) edit((c) => (c.name = text));
 			}}
 		/>
+		{#if session.gm}
+			<button
+				class:on={character.hidden}
+				aria-pressed={!!character.hidden}
+				title="Players do not see a GM-only character, but their sheets can still draw on its tables"
+				onclick={() => edit((c) => (c.hidden ? delete c.hidden : (c.hidden = true)))}
+				>GM only</button
+			>
+		{/if}
 		<button
 			disabled={sharing}
 			title="Copy every tab, with each value in full, as an image to paste into a chat"

@@ -42,6 +42,7 @@ import {
 	type Sheet,
 	type Val
 } from './formula';
+import { follow } from './source';
 import { apply, equal, get, revert, type Op, type Path } from './sync';
 
 /**
@@ -121,7 +122,11 @@ class Writes {
 }
 
 /** What a character's rules and formulas read. */
-export const sheetOf = (doc: Doc, c: Character): Sheet => ({ ...c, clocks: doc.clocks });
+export const sheetOf = (doc: Doc, c: Character): Sheet => ({
+	...c,
+	clocks: doc.clocks,
+	others: doc.characters
+});
 
 const listensTo = (r: Rule, w: When) =>
 	'press' in w
@@ -455,6 +460,9 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 		}
 	}
 
+	// Rows drawn from a table these rules changed follow in the same event, so Back and ⌘Z
+	// take both back.
+	follow(doc, (op) => w.op(op));
 	const changed = w.changed();
 	const ops: Op[] = changed.map(({ p, now }) => ({ k: 'set', p, v: now }));
 	const undo: Op[] = changed.map(({ p, was }) =>

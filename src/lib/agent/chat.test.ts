@@ -30,7 +30,7 @@ async function run(doc: Doc, step: Step) {
 	const history: Turn[] = [];
 	addPrompt(history, [{ type: 'text', text: 'Add Luck.' }]);
 	const events: Event[] = [];
-	await respond(doc, history, step, (e) => events.push(e));
+	await respond(doc, history, step, (e) => events.push(e), true);
 	return { history, events };
 }
 

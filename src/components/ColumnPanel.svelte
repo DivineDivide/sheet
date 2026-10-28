@@ -2,6 +2,9 @@
 	import { columnKinds, type Column, type Field, type When } from '../lib/doc';
 	import { compile, type Name } from '../lib/formula';
 	import { ruledColumns } from '../lib/rules';
+	import { session } from '../lib/session.svelte';
+	import { sources } from '../lib/source';
+	import { tip } from '../lib/tip';
 	import CodeInput from './CodeInput.svelte';
 	import Rules from './Rules.svelte';
 
@@ -9,6 +12,7 @@
 	// deleted column's cells, unseen, so Undo brings the column back with them.
 	let {
 		field,
+		table,
 		column,
 		known,
 		whens,
@@ -16,6 +20,8 @@
 		editField
 	}: {
 		field: Field;
+		/** The table's `globalId`, which its columns cannot draw on. */
+		table: string;
 		column: Column;
 		/** This row's cells first, then the character's fields. */
 		known: Name[];
@@ -49,14 +55,33 @@
 	</select>
 </label>
 {#if column.kind === 'choice'}
-	<label>
-		<span class="muted">Choices</span>
-		<input
-			value={(column.choices ?? []).join(', ')}
-			placeholder="持有, 已献祭, 已消耗"
-			onchange={(e) => put({ choices: split(e.currentTarget.value) })}
-		/>
-	</label>
+	{@const tables = sources(session.doc).filter((t) => t.id !== table)}
+	{#if tables.length}
+		<label
+			{@attach tip(
+				"Another table's rows as the choices: choosing one fills the row's cells of the same name, which then follow that row"
+			)}
+		>
+			<span class="muted">From</span>
+			<select
+				value={column.from ?? ''}
+				onchange={(e) => put({ from: e.currentTarget.value || undefined })}
+			>
+				<option value="">Typed choices</option>
+				{#each tables as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+			</select>
+		</label>
+	{/if}
+	{#if !column.from}
+		<label>
+			<span class="muted">Choices</span>
+			<input
+				value={(column.choices ?? []).join(', ')}
+				placeholder="持有, 已献祭, 已消耗"
+				onchange={(e) => put({ choices: split(e.currentTarget.value) })}
+			/>
+		</label>
+	{/if}
 {:else if column.kind === 'formula'}
 	<label for="formula-{column.id}"><span class="muted">Formula</span></label>
 	<CodeInput

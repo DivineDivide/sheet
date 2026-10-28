@@ -63,7 +63,13 @@ export function validate(data: unknown): Doc {
 		checkLayout(t, `template "${t.name}"`);
 	}
 	for (const ch of characters) {
-		if (!isObj(ch) || !isStr(ch.id) || !isStr(ch.name) || !isObj(ch.values)) {
+		if (
+			!isObj(ch) ||
+			!isStr(ch.id) ||
+			!isStr(ch.name) ||
+			!isObj(ch.values) ||
+			(ch.hidden !== undefined && ch.hidden !== true)
+		) {
 			throw new ImportError('a character is malformed');
 		}
 		checkLayout(ch, `"${ch.name}"`);
@@ -134,12 +140,16 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 			isStr(c.name) &&
 			columnKinds.includes(c.kind as never) &&
 			(c.choices === undefined || (Array.isArray(c.choices) && c.choices.every(isStr))) &&
+			(c.from === undefined || isStr(c.from)) &&
 			(c.formula === undefined || isStr(c.formula)) &&
 			okRules(c.rules);
 		if (f.columns !== undefined && !(Array.isArray(f.columns) && f.columns.every(okColumn))) {
 			throw new ImportError(`"${f.label}" on ${name} has malformed columns`);
 		}
 		if (!okRules(f.rules)) throw new ImportError(`"${f.label}" on ${name} has malformed rules`);
+		if (f.from !== undefined && !isStr(f.from)) {
+			throw new ImportError(`"${f.label}" on ${name} names its source table wrongly`);
+		}
 	}
 }
 

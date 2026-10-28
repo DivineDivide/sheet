@@ -37,11 +37,12 @@ const changed = $derived(
 
 const note = (text: string) => said.push({ who: 'note', text });
 
+/** A GM's page asks as a GM, through `/gm`; a player's chat sees no GM-only character. */
+const agentUrl = () => `${session.gm ? '/gm' : ''}/api/rooms/${session.token}/agent`;
+
 /** The server keeps a chat for a day; once settled it is dropped at once. */
 function forget() {
-	if (chatId) {
-		fetch(`/api/rooms/${session.token}/agent/${chatId}`, { method: 'DELETE' }).catch(() => {});
-	}
+	if (chatId) fetch(`${agentUrl()}/${chatId}`, { method: 'DELETE' }).catch(() => {});
 	chatId = null;
 	asked = [];
 	session.draft = null;
@@ -75,7 +76,7 @@ async function ask(prompt: string) {
 		else if (l.t === 'done') session.draft = l.ops.length ? l.ops : null;
 	};
 	try {
-		const res = await fetch(`/api/rooms/${session.token}/agent`, {
+		const res = await fetch(agentUrl(), {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ chat: chatId, prompt, model })

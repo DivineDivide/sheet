@@ -5,6 +5,7 @@
 
 import {
 	cellOf,
+	globalId,
 	valueOf,
 	type Character,
 	type Clock,
@@ -26,8 +27,15 @@ export type Val = Scalar | Scalar[];
 
 export class FormulaError extends Error {}
 
-/** What a formula reads: a character's fields and, when given, the clocks. */
-export type Sheet = Pick<Character, 'fields' | 'values'> & { clocks?: Clock[] };
+/**
+ * What a formula reads: a character's fields and, when given, the clocks and the room's
+ * characters, whose fields it reads as `Name!Label`.
+ */
+export type Sheet = Pick<Character, 'fields' | 'values'> & {
+	id?: string;
+	clocks?: Clock[];
+	others?: Pick<Character, 'id' | 'name' | 'fields' | 'values'>[];
+};
 
 /** Rolls one die, from 1 to `sides`. */
 export type Roll = (sides: number) => number;
@@ -47,7 +55,7 @@ type Lexeme =
 	| { k: 'dice'; n: number; sides: number }
 	| { k: 'fn'; s: string }
 	| { k: 'ref'; id: string; prop?: string; col?: string }
-	| { k: 'name'; s: string; prop?: string; col?: string }
+	| { k: 'name'; s: string; of?: string; prop?: string; col?: string }
 	| { k: 'op'; s: string }
 	| { k: 'bad' };
 type Tok = Lexeme & { at: number; end: number };
@@ -109,7 +117,7 @@ function lex(src: string, loose = false): Tok[] {
 		} else if ((m = FN.exec(rest))) {
 			push({ k: 'fn', s: m[0] }, m[0].length);
 		} else if (rest[0] === '@' || rest[0] === '[' || WORD.test(rest)) {
-			let base: { k: 'ref'; id: string } | { k: 'name'; s: string };
+			let base: { k: 'ref'; id: string } | { k: 'name'; s: string; of?: string };
 			let len: number;
 			if (rest[0] === '@') {
 				m = REF.exec(rest);
@@ -134,6 +142,13 @@ function lex(src: string, loose = false): Tok[] {
 				base = { k: 'name', s };
 				len = s.length;
 			}
+			// `GM!Weapons`, as Excel names another sheet: a label on another character.
+			const other = base.k === 'name' && rest[len] === '!' ? rest.slice(len + 1) : null;
+			const part = other && (other[0] === '[' ? /^\[([^\]]*)\]/.exec(other) : WORD.exec(other));
+			if (base.k === 'name' && part) {
+				base = { k: 'name', s: (part[1] ?? part[0]).trim(), of: base.s };
+				len += 1 + part[0].length;
+			}
 			const prop = /^\.([A-Za-z]+)/.exec(rest.slice(len));
 			if (prop) len += prop[0].length;
 			const col = /^\[([^\]]*)\]/.exec(rest.slice(len));
@@ -151,7 +166,7 @@ function lex(src: string, loose = false): Tok[] {
 export type Node =
 	| { t: 'lit'; v: Scalar }
 	| { t: 'ref'; id: string; prop?: string; col?: string }
-	| { t: 'name'; s: string; prop?: string; col?: string }
+	| { t: 'name'; s: string; of?: string; prop?: string; col?: string }
 	| { t: 'dice'; n: number; sides: number }
 	| { t: 'un'; op: '-' | '+' | '%'; a: Node }
 	| { t: 'bin'; op: string; a: Node; b: Node }
@@ -203,7 +218,7 @@ export function parse(text: string): Node {
 			case 'ref':
 				return { t: 'ref', id: t.id, prop: t.prop, col: t.col };
 			case 'name':
-				return { t: 'name', s: t.s, prop: t.prop, col: t.col };
+				return { t: 'name', s: t.s, of: t.of, prop: t.prop, col: t.col };
 			case 'dice':
 				return { t: 'dice', n: t.n, sides: t.sides };
 			case 'fn':
@@ -782,6 +797,14 @@ function ev(n: Node, ctx: Ctx): Val {
 }
 
 function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
+	// Another character's field, by `globalId`, is read on that character's sheet.
+	const bang = n.id.indexOf('!');
+	if (bang >= 0) {
+		const o = ctx.sheet.others?.find((x) => x.id === n.id.slice(0, bang));
+		if (!o) return E('#REF!', 'reads a character that was deleted');
+		const sheet = { ...ctx.sheet, ...o };
+		return read({ ...n, id: n.id.slice(bang + 1) }, { ...ctx, sheet, row: undefined });
+	}
 	const f = ctx.sheet.fields.find((x) => x.id === n.id);
 	if (!f) {
 		const here = ctx.row?.table.columns?.find((c) => c.id === n.id);
@@ -860,7 +883,7 @@ function cell(table: Field, col: Column, r: Row, ctx: Ctx, prop?: string): Val {
 }
 
 function runCell(table: Field, col: Column, r: Row, ctx: Ctx): Val {
-	const key = `${col.id}:${r.id}`;
+	const key = `${ctx.sheet.id}!${col.id}:${r.id}`;
 	if (ctx.stack.includes(key)) return E('#CYCLE!', `${col.name} reaches itself`);
 	const known = ctx.memo.get(key);
 	if (known !== undefined) return known;
@@ -890,6 +913,13 @@ export function cellResult(sheet: Sheet, table: string, col: string, row: string
 /** A name stored as typed: a column of this row, or a field or clock named since. */
 function byName(n: Extract<Node, { t: 'name' }>, ctx: Ctx): Val {
 	const { fields, clocks = [] } = ctx.sheet;
+	if (n.of !== undefined) {
+		const o = ctx.sheet.others?.find((x) => same(x.name, n.of!));
+		const f = o?.fields.find((x) => same(x.label, n.s));
+		if (!f) return E('#NAME?', `nothing on ${n.of} is called "${n.s}"`);
+		const col = n.col && (f.columns?.find((c) => same(c.name, n.col!))?.id ?? n.col);
+		return read({ id: globalId(o!, f), prop: n.prop, col: col ?? undefined }, ctx);
+	}
 	// In a row, its own columns come first; [@Column] names only them, as in Excel.
 	const at = n.s.startsWith('@');
 	const here = ctx.row?.table.columns?.find((c) => same(c.name, at ? n.s.slice(1) : n.s));
@@ -924,11 +954,13 @@ function compiled(text: string): Node {
 }
 
 function run(f: Field, ctx: Ctx): Val {
-	if (ctx.stack.includes(f.id)) return E('#CYCLE!', `${f.label} reaches itself`);
-	const known = ctx.memo.get(f.id);
+	// By character too: characters made from one template share field ids.
+	const key = `${ctx.sheet.id}!${f.id}`;
+	if (ctx.stack.includes(key)) return E('#CYCLE!', `${f.label} reaches itself`);
+	const known = ctx.memo.get(key);
 	if (known !== undefined) return known;
 	if (!f.formula?.trim()) return null;
-	ctx.stack.push(f.id);
+	ctx.stack.push(key);
 	let v: Val;
 	try {
 		// A formula that reads a blank shows 0, as Excel's does. Its dice never roll, even
@@ -939,7 +971,7 @@ function run(f: Field, ctx: Ctx): Val {
 		v = E('#ERROR!', e.message);
 	}
 	ctx.stack.pop();
-	ctx.memo.set(f.id, v);
+	ctx.memo.set(key, v);
 	return v;
 }
 
@@ -981,26 +1013,45 @@ export type Name = {
 	columns?: Column[];
 	/** A column of the row a formula or rule is worked out for. */
 	row?: boolean;
+	/** The other character a field is on, written before a `!`. */
+	of?: string;
 };
 
 /** A table's columns, as its column formulas and rules name them: this row's cells. */
 export const rowNames = (table: Field): Name[] =>
 	(table.columns ?? []).map((c) => ({ id: c.id, label: c.name, kind: c.kind, row: true }));
 
-/** All a character's formulas can name: its fields and the clocks. */
+/**
+ * All a character's formulas can name: its fields, the clocks, and every character's fields
+ * as `Name!Label`, its own too, as Excel names its own sheet: a card on the GM's page that
+ * reads GM!Weapons reads it still once pasted on a player.
+ */
 export function names(sheet: Sheet): Name[] {
 	return [
 		...sheet.fields,
-		...(sheet.clocks ?? []).map((k) => ({ id: k.id, label: k.name, kind: 'clock' as const }))
+		...(sheet.clocks ?? []).map((k) => ({ id: k.id, label: k.name, kind: 'clock' as const })),
+		...(sheet.others ?? []).flatMap((o) =>
+			o.fields.map((f) => ({
+				id: globalId(o, f),
+				label: f.label,
+				kind: f.kind,
+				columns: f.columns,
+				of: o.name
+			}))
+		)
 	];
 }
 
-/** How a field is written in a formula: its label, bracketed unless it reads as one word. */
-export function nameOf(f: Pick<Field, 'label'>): string {
-	const s = f.label.trim();
+/** A label or name, bracketed unless it reads as one word. */
+function word(text: string): string {
+	const s = text.trim();
 	const bare = WORD.exec(s)?.[0] === s && !/^[\d.]/.test(s) && !/^(true|false)$/i.test(s);
 	return bare ? s : `[${s}]`;
 }
+
+/** How a field is written in a formula: its label, after its character's name if another's. */
+export const nameOf = (f: { label: string; of?: string }) =>
+	f.of === undefined ? word(f.label) : `${word(f.of)}!${word(f.label)}`;
 
 /**
  * What someone typed, with each label swapped for its field's id. A label no field has is
@@ -1019,14 +1070,21 @@ function swap(src: string, names: Name[]): string {
 		if (t.k !== 'name') continue;
 		// A row's own columns come first; Excel's [@Column] names only them.
 		const at = t.s.startsWith('@');
-		const all = names.filter((f) => same(f.label, at ? t.s.slice(1) : t.s));
+		// A bare label names only this character's own; another's is written `Name!Label`.
+		const all = names.filter(
+			(f) =>
+				(t.of === undefined ? f.of === undefined : f.of !== undefined && same(f.of, t.of)) &&
+				same(f.label, at ? t.s.slice(1) : t.s)
+		);
 		const own = all.filter((f) => f.row);
 		const hits = at || own.length ? own : all;
 		if (hits.length > 1) {
 			throw new FormulaError(
-				hits.some((h) => h.kind === 'clock')
-					? `a field and a clock are both called "${t.s}": rename one`
-					: `${hits.length} fields are labelled "${t.s}": rename all but one`
+				t.of !== undefined
+					? `${hits.length} characters called "${t.of}" have a "${t.s}": rename one`
+					: hits.some((h) => h.kind === 'clock')
+						? `a field and a clock are both called "${t.s}": rename one`
+						: `${hits.length} fields are labelled "${t.s}": rename all but one`
 			);
 		}
 		if (!hits.length) continue;
@@ -1069,7 +1127,7 @@ export function parseLine(text: string): Line {
 	const target: Line['target'] =
 		t.k === 'ref'
 			? { t: 'ref', id: t.id, prop: t.prop, col: t.col }
-			: { t: 'name', s: t.s, prop: t.prop, col: t.col };
+			: { t: 'name', s: t.s, of: t.of, prop: t.prop, col: t.col };
 	return { target, op, expr: parse(src.slice(end)) };
 }
 
@@ -1111,8 +1169,12 @@ export function compileLine(text: string, names: Name[]): string {
 		);
 	}
 	const why =
-		target.col !== undefined ? "can't be changed by a rule" : unwritable(who.kind, target.prop, op);
-	if (why) throw new FormulaError(`${who.label} ${why}`);
+		who.of !== undefined
+			? 'is on another character, which a rule only reads'
+			: target.col !== undefined
+				? "can't be changed by a rule"
+				: unwritable(who.kind, target.prop, op);
+	if (why) throw new FormulaError(`${nameOf(who)} ${why}`);
 	return out;
 }
 
@@ -1141,6 +1203,9 @@ export function render(stored: string, fields: Name[]): string {
 	return out + stored.slice(last);
 }
 
+// A label as written: in brackets, or one word.
+const PART = `(?:\\[[^\\]]*\\]|[^\\s+\\-*/^&=<>%(),"[\\]{}.:;!@#']+)`;
+
 /** Labels and functions that could finish the name typed just before `caret`. */
 export function suggest(text: string, caret: number, fields: Name[]) {
 	const before = text.slice(0, caret);
@@ -1153,9 +1218,7 @@ export function suggest(text: string, caret: number, fields: Name[]) {
 	if (!bracket && (!typed || /^\d/.test(typed))) return none;
 	if (bracket) {
 		// Right after a table's name, a bracket opens one of its columns.
-		const owner = /(\[[^\]]*\]|[^\s+\-*/^&=<>%(),"[\]{}.:;!@#']+)$/.exec(
-			before.slice(0, m.index)
-		)?.[0];
+		const owner = new RegExp(`(?:${PART}!)?${PART}$`).exec(before.slice(0, m.index))?.[0];
 		const table = fields.find(
 			(f) => f.kind === 'table' && owner && nameOf(f).toLowerCase() === owner.toLowerCase()
 		);
@@ -1164,7 +1227,13 @@ export function suggest(text: string, caret: number, fields: Name[]) {
 			return { from: m.index, options: cols.map((c) => `[${c.name}]`).slice(0, 8) };
 		}
 	}
-	const names = [...new Set(fields.map(nameOf))];
+	// Right after `Name!`, the labels on that character.
+	const on = new RegExp(`(${PART})!$`).exec(before.slice(0, m.index))?.[1].replace(/^\[|\]$/g, '');
+	const pool =
+		on === undefined
+			? fields
+			: fields.filter((f) => f.of !== undefined && same(f.of, on)).map((f) => ({ label: f.label }));
+	const names = [...new Set(pool.map(nameOf))];
 	const plain = (n: string) => n.replace(/^\[|\]$/g, '').toLowerCase();
 	const labels = [
 		...names.filter((n) => plain(n).startsWith(typed)),
@@ -1183,7 +1252,7 @@ export type Paint =
  */
 export function highlight(text: string, fields: Name[]) {
 	const out: { text: string; paint: Paint; depth?: number }[] = [];
-	const labels = new Set(fields.map((f) => f.label.trim().toLowerCase()));
+	const labels = new Set(fields.filter((f) => !f.of).map((f) => f.label.trim().toLowerCase()));
 	let last = 0;
 	let depth = 0;
 	for (const t of lex(text, true)) {
@@ -1200,7 +1269,9 @@ export function highlight(text: string, fields: Name[]) {
 			t.k === 'fn'
 				? key(t.s) in FNS
 				: t.k === 'name'
-					? labels.has(t.s.toLowerCase())
+					? t.of === undefined
+						? labels.has(t.s.toLowerCase())
+						: fields.some((f) => f.of !== undefined && same(f.of, t.of!) && same(f.label, t.s))
 					: t.k === 'ref'
 						? fields.some((f) => f.id === t.id)
 						: true;

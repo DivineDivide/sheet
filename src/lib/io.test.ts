@@ -71,6 +71,11 @@ describe('parse', () => {
 		expect(() => parse(log)).toThrow(/log/);
 	});
 
+	it('keeps a character GM only, and refuses any other mark', () => {
+		expect(parse(mangle((d) => (d.characters[0].hidden = true))).characters[0].hidden).toBe(true);
+		expect(() => parse(mangle((d) => (d.characters[0].hidden = 'yes')))).toThrow(/malformed/);
+	});
+
 	it('refuses an unknown field kind', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/

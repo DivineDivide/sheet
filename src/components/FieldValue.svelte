@@ -14,8 +14,10 @@
 	import { shrink } from '../lib/picture';
 	import { hint, ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
+	import { rowFrom, sourceOf } from '../lib/source';
 	import { tip } from '../lib/tip';
 	import Icon from './Icon.svelte';
+	import Picker from './Picker.svelte';
 	import Prose from './Prose.svelte';
 	import Table from './Table.svelte';
 
@@ -57,13 +59,20 @@
 	let picker = $state<HTMLInputElement>();
 	/** A tag is typed into a box that the label's + opens. */
 	let adding = $state(false);
+	let menu = $state<Picker>();
+	/** The table a table's + offers rows of. */
+	const src = $derived(field.kind === 'table' ? sourceOf(session.doc, field.from) : undefined);
+	const blankRow = () => set([...(v as Row[]), { id: newId(), cells: {} }]);
 
 	// A field holding a list adds to it from a + by its label, not a button under the list.
 	const add = $derived.by(() => {
 		if (field.kind === 'entries')
 			return { what: 'Add an entry', run: () => set([...(v as Entry[]), { name: '', text: '' }]) };
 		if (field.kind === 'table' && !laying && field.columns?.length)
-			return { what: 'Add a row', run: () => set([...(v as Row[]), { id: newId(), cells: {} }]) };
+			return {
+				what: src ? `Add a row, or one of ${src.name}` : 'Add a row',
+				run: (e: MouseEvent) => (src ? menu?.open(e.currentTarget as HTMLElement) : blankRow())
+			};
 		if (field.kind === 'tags') return { what: 'Add a tag', run: () => (adding = true) };
 		if (field.kind === 'track')
 			return { what: 'Add a box', run: () => set([...(v as boolean[]), false]) };
@@ -99,6 +108,14 @@
 					{@attach tip(add.what)}
 					onclick={add.run}><Icon name="plus" /></button
 				>
+				{#if src}
+					<Picker
+						bind:this={menu}
+						{src}
+						onblank={blankRow}
+						onpick={(item) => set([...(v as Row[]), rowFrom(src, item, field.columns ?? [])])}
+					/>
+				{/if}
 			{/if}
 			{#if field.kind === 'track'}
 				{@const boxes = v as boolean[]}

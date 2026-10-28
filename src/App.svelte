@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { changes } from './lib/agent/changes';
 	import { chat } from './lib/agent/client.svelte';
-	import type { Doc } from './lib/doc';
+	import { shown, type Doc } from './lib/doc';
 	import { ImportError, parse, serialize } from './lib/io';
 	import { mod, plain, typing } from './lib/keys';
 	import { session } from './lib/session.svelte';
@@ -27,12 +27,14 @@
 
 	let current = $state('');
 	// Falls back to the first character when the open one is deleted.
-	const character = $derived(doc.characters.find((c) => c.id === current) ?? doc.characters[0]);
+	const characters = $derived(shown(doc.characters, session.gm));
+	const character = $derived(characters.find((c) => c.id === current) ?? characters[0]);
 	let picker: HTMLInputElement;
 	let keys: Keys;
 
 	function exportFile() {
-		const url = URL.createObjectURL(new Blob([serialize(doc)], { type: 'application/json' }));
+		const text = serialize({ ...doc, characters: shown(doc.characters, session.gm) });
+		const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
 		const a = document.createElement('a');
 		a.href = url;
 		a.download = `sheet-${new Date().toISOString().slice(0, 10)}.json`;
@@ -74,7 +76,7 @@
 				key === 'n' ? { tick: { clock: k.id, at: k.now } } : { back: { clock: k.id, at: k.now } }
 			);
 		} else if ((key === '[' || key === ']') && character) {
-			const all = doc.characters;
+			const all = characters;
 			const i = all.findIndex((c) => c.id === character.id) + (key === ']' ? 1 : -1);
 			current = all[(i + all.length) % all.length].id;
 		} else {

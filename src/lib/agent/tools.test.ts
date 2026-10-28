@@ -2,18 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { newDoc, valueOf, type Doc, type Row } from '../doc';
 import { validate } from '../io';
 import { fire } from '../rules';
+import { diff } from '../sync';
 import { runTool } from './tools';
 import { overview } from './view';
 
 /** Runs a tool and expects it to work, as the model's next turn would read it. */
-function ok(doc: Doc, name: string, input: object) {
-	const out = runTool(doc, name, input);
+function ok(doc: Doc, name: string, input: object, gm = true) {
+	const out = runTool(doc, name, input, gm);
 	expect(out, out.text).toMatchObject({ ok: true });
 	return out.text;
 }
-function refused(doc: Doc, name: string, input: object) {
+function refused(doc: Doc, name: string, input: object, gm = true) {
 	const before = structuredClone(doc);
-	const out = runTool(doc, name, input);
+	const out = runTool(doc, name, input, gm);
 	expect(out.ok).toBe(false);
 	expect(doc).toEqual(before);
 	return out.text;
@@ -103,7 +104,7 @@ describe('a scripted chat builds a room', () => {
 			'Skills'
 		]);
 		expect(() => validate(doc)).not.toThrow();
-		expect(overview(doc)).toBe(
+		expect(overview(doc, true)).toBe(
 			[
 				'Clocks: Turn (now 2), Round (now 1)',
 				'Templates:',
@@ -119,7 +120,7 @@ describe('a scripted chat builds a room', () => {
 
 describe('a mistake comes back in words, and changes nothing', () => {
 	const doc = newDoc();
-	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' }, true);
 
 	it('names what is there when asked for what is not', () => {
 		expect(refused(doc, 'read', { character: 'Cid' })).toBe(
@@ -176,7 +177,7 @@ describe('a mistake comes back in words, and changes nothing', () => {
 		expect(refused(doc, 'edit_tabs', { character: 'Ash', remove: ['Main'] })).toBe(
 			'Main has fields; move or remove them first'
 		);
-		runTool(doc, 'add_character', { name: 'Bea' });
+		runTool(doc, 'add_character', { name: 'Bea' }, true);
 		expect(refused(doc, 'edit_tabs', { character: 'Bea', remove: ['Main'] })).toBe(
 			"Main is Bea's only tab"
 		);
@@ -185,7 +186,7 @@ describe('a mistake comes back in words, and changes nothing', () => {
 
 describe('what a change leaves for the model to see', () => {
 	const doc = newDoc();
-	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' }, true);
 
 	it('numbers a taken label and says so', () => {
 		expect(ok(doc, 'add_field', { character: 'Ash', label: 'hp', kind: 'number' })).toMatch(
@@ -201,5 +202,127 @@ describe('what a change leaves for the model to see', () => {
 		expect(ok(doc, 'remove_field', { character: 'Ash', field: 'HP' })).toBe(
 			'Removed HP. Still naming it: Half.'
 		);
+	});
+});
+
+describe("a GM's page, as each asker's chat sees it", () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'GM', gm_only: true });
+	ok(doc, 'add_field', {
+		character: 'GM',
+		label: 'Weapons',
+		kind: 'table',
+		columns: [
+			{ name: 'Name', kind: 'text' },
+			{ name: 'Damage', kind: 'text' }
+		]
+	});
+	ok(doc, 'edit_table', {
+		character: 'GM',
+		table: 'Weapons',
+		add_rows: [
+			{ Name: 'Longsword', Damage: '1d8' },
+			{ Name: 'Dagger', Damage: '1d4' }
+		]
+	});
+	ok(doc, 'add_field', { character: 'GM', label: 'Party bonus', kind: 'number' });
+	ok(doc, 'set_value', { character: 'GM', field: 'Party bonus', value: 2 });
+	ok(doc, 'add_character', { name: 'Bea', template: 'Basic' }, false);
+	const gm = doc.characters[0];
+	const gear = () => ok(doc, 'read', { character: 'Bea', field: 'Gear' }, false);
+
+	it("shows a player's chat no GM-only character, and lets only a GM mark one", () => {
+		expect(overview(doc, true)).toContain('- GM (GM only): Main: Weapons (table), Party bonus');
+		expect(overview(doc, false)).not.toContain('GM');
+		expect(refused(doc, 'read', { character: 'GM' }, false)).toBe(
+			'no character is called "GM" (there are: Bea)'
+		);
+		expect(refused(doc, 'edit_character', { character: 'Bea', gm_only: true }, false)).toBe(
+			'only a GM can mark a character GM only'
+		);
+	});
+
+	it("draws a player's rows from the GM's table, which they then follow", () => {
+		const base = structuredClone(doc);
+		ok(
+			doc,
+			'add_field',
+			{
+				character: 'Bea',
+				label: 'Gear',
+				kind: 'table',
+				columns: [
+					{ name: 'Weapon', kind: 'choice', from: 'GM!Weapons' },
+					{ name: 'Damage', kind: 'text' },
+					{ name: 'Note', kind: 'text' }
+				]
+			},
+			false
+		);
+		ok(
+			doc,
+			'edit_table',
+			{
+				character: 'Bea',
+				table: 'Gear',
+				rows_from: 'GM!Weapons',
+				add_rows: [{ Weapon: 'Longsword', Note: 'heirloom' }],
+				add_rows_from: ['Dagger']
+			},
+			false
+		);
+		expect(gear()).toContain("Weapon (choice of GM!Weapons's rows: Longsword, Dagger)");
+		expect(gear()).toContain('rows from: GM!Weapons');
+		expect(gear()).toContain(
+			'1. Weapon=Longsword; Damage=1d8; Note=heirloom (follows GM!Weapons: Longsword)'
+		);
+		expect(gear()).toContain('2. Weapon=Dagger; Damage=1d4 (follows GM!Weapons: Dagger)');
+		expect(diff(base, doc).some((op) => op.p[1] === gm.id)).toBe(false);
+		expect(
+			refused(
+				doc,
+				'edit_table',
+				{ character: 'Bea', table: 'Gear', add_rows: [{ Weapon: 'Axe' }] },
+				false
+			)
+		).toBe('GM!Weapons has Longsword, Dagger, not "Axe"');
+		expect(
+			refused(
+				doc,
+				'edit_table',
+				{ character: 'Bea', table: 'Gear', change_rows: [{ row: 1, cells: { Weapon: null } }] },
+				false
+			)
+		).toBe('Weapon chooses a row of GM!Weapons; remove the row instead');
+	});
+
+	it('changes a followed cell only at its source, or once the row stops following', () => {
+		const damage = (cells: object) => ({
+			character: 'Bea',
+			table: 'Gear',
+			change_rows: [{ row: 1, ...cells }]
+		});
+		expect(refused(doc, 'edit_table', damage({ cells: { Damage: '9' } }), false)).toBe(
+			'Damage comes from GM!Weapons in this row; change it there, or stop the row following'
+		);
+		ok(doc, 'edit_table', {
+			character: 'GM',
+			table: 'Weapons',
+			change_rows: [{ row: 1, cells: { Damage: '1d10' } }]
+		});
+		expect(gear()).toContain('1. Weapon=Longsword; Damage=1d10; Note=heirloom (follows');
+		ok(doc, 'edit_table', damage({ follow: false, cells: { Damage: '2d6' } }), false);
+		expect(gear()).toContain('1. Weapon=Longsword; Damage=2d6; Note=heirloom\n');
+	});
+
+	it("reads another character's field in a formula, as Name!Label", () => {
+		const text = ok(
+			doc,
+			'add_field',
+			{ character: 'Bea', label: 'To hit', kind: 'formula', formula: 'GM![Party bonus] + 3' },
+			false
+		);
+		expect(text).toContain('It shows 5.');
+		expect(text).toContain('=GM![Party bonus] + 3 → 5');
 	});
 });

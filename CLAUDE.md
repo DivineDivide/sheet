@@ -6,7 +6,7 @@ A character sheet with clocks, shared live by everyone in a room. The plan and i
 are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built. Formulas,
 tables and Excel import followed, planned in `notes/trpg/plan-sheet-formulas-import.md`,
 then buttons and rules, in `notes/trpg/plan-sheet-rules.md`, which folded statuses into
-tables.
+tables. A GM's page of data that other sheets draw on is `notes/trpg/plan-sheet-gm-page.md`.
 
 ## Commands
 
@@ -28,6 +28,9 @@ npm run deploy                    # build + wrangler deploy: goes live
   as its values, so reshaping one never touches another. A template is a layout saved from
   a character and is never edited; `newCharacter` copies it. A status is a row of a table
   (`statusTable`, which the Basic template has), whose Left a column rule counts down.
+  A `hidden` character is a GM's, for their tables and cards: players' pages and exports
+  leave it out (`shown`), but its data still reaches their browsers, so their sheets can
+  draw on it. A player's chat sees it no more than their page does.
 - **Rooms** — every session lives in a room at `/r/<token>`, and the link is the only
   key. `worker/room.ts` is one SQLite Durable Object per room, storing each character
   as a row of its own, plus rows for clocks, templates and the character order. Players
@@ -61,7 +64,12 @@ npm run deploy                    # build + wrangler deploy: goes live
   id. `highlight` colours the editor and must never throw on a half-typed formula. Clocks
   are named like fields and stored by id. A status is read from its table, as
   `SUMIF(Statuses[Name], "Poison", Statuses[Stacks])`. Field labels are unique within a
-  character (`uniqueLabel`), so a label names one field on any tab.
+  character (`uniqueLabel`), so a label names one field on any tab. Another character's
+  field is `Name!Label`, as Excel names another sheet, stored by `globalId`, since every
+  character made from one template shares its field ids; so are source tables. A character
+  names its own fields that way too, so a card copied off the GM's page still reads GM!Weapons.
+  A bare label never reaches past the character's own. `sheetOf` hands every formula the room's
+  characters (`others`), and a rule may read them but never change them.
 - **`src/lib/rules.ts`** — when a button is pressed or a clock ticks, rules run: each is a
   formula condition and lines like `HP -= 1d6`, and lives on what it changes (a field or a
   table column), never on the button or the clock. The room runs them: a client sends an
@@ -86,6 +94,9 @@ npm run deploy                    # build + wrangler deploy: goes live
   `session.draft` shows its draft in place of the room, holding edits back until it is
   applied or discarded. A page opened from `/gm` (`?gm`) is a GM's once `/gm/api/me`
   answers; a player's Apply is a proposal, which the `Room` keeps until a GM settles it.
+  A GM's page asks through `/gm/api/rooms/<token>/agent`, behind Access, and only that chat
+  reads, changes or marks GM-only characters (the tools' `gm`); a player's works on the
+  room as their page shows it. `runTool` runs `follow` after each call, as the editor does.
 - **Tables** — a `table` field's columns live on the field and its rows, each with an id,
   are the character's value, so rows and cells sync one by one through the keyed-list diff.
   A column holds any kind a cell can (`columnKinds`), read through `cellOf` as `valueOf`
@@ -93,7 +104,11 @@ npm run deploy                    # build + wrangler deploy: goes live
   reads that row's cell. A column's rules run in every row, or only in the row whose button
   column was pressed. In Edit layout a kind dropped from the palette onto a table becomes a
   column there (`Table` owns its headers: rename, drag the icon to move, press it to open
-  `ColumnPanel` in the inspector).
+  `ColumnPanel` in the inspector). A table draws rows from another, usually a GM-only
+  character's (`source.ts`): a choice column's `from` offers that table's rows by name, and
+  a table's `from` its +. Such a row keeps a `link` and follows its source row, since
+  `session.change` runs `follow` after every edit and `fire` after every event, through its
+  own writes so Back and ⌘Z take both; its cells from the source are read-only.
 - **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
   not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically
@@ -121,7 +136,9 @@ npm run deploy                    # build + wrangler deploy: goes live
   popup, with a `Preview` of each template's first tab. `Sheet` holds tabs, the stage and the edit-mode gestures. Over the
   stage float, in Edit layout, `Palette` (left: kinds to drag in) and `Toolbar` (right:
   inspector and save as template), as round icons whose panels are 85% see-through
-  (`--panel-bg`). The inspector holds inputs, not explanations, and a button says what it
+  (`--panel-bg`). A table's + menu (`Picker`) sits on the stage as well, after
+  the viewport, so the stage clips it, its panels float over it, and it stays on its table
+  as the sheet pans. The inspector holds inputs, not explanations, and a button says what it
   does only in its hover hint (`tip.ts`). Each clock in `Clocks` has
   a link icon listing the fields and columns its ticks run or that read it.
   Gestures listen on the window, because a drag from the palette is released over the

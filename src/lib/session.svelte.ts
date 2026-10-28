@@ -1,6 +1,7 @@
 import { newId, type Doc } from './doc';
 import { History } from './history';
 import type { Act } from './rules';
+import { follow } from './source';
 import { Replica, apply, diff, revert, type Down, type Op, type Proposal } from './sync';
 
 const VISITS = 'sheet.rooms';
@@ -132,6 +133,8 @@ function commit(fn: (d: Doc) => void) {
 	if (!doc) return;
 	const before = $state.snapshot(doc) as Doc;
 	fn(doc);
+	// Rows drawn from a table take its change in the same step, so ⌘Z takes both back.
+	follow(doc);
 	const after = $state.snapshot(doc) as Doc;
 	const f = diff(before, after);
 	if (!f.length) return;

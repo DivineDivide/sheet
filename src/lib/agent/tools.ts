@@ -4,9 +4,11 @@
 import {
 	blank,
 	columnKinds,
+	globalId,
 	kinds,
 	newCharacter,
 	newId,
+	shown,
 	uniqueLabel,
 	valueOf,
 	type Cell,
@@ -25,8 +27,18 @@ import { FormulaError, compile, compileLine, isErr, refText, result, show } from
 import { ImportError, validate } from '../io';
 import { GAP, clamp, defaultSize, type Box } from '../layout';
 import { ruled, ruledColumns, sheetOf } from '../rules';
+import {
+	choose,
+	follow,
+	fromSource,
+	keyOf,
+	nameColumn,
+	rowFrom,
+	sourceOf,
+	type Source
+} from '../source';
 import { equal } from '../sync';
-import { DOT, characterView, fieldView, knownOn, overview, ruleText } from './view';
+import { DOT, characterView, fieldView, knownOn, overview, ruleText, tableName } from './view';
 
 type Input = Record<string, unknown>;
 type Schema = Record<string, unknown>;
@@ -34,7 +46,8 @@ export type Tool = {
 	name: string;
 	description: string;
 	input_schema: Schema;
-	run: (doc: Doc, input: Input) => string;
+	/** `gm` is whether a GM asks; a player's chat works on the room as their page shows it. */
+	run: (doc: Doc, input: Input, gm: boolean) => string;
 };
 
 /** A mistake the model can read and correct; anything else is a bug. */
@@ -83,11 +96,18 @@ function named<T>(list: T[], name: string, nameOf: (t: T) => string, what: strin
 			: `no ${what} is called "${name}" (there are: ${list.map(nameOf).join(', ') || 'none'})`
 	);
 }
-const characterIn = (doc: Doc, i: Input) =>
-	named(doc.characters, need(i, 'character'), (c) => c.name, 'character');
+const characterIn = (doc: Doc, i: Input, gm: boolean) =>
+	named(shown(doc.characters, gm), need(i, 'character'), (c) => c.name, 'character');
 const fieldOf = (c: Character, label: string) => named(c.fields, label, (f) => f.label, 'field');
 const tabOf = (c: Character, name: string) => named(c.tabs, name, (t) => t.name, 'tab');
 const clockOf = (doc: Doc, name: string) => named(doc.clocks, name, (k) => k.name, 'clock');
+
+/** What `gm_only` asks for, which only a GM may. */
+function hide(i: Input, gm: boolean): boolean | undefined {
+	if (i.gm_only === undefined || i.gm_only === null) return undefined;
+	if (typeof i.gm_only !== 'boolean') fail('gm_only must be true or false');
+	return gm ? (i.gm_only as boolean) : fail('only a GM can mark a character GM only');
+}
 
 /** A label `uniqueLabel` had to number, said so the model knows what to call it. */
 const renamed = (asked: string, got: string) =>
@@ -100,6 +120,32 @@ function columnRef(c: Character, ref: string): [Field, Column] | undefined {
 	const table = fieldOf(c, m[1]);
 	if (table.kind !== 'table') fail(`${table.label} is a ${table.kind}, not a table`);
 	return [table, named(table.columns ?? [], m[2], (x) => x.name, `column of ${table.label}`)];
+}
+
+/** A table anywhere in the room as Character!Table, as a formula names it, or `c`'s own. */
+function tableIn(doc: Doc, c: Character, ref: string): string {
+	const plain = (s: string) => s.trim().replace(/^\[(.*)\]$/, '$1');
+	const m = /^(.+?)!(.+)$/.exec(ref);
+	const owner = m ? named(doc.characters, plain(m[1]), (x) => x.name, 'character') : c;
+	const f = fieldOf(owner, plain(m ? m[2] : ref));
+	return f.kind === 'table' ? globalId(owner, f) : fail(`${f.label} is a ${f.kind}, not a table`);
+}
+
+/** The source a table or choice column names by `from`, set or, when empty, cleared. */
+function setFrom(doc: Doc, c: Character, on: { from?: string }, ref: string) {
+	if (ref) on.from = tableIn(doc, c, ref);
+	else delete on.from;
+}
+
+/** A source's row by the name it is chosen by. */
+function itemOf(doc: Doc, src: Source, key: Column | undefined, name: unknown): Row {
+	const names = key ? src.rows.map((r) => String(r.cells[key.id] ?? '')) : [];
+	const at = names.indexOf(String(name));
+	return at >= 0
+		? src.rows[at]
+		: fail(
+				`${tableName(doc, src.id)} has ${names.filter(Boolean).join(', ') || 'no rows'}, not "${name}"`
+			);
 }
 
 function compiled(text: string, fn: () => string): string {
@@ -195,18 +241,34 @@ function cellFor(col: Column, v: unknown): Cell | undefined {
 		: (v as Cell);
 }
 
-function cellsFor(cols: Column[], row: Row, cells: unknown) {
+/**
+ * Sets a row's cells as the table does: a choice column drawing on a table chooses that row,
+ * and a cell its source row fills changes only there.
+ */
+function cellsFor(doc: Doc, cols: Column[], row: Row, cells: unknown) {
 	if (!isObj(cells)) fail('cells must be an object of column name to value');
 	for (const [name, v] of Object.entries(cells as Input)) {
 		const col = named(cols, name, (x) => x.name, 'column');
+		const follows = sourceOf(doc, row.link?.table);
+		if (follows && fromSource(follows, col) && col.from !== follows.id)
+			fail(
+				`${col.name} comes from ${tableName(doc, follows.id)} in this row; change it there, or stop the row following`
+			);
+		const src = col.kind === 'choice' ? sourceOf(doc, col.from) : undefined;
+		if (src) {
+			if (v === null || v === '')
+				fail(`${col.name} chooses a row of ${tableName(doc, src.id)}; remove the row instead`);
+			Object.assign(row, choose(src, itemOf(doc, src, keyOf(src, col), v), row, cols));
+			continue;
+		}
 		const cell = cellFor(col, v);
 		if (cell === undefined) delete row.cells[col.id];
 		else row.cells[col.id] = cell;
 	}
 }
 
-/** A new column from `{name, kind, choices?}`; its formula is set once all columns exist. */
-function newColumn(i: Input, cols: Column[]): Column {
+/** A new column from `{name, kind, choices?, from?}`; its formula is set once all columns exist. */
+function newColumn(doc: Doc, c: Character, i: Input, cols: Column[]): Column {
 	const kind = need(i, 'kind');
 	if (!columnKinds.includes(kind as ColumnKind))
 		fail(`a column holds one of ${columnKinds.join(', ')}, not ${kind}`);
@@ -214,12 +276,18 @@ function newColumn(i: Input, cols: Column[]): Column {
 		need(i, 'name'),
 		cols.map((c) => ({ id: c.id, label: c.name }))
 	);
-	return {
+	const col: Column = {
 		id: newId(),
 		name,
 		kind: kind as ColumnKind,
 		...(kind === 'choice' && { choices: texts(i, 'choices') })
 	};
+	const from = opt(i, 'from');
+	if (from) {
+		if (kind !== 'choice') fail(`only a choice column draws on a table, and ${name} is ${kind}`);
+		setFrom(doc, c, col, from);
+	}
+	return col;
 }
 
 function columnFormula(doc: Doc, c: Character, table: Field, col: Column, text: string) {
@@ -259,6 +327,11 @@ const obj = (properties: Record<string, Schema>, required: string[] = []): Schem
 });
 const num = { type: 'number' };
 const who = { character: text('The character, by name') };
+const gm_only = {
+	type: 'boolean',
+	description:
+		"Whether players see it: a GM's own character holds tables and cards for players' sheets to draw on"
+};
 const placing = {
 	tab: text('The tab to put it on, by name'),
 	below: text('Put it under this field, lined up on its left'),
@@ -269,11 +342,15 @@ const placing = {
 		description: 'Its size in dots; 3×3 is the smallest'
 	}
 };
+const from = text(
+	"A choice column's source, a table as Character!Table: it offers that table's rows by name, choosing one fills the row's columns of the same names, and the row then follows it. Empty stops it"
+);
 const columnSpec = obj(
 	{
 		name: text('The column name'),
 		kind: { type: 'string', enum: [...columnKinds] },
 		choices: list({ type: 'string' }, 'What a choice column offers'),
+		from,
 		formula: text("A formula column's formula; a column's name reads that row's cell")
 	},
 	['name', 'kind']
@@ -296,9 +373,9 @@ export const tools: Tool[] = [
 		description:
 			'With nothing, the whole room at a glance. With a character, every field on it. With a field too, that field whole: long text and every row.',
 		input_schema: obj({ ...who, field: text('A field of that character, by label') }),
-		run(doc, i) {
-			if (!opt(i, 'character')) return overview(doc);
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			if (!opt(i, 'character')) return overview(doc, gm);
+			const c = characterIn(doc, i, gm);
 			const label = opt(i, 'field');
 			return label ? fieldView(doc, c, fieldOf(c, label), true) : characterView(doc, c);
 		}
@@ -306,10 +383,11 @@ export const tools: Tool[] = [
 	{
 		name: 'add_character',
 		description: 'Adds a character, blank or from a template.',
-		input_schema: obj({ name: text('Its name'), template: text('A template to start from') }, [
-			'name'
-		]),
-		run(doc, i) {
+		input_schema: obj(
+			{ name: text('Its name'), template: text('A template to start from'), gm_only },
+			['name']
+		),
+		run(doc, i, gm) {
 			const asked = need(i, 'name');
 			const name = uniqueLabel(
 				asked,
@@ -318,29 +396,42 @@ export const tools: Tool[] = [
 			const from = opt(i, 'template');
 			const t = from ? named(doc.templates, from, (x) => x.name, 'template') : undefined;
 			const c = newCharacter(name, t && structuredClone(t));
+			if (hide(i, gm)) c.hidden = true;
 			doc.characters.push(c);
 			return `Added.${renamed(asked, name)}\n${characterView(doc, c)}`;
 		}
 	},
 	{
 		name: 'edit_character',
-		description: 'Renames a character, or removes it with everything on it.',
-		input_schema: obj({ ...who, rename: text('Its new name'), remove: { type: 'boolean' } }, [
-			'character'
-		]),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		description:
+			'Renames a character, marks it GM only or shows it to players again, or removes it with everything on it.',
+		input_schema: obj(
+			{ ...who, rename: text('Its new name'), gm_only, remove: { type: 'boolean' } },
+			['character']
+		),
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			if (i.remove === true) {
 				doc.characters = doc.characters.filter((x) => x !== c);
 				return `Removed ${c.name}.`;
 			}
-			const asked = need(i, 'rename');
-			c.name = uniqueLabel(
-				asked,
-				doc.characters.map((x) => ({ id: x.id, label: x.name })),
-				c.id
-			);
-			return `Renamed.${renamed(asked, c.name)}`;
+			const said: string[] = [];
+			const asked = opt(i, 'rename');
+			if (asked) {
+				c.name = uniqueLabel(
+					asked,
+					doc.characters.map((x) => ({ id: x.id, label: x.name })),
+					c.id
+				);
+				said.push(`Renamed.${renamed(asked, c.name)}`);
+			}
+			const hidden = hide(i, gm);
+			if (hidden !== undefined) {
+				if (hidden) c.hidden = true;
+				else delete c.hidden;
+				said.push(hidden ? 'Players no longer see it.' : 'Players see it again.');
+			}
+			return said.join(' ') || fail('say rename, gm_only or remove');
 		}
 	},
 	{
@@ -348,8 +439,8 @@ export const tools: Tool[] = [
 		description:
 			"Saves a character's tabs and fields, without values, as a template to start characters from.",
 		input_schema: obj({ ...who, name: text("The template's name") }, ['character', 'name']),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const asked = need(i, 'name');
 			const name = uniqueLabel(
 				asked,
@@ -432,8 +523,8 @@ export const tools: Tool[] = [
 			},
 			['character']
 		),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const free = (name: string) =>
 				c.tabs.some((t) => same(t.name, name)) ? fail(`${c.name} already has a tab ${name}`) : name;
 			for (const r of objs(i, 'rename')) {
@@ -472,8 +563,8 @@ export const tools: Tool[] = [
 			},
 			['character', 'label', 'kind']
 		),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const kind = need(i, 'kind') as Kind;
 			if (!kinds.includes(kind)) fail(`a field is one of ${kinds.join(', ')}, not ${kind}`);
 			const asked = need(i, 'label');
@@ -489,7 +580,7 @@ export const tools: Tool[] = [
 				const specs = objs(i, 'columns');
 				f.columns = [];
 				for (const s of specs.length ? specs : [{ name: 'Name', kind: 'text' }])
-					f.columns.push(newColumn(s, f.columns));
+					f.columns.push(newColumn(doc, c, s, f.columns));
 				specs.forEach((s, n) => {
 					const formula = opt(s, 'formula');
 					if (formula) columnFormula(doc, c, f, f.columns![n], formula);
@@ -518,8 +609,8 @@ export const tools: Tool[] = [
 			},
 			['character', 'field']
 		),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const f = fieldOf(c, need(i, 'field'));
 			const asked = opt(i, 'label');
 			if (asked) f.label = uniqueLabel(asked, c.fields, f.id);
@@ -545,8 +636,8 @@ export const tools: Tool[] = [
 		name: 'remove_field',
 		description: 'Removes a field and its value. Formulas and rules naming it then show #REF!.',
 		input_schema: obj({ ...who, field: text('The field, by label') }, ['character', 'field']),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const f = fieldOf(c, need(i, 'field'));
 			c.fields = c.fields.filter((x) => x !== f);
 			delete c.values[f.id];
@@ -566,8 +657,8 @@ export const tools: Tool[] = [
 			},
 			['character', 'field', 'value']
 		),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const f = fieldOf(c, need(i, 'field'));
 			if (['formula', 'button', 'table', 'image'].includes(f.kind))
 				fail(`${f.label} is a ${f.kind}, which takes ${shapes[f.kind]}`);
@@ -582,7 +673,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_table',
 		description:
-			"Changes a table's columns, then its rows. Rows are numbered as read shows them, before this call; cells are {column name: value}, and null empties a cell.",
+			"Changes a table's columns, then its rows. Rows are numbered as read shows them, before this call; cells are {column name: value}, and null empties a cell. A row that follows a source row takes its cells from there.",
 		input_schema: obj(
 			{
 				...who,
@@ -595,6 +686,7 @@ export const tools: Tool[] = [
 							name: text('Its new name'),
 							kind: { type: 'string', enum: [...columnKinds] },
 							choices: list({ type: 'string' }, 'What a choice column offers'),
+							from,
 							formula: text("A formula column's formula; empty removes it")
 						},
 						['column']
@@ -603,17 +695,31 @@ export const tools: Tool[] = [
 				),
 				remove_columns: list({ type: 'string' }, 'Columns to remove'),
 				column_order: list({ type: 'string' }, 'Every column, in the order wanted'),
+				rows_from: text(
+					"A table, as Character!Table, whose rows add_rows_from and the table's + offer. Empty stops it"
+				),
 				change_rows: list(
-					obj({ row: { type: 'integer' }, cells: { type: 'object' } }, ['row', 'cells']),
+					obj(
+						{
+							row: { type: 'integer' },
+							cells: { type: 'object' },
+							follow: { type: 'boolean', description: 'false stops it following its source row' }
+						},
+						['row']
+					),
 					'Rows to change'
 				),
 				remove_rows: list({ type: 'integer' }, 'Rows to remove'),
-				add_rows: list({ type: 'object' }, 'Rows to add at the end, as their cells')
+				add_rows: list({ type: 'object' }, 'Rows to add at the end, as their cells'),
+				add_rows_from: list(
+					{ type: 'string' },
+					"Rows of rows_from's table to add at the end, by name; each follows its source row"
+				)
 			},
 			['character', 'table']
 		),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const f = fieldOf(c, need(i, 'table'));
 			if (f.kind !== 'table') fail(`${f.label} is a ${f.kind}, not a table`);
 			let cols = (f.columns ??= []);
@@ -639,11 +745,17 @@ export const tools: Tool[] = [
 					col.kind = kind as ColumnKind;
 				}
 				if (ch.choices !== undefined) col.choices = texts(ch, 'choices');
+				const from = opt(ch, 'from');
+				if (from !== undefined) {
+					if (col.kind !== 'choice')
+						fail(`only a choice column draws on a table, and ${col.name} is ${col.kind}`);
+					setFrom(doc, c, col, from);
+				}
 				const formula = opt(ch, 'formula');
 				if (formula !== undefined) formulas.push([col, formula]);
 			}
 			for (const spec of objs(i, 'add_columns')) {
-				const col = newColumn(spec, cols);
+				const col = newColumn(doc, c, spec, cols);
 				cols.push(col);
 				const formula = opt(spec, 'formula');
 				if (formula) formulas.push([col, formula]);
@@ -655,21 +767,32 @@ export const tools: Tool[] = [
 				cols = f.columns = next;
 			}
 			for (const [col, formula] of formulas) columnFormula(doc, c, f, col, formula);
+			const rowsFrom = opt(i, 'rows_from');
+			if (rowsFrom !== undefined) setFrom(doc, c, f, rowsFrom);
 
 			const rows = valueOf(c, f) as Row[];
 			const at = (n: unknown) =>
 				Number.isInteger(n) && (n as number) >= 1 && (n as number) <= rows.length
 					? rows[(n as number) - 1]
 					: fail(`${f.label} has rows 1 to ${rows.length}, not ${n}`);
-			for (const ch of objs(i, 'change_rows')) cellsFor(cols, at(ch.row), ch.cells);
+			for (const ch of objs(i, 'change_rows')) {
+				const row = at(ch.row);
+				if (ch.follow === false) delete row.link;
+				if (ch.cells !== undefined) cellsFor(doc, cols, row, ch.cells);
+			}
 			const gone = new Set(
 				(Array.isArray(i.remove_rows) ? i.remove_rows : []).map((n: unknown) => at(n))
 			);
 			const added = (Array.isArray(i.add_rows) ? i.add_rows : []).map((cells: unknown) => {
 				const row: Row = { id: newId(), cells: {} };
-				cellsFor(cols, row, cells);
+				cellsFor(doc, cols, row, cells);
 				return row;
 			});
+			const picked = texts(i, 'add_rows_from');
+			const src = sourceOf(doc, f.from);
+			if (picked.length && !src) fail(`${f.label} draws rows from no table; set rows_from first`);
+			for (const name of picked)
+				added.push(rowFrom(src!, itemOf(doc, src!, nameColumn(src!), name), cols));
 			c.values[f.id] = [...rows.filter((r) => !gone.has(r)), ...added];
 			return `Changed.\n${fieldView(doc, c, f)}`;
 		}
@@ -686,8 +809,8 @@ export const tools: Tool[] = [
 			},
 			['character', 'target', 'rules']
 		),
-		run(doc, i) {
-			const c = characterIn(doc, i);
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
 			const target = need(i, 'target');
 			const [table, col] = columnRef(c, target) ?? [];
 			const f = table ? undefined : fieldOf(c, target);
@@ -728,12 +851,18 @@ export const tools: Tool[] = [
  * Runs a tool on the draft, whole or not at all: on any mistake, or a draft the room's
  * `validate` would refuse, the draft goes back to how it was and the reason comes back.
  */
-export function runTool(doc: Doc, name: string, input: unknown): { ok: boolean; text: string } {
+export function runTool(
+	doc: Doc,
+	name: string,
+	input: unknown,
+	gm: boolean
+): { ok: boolean; text: string } {
 	const tool = tools.find((t) => t.name === name);
 	if (!tool) return { ok: false, text: `there is no tool called ${name}` };
 	const before = structuredClone(doc);
 	try {
-		const text = tool.run(doc, isObj(input) ? input : {});
+		const text = tool.run(doc, isObj(input) ? input : {}, gm);
+		follow(doc);
 		validate(doc);
 		return { ok: true, text };
 	} catch (e) {

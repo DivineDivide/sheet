@@ -20,7 +20,8 @@ import {
 	render,
 	rowNames,
 	same,
-	type Name
+	type Name,
+	type Sheet
 } from './formula';
 import { SNAP, bounds, clamp } from './layout';
 import { compileRule } from './rules';
@@ -70,13 +71,22 @@ function renamed(f: Field, ids: Map<string, string>): Field {
 	};
 }
 
-/** Fields of `c` as a group to place elsewhere, boxes measured from the group's top-left. */
-export function lift(c: Character, clocks: Clock[], ids: string[], contents: boolean): Group {
+/**
+ * Fields of `c` as a group to place elsewhere, boxes measured from the group's top-left.
+ * `room` is every character, whose fields the group may read as `Name!Label`.
+ */
+export function lift(
+	c: Character,
+	clocks: Clock[],
+	ids: string[],
+	contents: boolean,
+	room: Sheet['others'] = []
+): Group {
 	const picked = c.fields.filter((f) => ids.includes(f.id));
 	const { x, y } = bounds(picked.map((f) => f.box));
 	const said = picked.flatMap(texts);
 	const heard = new Set(picked.flatMap(rulesOf).map((r) => whenId(r.when)));
-	const outside = names({ ...c, clocks }).filter(
+	const outside = names({ ...c, clocks, others: room }).filter(
 		(n) => !ids.includes(n.id) && (heard.has(n.id) || said.some((t) => t.includes(refText(n.id))))
 	);
 	return {
@@ -84,10 +94,11 @@ export function lift(c: Character, clocks: Clock[], ids: string[], contents: boo
 		...(contents && {
 			values: Object.fromEntries(picked.map((f) => [f.id, clone(valueOf(c, f))]))
 		}),
-		names: outside.map(({ id, label, kind, columns }) => ({
+		names: outside.map(({ id, label, kind, columns, of }) => ({
 			id,
 			label,
 			kind,
+			...(of !== undefined && { of }),
 			...(columns && { columns: columns.map(({ id, name, kind }) => ({ id, name, kind })) })
 		}))
 	};
@@ -103,7 +114,9 @@ function make(
 	others: Field[],
 	clocks: Clock[],
 	ids: Map<string, string>,
-	where: (f: Field) => Partial<Field>
+	where: (f: Field) => Partial<Field>,
+	room: Sheet['others'],
+	self: string
 ): Field[] {
 	const made: Field[] = [];
 	for (const f of g.fields) {
@@ -111,7 +124,7 @@ function make(
 		made.push({ ...renamed(clone(f), ids), id: ids.get(f.id)!, label, ...where(f) });
 	}
 	const from = [...g.names, ...made];
-	const to = names({ fields: [...others, ...made], values: {}, clocks });
+	const to = names({ fields: [...others, ...made], values: {}, clocks, others: room, id: self });
 	const again = (t: string, row: Name[]) => {
 		const text = render(t, [...row, ...from]);
 		try {
@@ -160,7 +173,8 @@ export function place(
 	c: Character,
 	clocks: Clock[],
 	tab: string,
-	at: { x: number; y: number }
+	at: { x: number; y: number },
+	room: Sheet['others'] = []
 ): string[] {
 	const boxAt = (f: Field, d: { x: number; y: number }) =>
 		clamp({ ...f.box, x: f.box.x + d.x, y: f.box.y + d.y });
@@ -172,7 +186,7 @@ export function place(
 	while (g.fields.some((f) => taken(f, d))) d = { x: d.x + 2 * SNAP, y: d.y + 2 * SNAP };
 
 	const ids = new Map(g.fields.map((f) => [f.id, newId()]));
-	const made = make(g, c.fields, clocks, ids, (f) => ({ tab, box: boxAt(f, d) }));
+	const made = make(g, c.fields, clocks, ids, (f) => ({ tab, box: boxAt(f, d) }), room, c.id);
 	for (const f of g.fields) {
 		const v = g.values?.[f.id];
 		if (v !== undefined) c.values[ids.get(f.id)!] = clone(v);

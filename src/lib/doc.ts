@@ -59,6 +59,11 @@ export type Column = {
 	kind: ColumnKind;
 	/** What a choice column offers, as Excel's dropdown lists do. */
 	choices?: string[];
+	/**
+	 * A choice column's source table, by `globalId`, in place of `choices`: its rows'
+	 * names are offered, and choosing one fills the row, which then follows it.
+	 */
+	from?: string;
 	/** A formula column's expression, worked out for each row; it reads its row's cells. */
 	formula?: string;
 	/** Rules that change this column, run row by row. */
@@ -76,6 +81,8 @@ export type Field = {
 	formula?: string;
 	/** A table field's columns. Its rows are the character's value. */
 	columns?: Column[];
+	/** A table's source table, by `globalId`, whose rows its + offers, each following its own. */
+	from?: string;
 	rules?: Rule[];
 };
 /** Tabs and the fields on them: what a character is shaped like, apart from its values. */
@@ -89,14 +96,28 @@ export type Resource = { cur: number; max: number };
 export type Entry = { name: string; text: string };
 export type Cell = string | number | Resource | boolean[] | string[];
 /** A table row, with ids so rows and cells sync one by one. A blank cell is absent. */
-export type Row = { id: string; cells: Record<string, Cell> };
+export type Row = {
+	id: string;
+	cells: Record<string, Cell>;
+	/** The row of another table this one follows; see `source.ts`. */
+	link?: { table: string; row: string };
+};
 export type Value = number | Resource | boolean[] | string | string[] | Entry[] | Row[];
 
 export type Character = Layout & {
 	id: string;
 	name: string;
 	values: Record<string, Value>;
+	/**
+	 * Left off players' screens, for a GM's tables and cards. Its data still reaches every
+	 * browser, so other characters can draw on it.
+	 */
+	hidden?: true;
 };
+
+/** The characters a page shows: all of them to a GM, the rest to a player. */
+export const shown = (characters: Character[], gm: boolean) =>
+	gm ? characters : characters.filter((c) => !c.hidden);
 
 export type Doc = {
 	version: typeof VERSION;
@@ -107,6 +128,12 @@ export type Doc = {
 };
 
 export const newId = () => crypto.randomUUID();
+
+/**
+ * A field as named from another character, `<character id>!<field id>`: field ids are
+ * unique only on their character, since every character made from a template shares them.
+ */
+export const globalId = (c: { id: string }, f: { id: string }) => `${c.id}!${f.id}`;
 
 /**
  * A table to keep statuses in, one a row, whose Left counts down as `clock` ticks. Rules

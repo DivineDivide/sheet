@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import {
+		globalId,
 		kinds,
 		uniqueLabel,
 		type Character,
@@ -11,6 +12,8 @@
 	} from '../lib/doc';
 	import { compileLine, nameOf, names as namesOf, rowNames, type Name } from '../lib/formula';
 	import { session } from '../lib/session.svelte';
+	import { sources } from '../lib/source';
+	import { tip } from '../lib/tip';
 	import { ui, type Panel } from '../lib/ui.svelte';
 	import { ruled, sheetOf } from '../lib/rules';
 	import ColumnPanel from './ColumnPanel.svelte';
@@ -138,9 +141,32 @@
 							<FormulaInput {character} {field} {editField} />
 						{/key}
 					{:else if field.kind === 'table'}
+						{@const tables = sources(session.doc).filter(
+							(t) => t.id !== globalId(character, field)
+						)}
+						{#if tables.length}
+							<label
+								{@attach tip(
+									"The table whose rows this one's + offers; a row added from it follows that row"
+								)}
+							>
+								<span class="muted">Rows from</span>
+								<select
+									value={field.from ?? ''}
+									onchange={(e) => {
+										const from = e.currentTarget.value;
+										editField(field.id, (f) => (from ? (f.from = from) : delete f.from));
+									}}
+								>
+									<option value="">No table</option>
+									{#each tables as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+								</select>
+							</label>
+						{/if}
 						{#if column}
 							<ColumnPanel
 								{field}
+								table={globalId(character, field)}
 								{column}
 								known={rowKnown}
 								whens={columnWhens}

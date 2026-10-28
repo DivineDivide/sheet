@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { scale } from 'svelte/transition';
-	import { newCharacter, type Character } from '../lib/doc';
+	import { newCharacter, shown, type Character } from '../lib/doc';
 	import { session } from '../lib/session.svelte';
 	import ExcelImport from './ExcelImport.svelte';
 	import Icon from './Icon.svelte';
@@ -68,10 +68,12 @@
 			if (!e.deltaX) strip.scrollLeft += e.deltaY;
 		}}
 	>
-		{#each doc.characters as c (c.id)}
+		{#each shown(doc.characters, session.gm) as c (c.id)}
 			<button
 				class="chip"
 				class:active={c.id === character?.id}
+				class:hidden={c.hidden}
+				title={c.hidden ? 'GM only: players do not see this character' : undefined}
 				aria-current={c.id === character?.id}
 				onclick={() => (current = c.id)}
 				animate:flip={{ duration: 200 }}
@@ -187,6 +189,10 @@
 		border-color: var(--line);
 		background: var(--surface);
 		color: var(--accent);
+	}
+	.chip.hidden {
+		border-style: dashed;
+		border-color: var(--line);
 	}
 	.cname {
 		flex: 1;

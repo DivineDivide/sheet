@@ -21,6 +21,7 @@
 	import { cellResult, isErr, show } from '../lib/formula';
 	import { hint, ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
+	import { choose, fromSource, keyOf, sources, type Source } from '../lib/source';
 	import { tip } from '../lib/tip';
 	import Icon from './Icon.svelte';
 	import Prose from './Prose.svelte';
@@ -52,6 +53,23 @@
 
 	const cols = $derived(field.columns ?? []);
 	const sheet = $derived(sheetOf(session.doc, character));
+	const tables = $derived(new Map(sources(session.doc).map((s) => [s.id, s])));
+
+	/** A choice column's source rows, by the names they are chosen by. */
+	function namesIn(src: Source, c: Column): string[] {
+		const key = keyOf(src, c);
+		const names = key ? src.rows.map((r) => r.cells[key.id]).filter((v) => v !== undefined) : [];
+		return [...new Set(names.map(String))];
+	}
+
+	/** One change, so ⌘Z takes back the whole row's filling. */
+	function pick(row: Row, c: Column, src: Source, name: string) {
+		const key = keyOf(src, c);
+		const item = key && src.rows.find((r) => String(r.cells[key.id] ?? '') === name);
+		if (item) return set(rows.map((r) => (r.id === row.id ? choose(src, item, r, cols) : r)));
+		const { [c.id]: _, ...cells } = row.cells;
+		set(rows.map((r) => (r.id === row.id ? { id: r.id, cells } : r)));
+	}
 
 	function put(row: Row, col: string, cell: Cell | undefined) {
 		const cells = { ...row.cells };
@@ -157,20 +175,30 @@
 		</thead>
 		<tbody inert={laying || undefined}>
 			{#each rows as row (row.id)}
+				{@const follows = row.link && tables.get(row.link.table)}
 				<tr>
 					{#each cols as c (c.id)}
 						{@const v = cellOf(row, c)}
-						<td class={c.kind}>
+						{@const held = follows && fromSource(follows, c) && c.from !== follows.id}
+						<!-- A cell its source row fills changes there, not here. -->
+						<td class={c.kind} inert={held || undefined}>
 							{#if c.kind === 'choice'}
+								{@const src = c.from ? tables.get(c.from) : undefined}
+								{@const choices = src ? namesIn(src, c) : (c.choices ?? [])}
 								<select
 									value={v === undefined ? '' : String(v)}
 									aria-label={c.name}
-									onchange={(e) => put(row, c.id, e.currentTarget.value)}
+									onchange={(e) =>
+										src
+											? pick(row, c, src, e.currentTarget.value)
+											: put(row, c.id, e.currentTarget.value)}
 								>
-									<option value=""></option>
-									{#each c.choices ?? [] as o (o)}<option>{o}</option>{/each}
+									<!-- A row drawing on a table is emptied by removing it, so only a blank row shows none. -->
+									{#if !src}<option value=""></option>
+									{:else if v === undefined}<option value="" disabled hidden></option>{/if}
+									{#each choices as o (o)}<option>{o}</option>{/each}
 									<!-- A value from before the choices changed still shows. -->
-									{#if v !== undefined && !c.choices?.includes(String(v))}<option>{v}</option>{/if}
+									{#if v !== undefined && !choices.includes(String(v))}<option>{v}</option>{/if}
 								</select>
 							{:else if c.kind === 'number'}
 								<input
@@ -270,7 +298,17 @@
 							{/if}
 						</td>
 					{/each}
-					<td>
+					<td class="ends">
+						{#if follows}
+							<button
+								class="x"
+								aria-label="Stop following {follows.name}"
+								{@attach tip(`Follows ${follows.name}. Press to keep it as it is now.`)}
+								onclick={() =>
+									set(rows.map((r) => (r.id === row.id ? { id: r.id, cells: r.cells } : r)))}
+								><Icon name="link" /></button
+							>
+						{/if}
 						<button
 							class="x"
 							aria-label="Remove this row"
@@ -397,6 +435,14 @@
 	.box.on {
 		background: var(--accent);
 		border-color: var(--accent);
+	}
+	.ends {
+		white-space: nowrap;
+	}
+	.ends :global(svg) {
+		width: 0.8rem;
+		height: 0.8rem;
+		vertical-align: middle;
 	}
 	.track .x {
 		opacity: 0;

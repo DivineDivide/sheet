@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	globalId,
 	newCharacter,
 	newDoc,
 	newId,
@@ -10,7 +11,7 @@ import {
 	type Value,
 	type When
 } from './doc';
-import { names } from './formula';
+import { compile, names, refText, result } from './formula';
 import { lift, place } from './group';
 import { compileRule, fire, sheetOf } from './rules';
 
@@ -93,6 +94,41 @@ describe('copying fields together', () => {
 		doc.characters.push(cid);
 		place(lift(ash, doc.clocks, block, false), cid, doc.clocks, cid.tabs[0].id, { x: 0, y: 0 });
 		expect(by(cid, 'Dodge').formula).toBe('DEX * 2');
+	});
+
+	it("keeps a card's reading of another character, as GM!Bonus", () => {
+		const { doc, ash, bea } = setup();
+		const gm = newCharacter('GM');
+		doc.characters.push(gm);
+		const bonus = add(gm, 'Bonus', 'number', 4);
+		const hit = add(ash, 'Hit', 'formula', undefined, 0, 400);
+		const reads = `${refText(globalId(gm, bonus))} + 1`;
+		hit.formula = reads;
+		const g = lift(ash, doc.clocks, [hit.id], false, doc.characters);
+		expect(g.names).toEqual([
+			{ id: globalId(gm, bonus), label: 'Bonus', kind: 'number', of: 'GM' }
+		]);
+		place(g, bea, doc.clocks, bea.tabs[0].id, { x: 0, y: 0 }, doc.characters);
+		expect(by(bea, 'Hit').formula).toBe(reads);
+	});
+
+	it("pastes a card from the GM's page that still reads the GM's table, as GM!Weapons", () => {
+		const { doc, bea } = setup();
+		const gm = newCharacter('GM');
+		doc.characters.push(gm);
+		add(gm, 'Bonus', 'number', 4);
+		const hit = add(gm, 'Hit', 'formula', undefined, 0, 400);
+		hit.formula = compile('GM!Bonus + 1', names(sheetOf(doc, gm)));
+		place(
+			lift(gm, doc.clocks, [hit.id], false, doc.characters),
+			bea,
+			doc.clocks,
+			bea.tabs[0].id,
+			{ x: 0, y: 0 },
+			doc.characters
+		);
+		expect(by(bea, 'Hit').formula).toBe(hit.formula);
+		expect(result(sheetOf(doc, bea), by(bea, 'Hit').id)).toBe(5);
 	});
 
 	it('hears a clock of the same name in another room', () => {

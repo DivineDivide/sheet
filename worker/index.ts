@@ -22,8 +22,9 @@ export default {
 		const url = new URL(request.url);
 		const room = (token: string) => env.ROOM.get(env.ROOM.idFromName(token));
 
-		const [, asked, chat] =
-			url.pathname.match(/^\/api\/rooms\/([^/]+)\/agent(?:\/([\w-]+))?$/) ?? [];
+		// A GM's page asks through `/gm`, behind Access, so only a GM's chat sees GM-only characters.
+		const [, byGm, asked, chat] =
+			url.pathname.match(/^(\/gm)?\/api\/rooms\/([^/]+)\/agent(?:\/([\w-]+))?$/) ?? [];
 		if (asked !== undefined) {
 			// First, before the key or the room: Claude only where Anthropic offers it, so
 			// the account keeps its API access.
@@ -32,6 +33,9 @@ export default {
 			}
 			if (!TOKEN.test(asked)) return json({ error: 'no such room' }, 404);
 			if (request.headers.get('Origin') !== url.origin) return json({ error: 'wrong origin' }, 403);
+			if (byGm && !(await identify(request, env, ctx))) {
+				return json({ error: 'not signed in as a GM' }, 403);
+			}
 			const agent = env.AGENT.get(env.AGENT.idFromName(asked), { locationHint: 'wnam' });
 			if (request.method === 'DELETE' && chat) {
 				await agent.forget(chat);
@@ -50,7 +54,8 @@ export default {
 				chat: typeof body.chat === 'string' ? body.chat : null,
 				prompt: body.prompt.trim(),
 				model,
-				doc
+				doc,
+				gm: !!byGm
 			});
 			return new Response(stream, {
 				headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' }

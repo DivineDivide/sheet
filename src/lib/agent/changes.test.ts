@@ -6,7 +6,7 @@ import { runTool } from './tools';
 
 function room() {
 	const doc = newDoc();
-	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' }, true);
 	return doc;
 }
 
@@ -23,7 +23,7 @@ describe('changes', () => {
 			['add_character', { name: 'Bea' }],
 			['edit_clocks', { add: ['Round'] }]
 		] as const) {
-			expect(runTool(draft, name, input)).toMatchObject({ ok: true });
+			expect(runTool(draft, name, input, true)).toMatchObject({ ok: true });
 		}
 		const luck = draft.characters[0].fields.find((f) => f.label === 'Luck')!;
 		const { lines, fields } = changes(base, diff(base, draft));
@@ -38,8 +38,8 @@ describe('changes', () => {
 	it('says a character was renamed, and a template saved', () => {
 		const base = room();
 		const draft = structuredClone(base);
-		runTool(draft, 'edit_character', { character: 'Ash', rename: 'Ashe' });
-		runTool(draft, 'save_template', { character: 'Ashe', name: 'Hero' });
+		runTool(draft, 'edit_character', { character: 'Ash', rename: 'Ashe' }, true);
+		runTool(draft, 'save_template', { character: 'Ashe', name: 'Hero' }, true);
 		expect(changes(base, diff(base, draft)).lines).toEqual([
 			'New template Hero',
 			'Renamed Ash to Ashe'

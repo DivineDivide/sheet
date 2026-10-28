@@ -63,7 +63,8 @@ export async function respond(
 	draft: Doc,
 	history: Turn[],
 	step: Step,
-	emit: (e: Event) => void
+	emit: (e: Event) => void,
+	gm: boolean
 ): Promise<void> {
 	let calls = 0;
 	// A few more rounds than calls, so a model told to stop can still reply.
@@ -81,7 +82,7 @@ export async function respond(
 						? { ok: false, text: 'Not run: the reply stopped before this call was whole.' }
 						: ++calls > MAX_CALLS
 							? { ok: false, text: `This prompt has used its ${MAX_CALLS} tool calls; reply now.` }
-							: runTool(draft, u.name, u.input);
+							: runTool(draft, u.name, u.input, gm);
 					if (whole) {
 						const text = out.text.split('\n')[0];
 						emit({ t: 'tool', name: u.name, about: about(u.input), ok: out.ok, text });
