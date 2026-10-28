@@ -223,21 +223,6 @@ select {
 	option:checked {
 		color: var(--accent);
 	}
-	/* The theme picker's options, each a field card drawn in the theme it names. */
-	option[data-theme] {
-		margin: 0.15rem 0;
-		border: var(--field-border);
-		background: var(--field-bg);
-		box-shadow: var(--field-shadow);
-		color: var(--ink);
-		font-family: var(--font-body);
-	}
-	option[data-theme]:is(:hover, :focus-visible) {
-		border-color: var(--accent);
-	}
-	option[data-theme]:checked {
-		color: var(--accent);
-	}
 }
 
 /* A hover hint from `tip.ts`, placed by it. */

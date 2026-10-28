@@ -163,7 +163,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   document. `index.html` applies the saved one before paint. Themes are token sets in
   `app.css`, and components read only tokens, so a theme can reshape tags or track boxes
   without editing them. A set applies to any element with `data-theme`, each taking the
-  whole Light set first, so the theme picker draws every option in the theme it names.
+  whole Light set first, so the theme picker draws each theme as a circle of its surface
+  with an F in its ink and font, the closed picker the current one's.
 - **`src/lib/i18n.svelte.ts`** — the language is this browser's too, English or Traditional
   Chinese, switched beside the theme (`notes/trpg/sheet-zh.md`, with its glossary). A phrase
   is its English text, `t('Add a box')`, and `src/lib/zh/` maps it to Chinese; a phrase

@@ -121,16 +121,21 @@
 							: t('Offline')}
 				</span>
 			{/if}
-			<select
-				value={theme.id}
-				aria-label={t('Theme')}
-				title={t('Theme')}
-				onchange={(e) => (theme.id = e.currentTarget.value as ThemeId)}
-			>
-				{#each themes as th (th.id)}
-					<option value={th.id} data-theme={th.id}>{t(th.name)}</option>
-				{/each}
-			</select>
+			<!-- The current theme shows as its swatch, laid over the box, whose own text is hidden. -->
+			<span class="theme">
+				<select
+					class="themes"
+					value={theme.id}
+					aria-label={t('Theme')}
+					title={t('Theme')}
+					onchange={(e) => (theme.id = e.currentTarget.value as ThemeId)}
+				>
+					{#each themes as th (th.id)}
+						<option value={th.id} data-theme={th.id} title={t(th.name)}>{t(th.name)}</option>
+					{/each}
+				</select>
+				<span class="swatch" data-theme={theme.id} aria-hidden="true">F</span>
+			</span>
 			<select
 				value={lang.id}
 				aria-label={t('Language')}
@@ -266,6 +271,70 @@
 		flex-wrap: wrap;
 		gap: 0.35rem;
 		margin-left: auto;
+	}
+	/* A theme is a circle of its surface with an F in its ink and font. */
+	.theme {
+		display: grid;
+		align-items: center;
+	}
+	.theme > * {
+		grid-area: 1 / 1;
+	}
+	.themes {
+		width: 3rem;
+		color: transparent;
+	}
+	/* Where the list is the system's menu, each name in its theme's colours. */
+	.themes option {
+		background: var(--surface);
+		color: var(--ink);
+	}
+	.swatch {
+		display: grid;
+		place-items: center;
+		width: 1.4rem;
+		height: 1.4rem;
+		margin-left: 0.3rem;
+		border: 1px solid var(--line);
+		border-radius: 50%;
+		background: var(--surface);
+		color: var(--ink);
+		font: 600 0.8rem/1 var(--font-body);
+		pointer-events: none;
+	}
+	/* System is whichever the OS asks for, so it shows Light's and Dark's surfaces at once. */
+	.swatch[data-theme='system'] {
+		background: linear-gradient(135deg, #fbfaf5 50%, #1b1e19 50%);
+		color: var(--muted);
+	}
+	/* Where the list is drawn by the page, it is a column of circles too, named on hover. */
+	@supports (appearance: base-select) {
+		.themes option {
+			display: grid;
+			place-items: center;
+			width: 1.4rem;
+			height: 1.4rem;
+			margin: 0.3rem auto;
+			padding: 0;
+			border: 1px solid var(--line);
+			border-radius: 50%;
+			font-size: 0;
+		}
+		.themes option::before {
+			content: 'F';
+			font: 600 0.8rem/1 var(--font-body);
+		}
+		.themes option[data-theme='system'] {
+			background: linear-gradient(135deg, #fbfaf5 50%, #1b1e19 50%);
+			color: var(--muted);
+		}
+		.themes option:is(:hover, :focus-visible) {
+			border-color: var(--accent);
+		}
+		.themes option:checked {
+			outline: 2px solid var(--accent);
+			outline-offset: 1px;
+		}
 	}
 	.status {
 		align-self: center;
