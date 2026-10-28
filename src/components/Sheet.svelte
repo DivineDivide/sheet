@@ -1,35 +1,3 @@
-<script lang="ts" module>
-	import type { Field, Value } from '../lib/doc';
-	import type { Name } from '../lib/formula';
-
-	// Shared by every sheet and kept off the system clipboard, so a field copied from one
-	// character pastes onto another, and in Safari, which sends no copy event without a selection.
-	// A formula travels with labels, so it reads the same-named fields where it is pasted.
-	// Rules travel as stored, with the names they were written against.
-	type Clip = {
-		field: Field;
-		value: Value;
-		formula?: string;
-		from: { character: string; names: Name[] };
-	};
-	// Kept in this browser too, so a copy survives a reload and pastes in another tab or room.
-	const CLIP = 'sheet.clip';
-	let clip: Clip | null = null;
-	function keep(c: Clip) {
-		clip = c;
-		try {
-			localStorage.setItem(CLIP, JSON.stringify(c));
-		} catch {}
-	}
-	function kept(): Clip | null {
-		try {
-			return JSON.parse(localStorage.getItem(CLIP) ?? 'null') ?? clip;
-		} catch {
-			return clip;
-		}
-	}
-</script>
-
 <script lang="ts">
 	import { toBlob } from 'html-to-image';
 	import { tick } from 'svelte';
@@ -38,18 +6,18 @@
 		columnKinds,
 		newId,
 		uniqueLabel,
-		valueOf,
 		type Character,
 		type ColumnKind,
 		type Doc,
+		type Field,
 		type Kind
 	} from '../lib/doc';
 	import type { Attachment } from 'svelte/attachments';
 	import { chat } from '../lib/agent/client.svelte';
-	import { FormulaError, compile, names, render as withLabels } from '../lib/formula';
-	import { rebind, sheetOf } from '../lib/rules';
+	import { keep, kept, type Clip } from '../lib/clip';
+	import { lift, place } from '../lib/group';
 	import { free, mod } from '../lib/keys';
-	import { SNAP, clamp, defaultSize, readingOrder, type Box } from '../lib/layout';
+	import { SNAP, bounds, clamp, defaultSize, readingOrder, type Box } from '../lib/layout';
 	import { session } from '../lib/session.svelte';
 	import { ui } from '../lib/ui.svelte';
 	import { HOME, fit, toSheet, zoomAt, type View } from '../lib/view';
@@ -68,7 +36,8 @@
 	// View state, not document state: none of it is an undo step.
 	let editing = $state(false);
 	let tabId = $state('');
-	let selected = $state<string | null>(null);
+	/** The selected fields, shift-click adding to them; the last is the one inspected. */
+	let chosen = $state<string[]>([]);
 	/** A gesture in flight: `id` null is a new field still being dragged from the palette. */
 	let drag = $state<{ id: string | null; kind: Kind; box: Box } | null>(null);
 	/** A kind from the palette held over a table, to land as a column at `index`. */
@@ -88,7 +57,9 @@
 	// A draft is only looked at: it is edited through the chat, until applied or discarded.
 	const drafting = $derived(session.draft !== null);
 	const laying = $derived(editing && !stacked && !drafting);
+	const selected = $derived(chosen.at(-1) ?? null);
 	const field = $derived(character.fields.find((f) => f.id === selected));
+	const group = $derived(character.fields.filter((f) => chosen.includes(f.id)));
 	const column = $derived(
 		picked && picked.field === field?.id
 			? field.columns?.find((c) => c.id === picked!.column)
@@ -138,7 +109,7 @@
 				c.fields.at(-1)!.columns = [{ id: newId(), name: 'Name', kind: 'text' }];
 			c.values[id] = blank(kind);
 		});
-		selected = id;
+		chosen = [id];
 	}
 
 	function addColumn(id: string, kind: ColumnKind, at: number) {
@@ -150,7 +121,7 @@
 			cols.splice(at, 0, { id: col, name, kind });
 			f.columns = cols;
 		});
-		selected = id;
+		chosen = [id];
 		picked = { field: id, column: col };
 	}
 
@@ -159,48 +130,22 @@
 			c.fields = c.fields.filter((f) => f.id !== id);
 			delete c.values[id];
 		});
-		selected = null;
+		chosen = [];
 	}
 
-	function copy(f: Field) {
-		const known = $state.snapshot(names(sheetOf(session.doc, character))) as Name[];
-		keep({
-			field: $state.snapshot(f),
-			value: $state.snapshot(valueOf(character, f)),
-			formula: f.formula && withLabels(f.formula, known),
-			from: { character: character.id, names: known }
-		});
-		session.notice = `Copied ${f.label}. ${mod}V pastes it in Edit layout, on any character.`;
+	function copy(ids: string[]) {
+		const g = lift(character, session.doc.clocks, ids, true);
+		const { x, y } = bounds(group.map((f) => f.box));
+		keep({ ...g, at: { x, y } });
+		const what = ids.length === 1 ? g.fields[0].label : `${ids.length} fields`;
+		session.notice = `Copied ${what}. ${mod}V pastes in Edit layout, on any character.`;
 	}
 
-	function paste({ field: from, value, formula, from: source }: Clip) {
-		const id = newId();
-		edit((c) => {
-			let stored = from.formula;
-			try {
-				if (formula) stored = compile(formula, names(sheetOf(session.doc, c)));
-			} catch (e) {
-				if (!(e instanceof FormulaError)) throw e;
-			}
-			const taken = c.fields.filter((f) => f.tab === tab.id).map((f) => f.box);
-			let box = from.box;
-			// Off any field already at that spot, so repeated pastes fan out instead of hiding.
-			while (taken.some((b) => b.x === box.x && b.y === box.y)) {
-				box = { ...box, x: box.x + 2 * SNAP, y: box.y + 2 * SNAP };
-			}
-			const label = uniqueLabel(from.label, c.fields);
-			const field: Field = { ...from, id, label, tab: tab.id, box: clamp(box), formula: stored };
-			if (from.rules) {
-				const here = source.character === c.id;
-				const target = here
-					? null
-					: names(sheetOf(session.doc, { ...c, fields: [...c.fields, field] }));
-				field.rules = rebind(from.rules, { id: from.id, names: source.names }, field, target);
-			}
-			c.fields.push(field);
-			c.values[id] = structuredClone(value);
-		});
-		selected = id;
+	/** Where the fields were copied from, off any field already there, so pastes fan out. */
+	function paste(g: Clip) {
+		let ids: string[] = [];
+		session.change((d) => (ids = place(g, live(d), d.clocks, tab.id, g.at)));
+		chosen = ids;
 	}
 
 	function saveTemplate(name: string) {
@@ -221,7 +166,11 @@
 		if (e.button !== 0) return;
 		e.preventDefault();
 		e.stopPropagation();
-		if (id) selected = id;
+		if (id && e.shiftKey && mode === 'move') {
+			chosen = chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id];
+			return;
+		}
+		if (id) chosen = [id];
 		const sx = e.clientX;
 		const sy = e.clientY;
 		const from = id ? fieldOf(character, id).box : null;
@@ -315,7 +264,7 @@
 			window.removeEventListener('pointerup', onup);
 			window.removeEventListener('pointercancel', onup);
 			panning = false;
-			if (!moved) selected = null;
+			if (!moved) chosen = [];
 		};
 		window.addEventListener('pointermove', onmove);
 		window.addEventListener('pointerup', onup);
@@ -407,7 +356,7 @@
 
 	function toggleEditing() {
 		editing = !editing;
-		selected = null;
+		chosen = [];
 	}
 
 	// On the window, not the field: a field selected by a click is not focused, since the
@@ -418,7 +367,7 @@
 		const step = arrows[e.key];
 		const f = laying && field?.tab === tab.id ? field : undefined;
 		if (e.metaKey || e.ctrlKey) {
-			if (key === 'c' && f) copy(f);
+			if (key === 'c' && f) copy(group.map((g) => g.id));
 			else if (key === 'v' && laying && kept()) paste(kept()!);
 			else return;
 		} else if (key === 'e') {
@@ -428,7 +377,7 @@
 			if (!field) editing = false;
 			// A field reached by Tab would otherwise still show its focus ring.
 			else (e.target as HTMLElement).blur();
-			selected = null;
+			chosen = [];
 		} else if (!stacked && (key === '=' || key === '+' || key === '-')) {
 			zoomBy(key === '-' ? 0.8 : 1.25);
 		} else if (!stacked && e.shiftKey && (e.code === 'Digit1' || e.code === 'Digit0')) {
@@ -436,7 +385,7 @@
 			else look(HOME);
 		} else if (/^[1-9]$/.test(e.key) && character.tabs[+e.key - 1]) {
 			tabId = character.tabs[+e.key - 1].id;
-			selected = null;
+			chosen = [];
 		} else if (f && (e.key === 'Delete' || e.key === 'Backspace')) {
 			remove(f.id);
 		} else if (f && step) {
@@ -516,7 +465,7 @@
 					aria-current={t.id === tab.id}
 					onclick={() => {
 						tabId = t.id;
-						selected = null;
+						chosen = [];
 					}}>{t.name}</button
 				>
 			{/if}
@@ -559,7 +508,7 @@
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex: tabindex comes only with role="button" -->
 					<div
 						class="slot"
-						class:selected={laying && selected === f.id}
+						class:selected={laying && chosen.includes(f.id)}
 						class:target={drop?.field === f.id}
 						class:dragging={drag?.id === f.id}
 						class:changed={chat.changes?.fields.has(f.id)}
@@ -574,7 +523,7 @@
 							? `${f.label}, ${f.kind}. Arrow keys move it, Shift with arrows resizes it.`
 							: undefined}
 						onpointerdown={laying ? (e) => grab(e, 'move', f.id, f.kind) : undefined}
-						onfocus={laying ? () => (selected = f.id) : undefined}
+						onfocus={laying ? () => (chosen = [f.id]) : undefined}
 					>
 						<!-- A table's headers are edited in place; it keeps the rest inert itself. -->
 						<div class="content" inert={(laying && f.kind !== 'table') || undefined}>
@@ -585,7 +534,7 @@
 								picked={picked?.field === f.id ? picked.column : null}
 								drop={drop?.field === f.id ? drop.index : null}
 								onpick={(col) => {
-									selected = f.id;
+									chosen = [f.id];
 									picked = { field: f.id, column: col };
 								}}
 							/>
@@ -617,7 +566,7 @@
 			<Palette grab={(e, kind) => grab(e, 'new', null, kind)} {add} />
 		{/if}
 		{#if laying}
-			<Toolbar {character} {field} {column} {editField} {remove} {saveTemplate} />
+			<Toolbar {character} {field} {group} {column} {editField} {remove} {saveTemplate} />
 		{/if}
 		<div class="zoom" role="group" aria-label="Zoom and chat">
 			{#if !stacked}

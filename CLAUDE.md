@@ -129,7 +129,8 @@ npm run deploy                    # build + wrangler deploy: goes live
 - **`src/lib/keys.ts`** — shortcuts listen on the window too: `App` takes the session-wide
   ones, `Sheet` those for the sheet on screen, and `plain` keeps single keys out of text
   boxes and open dialogs. `shortcuts` is the list `?` shows, so a new key goes there too.
-  A copied field is kept in `Sheet`'s module script, so it pastes onto any character.
+  Copied fields are kept in `clip.ts` and this browser, so they paste onto any character,
+  in any room; `group.ts` re-binds their formulas and rules where they land.
 - **`src/lib/markdown.ts`** — text fields and entry descriptions go through `Prose`, which
   shows Markdown and the source only while it has focus; entry titles too, typed on one
   line, and field labels render the same Markdown wherever they show. `html: false` is

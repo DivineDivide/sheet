@@ -12,7 +12,7 @@ import {
 	type When
 } from './doc';
 import { names, rowNames } from './formula';
-import { LOG, compileRule, fire, hint, isAct, ready, rebind, sheetOf, type Act } from './rules';
+import { LOG, compileRule, fire, hint, isAct, ready, sheetOf, type Act } from './rules';
 import { apply, equal } from './sync';
 
 const box = { x: 0, y: 0, w: 96, h: 56 };
@@ -215,33 +215,6 @@ describe('firing', () => {
 		const row = { character: 'c', field: 't', column: 'b', row: 'r' };
 		expect(isAct({ id: 'a', act: { press: row } })).toBe(true);
 		expect(isAct({ id: 'a', act: { press: { ...row, row: undefined } } })).toBe(false);
-	});
-
-	it("moves a pasted field's rules with it, onto its own character or another", () => {
-		const { doc, c } = setup();
-		const go = add(c, 'Go', 'button');
-		const n = add(c, 'N', 'number', 0);
-		const m = add(c, 'M', 'number', 0);
-		rule(doc, c, n, { press: go.id }, 'M > 0', 'N += M');
-		const from = { id: n.id, names: names(sheetOf(doc, c)) };
-
-		const copy: Field = { ...n, id: newId(), label: 'N 2' };
-		const [same] = rebind(n.rules!, from, copy, null);
-		expect(same.then).toEqual([`@${copy.id} += @${m.id}`]);
-		expect(same.when).toEqual({ press: go.id });
-
-		const other = newCharacter('Bo');
-		doc.characters.push(other);
-		const go2 = add(other, 'Go', 'button');
-		const m2 = add(other, 'M', 'number', 0);
-		const there: Field = { ...n, id: newId(), tab: other.tabs[0].id };
-		const known = names(sheetOf(doc, { ...other, fields: [...other.fields, there] }));
-		const [moved] = rebind(n.rules!, from, there, known);
-		expect(moved).toMatchObject({
-			when: { press: go2.id },
-			if: `@${m2.id} > 0`,
-			then: [`@${there.id} += @${m2.id}`]
-		});
 	});
 
 	it('runs no rules on a field whose kind cannot hold them', () => {

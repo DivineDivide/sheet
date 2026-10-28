@@ -28,7 +28,6 @@ import {
 	num,
 	parse,
 	parseLine,
-	refText,
 	render,
 	rolls,
 	rowNames,
@@ -478,35 +477,4 @@ export function compileRule(rule: Rule, known: Name[]): Rule {
 	};
 	const cond = rule.if?.trim() ? { if: keep(() => compile(rule.if!, known), rule.if!) } : {};
 	return { ...rule, ...cond, then: rule.then.map((l) => keep(() => compileLine(l, known), l)) };
-}
-
-/**
- * A copied field's rules for its pasted copy `to`, which they follow to its new id. Pasted
- * onto another character, each label is looked up again there, a button's too; `target`
- * is that character's names, or null on the same one.
- */
-export function rebind(
-	rules: Rule[],
-	from: { id: string; names: Name[] },
-	to: Field,
-	target: Name[] | null
-): Rule[] {
-	const self = (t: string) => t.split(refText(from.id)).join(refText(to.id));
-	const known = [...from.names.filter((n) => n.id !== from.id), to];
-	return rules.map((r) => {
-		const moved: Rule = { ...r, id: newId(), if: r.if && self(r.if), then: r.then.map(self) };
-		if (!target) return moved;
-		const typed = {
-			...moved,
-			if: moved.if && render(moved.if, known),
-			then: moved.then.map((l) => render(l, known))
-		};
-		const pressed = 'press' in r.when ? r.when.press : undefined;
-		const button = pressed && known.find((n) => n.id === pressed);
-		const there = button && target.find((n) => n.kind === 'button' && same(n.label, button.label));
-		return {
-			...compileRule(typed, target),
-			...(there && { when: { press: there.id } })
-		};
-	});
 }

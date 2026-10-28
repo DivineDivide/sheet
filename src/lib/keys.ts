@@ -46,8 +46,9 @@ export const shortcuts: [title: string, rows: [keys: string[], does: string][]][
 			[['←', '→', '↑', '↓'], 'Move the selected field'],
 			[['⇧', 'arrows'], 'Resize it'],
 			[['Delete'], 'Delete it'],
-			[[`${mod}C`], 'Copy it, with its value'],
-			[[`${mod}V`], 'Paste it on this tab, of any character']
+			[['⇧', 'click'], 'Select another field too'],
+			[[`${mod}C`], 'Copy the selected fields, with their values'],
+			[[`${mod}V`], 'Paste them on this tab, of any character']
 		]
 	]
 ];

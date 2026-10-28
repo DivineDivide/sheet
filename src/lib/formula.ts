@@ -836,7 +836,7 @@ function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 	}
 }
 
-const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+export const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** One cell as a formula reads it: a resource its current, a track its ticks, tags joined. */
 function cell(table: Field, col: Column, r: Row, ctx: Ctx, prop?: string): Val {

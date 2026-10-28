@@ -21,6 +21,7 @@
 	let {
 		character,
 		field,
+		group,
 		column,
 		editField,
 		remove,
@@ -28,6 +29,8 @@
 	}: {
 		character: Character;
 		field: Field | undefined;
+		/** Every selected field, `field` among them. */
+		group: Field[];
 		/** The column of the selected table picked in its header. */
 		column: Column | undefined;
 		editField: (id: string, fn: (f: Field) => void) => void;
@@ -100,7 +103,9 @@
 		<section class="panel" transition:fly={{ x: 16, duration: 160 }}>
 			{#if open === 'field'}
 				<h2>Selected</h2>
-				{#if field}
+				{#if group.length > 1}
+					<p class="muted">{group.map((f) => f.label).join(', ')}</p>
+				{:else if field}
 					<label>
 						<span class="muted">Label</span>
 						<input
