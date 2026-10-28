@@ -148,10 +148,11 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   be negative; layouts made before that sit right of and below 0,0, unmoved. Boxes may
   overlap; nothing settles them. A field's box is its size in play too, and content beyond
   it scrolls, inside the box (`.content`), so what sits on its edge is never clipped: a
-  `hideLabel` field's controls float there on hover. In Edit layout every label shows, a
-  hidden one struck through, with the toggle that hides it right after it; `FieldValue`
-  keeps all else inert there. A table or entries list with `pages` flips pages instead
-  (`Pages`): every row stays drawn and measured, `pageStarts` fits whole rows to the box,
+  `hideLabel` field's controls float there on hover. In Edit layout every label shows, with
+  the toggle that hides it right after it; a hidden one, struck through, floats on the edge
+  with those controls, while the box is hovered or selected, so the box reads as in play.
+  `FieldValue` keeps all else inert there. A table or entries list with `pages` flips
+  pages instead (`Pages`): every row stays drawn and measured, `pageStarts` fits whole rows to the box,
   and rows off the page carry `data-off`. Each browser keeps its own page in `ui.pages`. Narrower than 640px the
   sheet ignores boxes and stacks fields in `readingOrder`.
 - **`src/lib/view.ts`** — pan and zoom, in play and Edit layout alike. A `View` is the

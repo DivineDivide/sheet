@@ -147,7 +147,7 @@
 	{#if field.kind !== 'button'}
 		{@const paged = !!field.pages && pageCount > 1 && !laying}
 		{#if laying || !field.hideLabel || add || paged || field.kind === 'track'}
-			<div class="head" class:bare={field.hideLabel && !laying}>
+			<div class="head" class:bare={field.hideLabel}>
 				{#if laying || !field.hideLabel}
 					<div class="label md" class:gone={field.hideLabel} inert={dead || undefined}>
 						{@html markdown(field.label)}
@@ -441,7 +441,9 @@
 	/* A hidden label's line keeps its controls, on the box's top edge at the right, as a
 	   legend sits, so they cover no row. Placed against the box, not this, whose content
 	   scrolls and would clip them. Shown while the box is hovered or one has focus, and
-	   always where nothing can hover; faded, not gone, so the menu a + opens can follow it. */
+	   always where nothing can hover; faded, not gone, so the menu a + opens can follow it.
+	   In Edit layout the struck label and its toggle ride there too, so the box reads as in
+	   play, and show while it is selected. */
 	.head.bare {
 		position: absolute;
 		top: 0;
@@ -457,6 +459,7 @@
 		transition: opacity 0.12s;
 	}
 	:global(.slot:hover) .head.bare,
+	:global(.slot.selected) .head.bare,
 	.head.bare:focus-within {
 		opacity: 1;
 		pointer-events: auto;
@@ -490,7 +493,7 @@
 		display: contents;
 	}
 	/* Beside the label in Edit layout: shown while the box is hovered or selected, and always
-	   once the label is hidden, which then shows faded and struck through. */
+	   once the label is hidden, which then shows faded and struck through on the box's edge. */
 	.toggle {
 		opacity: 0;
 	}
