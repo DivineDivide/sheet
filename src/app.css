@@ -126,6 +126,119 @@
 	color: color-mix(in oklab, var(--brass) 80%, var(--muted));
 }
 
+/*
+ * Parchment, for classic fantasy: aged paper, iron-gall ink and a sealing-wax red, set in
+ * an old-style serif. Each field is ruled twice, as a manuscript's frame; track boxes are
+ * round, like spell slots.
+ */
+[data-theme='parchment'] {
+	--page: #ece0c4;
+	--surface: #f6eedb;
+	--ink: #2e2416;
+	--muted: #6e5d44;
+	--accent: #8c2a1c;
+	--line: #d6c6a2;
+	--chrome: #e4d6b6;
+	--backdrop: radial-gradient(ellipse 90% 60% at 50% 0%, #f5ecd6 0%, transparent 65%), #e6d8b8;
+
+	--font-body:
+		'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', 'Noto Serif TC', 'Songti TC',
+		'PMingLiU', Georgia, serif;
+	--label-tracking: 0.05em;
+
+	--radius: 3px;
+	--field-border: 1px solid #c4ad80;
+	--field-shadow:
+		inset 0 0 0 2px var(--surface), inset 0 0 0 3px #e0cfa8, 0 1px 2px rgb(70 50 20 / 0.12);
+	--tag-radius: 3px;
+	--tag-bg: color-mix(in oklab, var(--accent) 9%, transparent);
+	--track-radius: 50%;
+	--entry-rule: #c4ad80;
+	--tab-mark: '❧ ';
+	color-scheme: light;
+}
+
+:root[data-theme='parchment'] .label {
+	color: #7a4a2a;
+	font-variant-caps: small-caps;
+}
+
+/*
+ * Neon, for science fiction and cyberpunk: a night-blue screen, cyan readouts and a
+ * magenta accent, set in monospace. Corners are square and tags chamfered, like a HUD's.
+ */
+[data-theme='neon'] {
+	--page: #090c13;
+	--surface: #0f1520;
+	--ink: #d6e2f3;
+	--muted: #7d93b2;
+	--accent: #ff3d8b;
+	--cyan: #3fd8f5;
+	--line: #1d2a3e;
+	--chrome: #070a10;
+	--backdrop: radial-gradient(ellipse 80% 50% at 50% -10%, #10263a 0%, transparent 60%), #06080d;
+
+	--font-body:
+		ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'PingFang TC', 'Microsoft JhengHei',
+		monospace;
+	--label-tracking: 0.12em;
+
+	--radius: 0;
+	--field-bg: linear-gradient(180deg, #111a29, #0c111b);
+	--field-border: 1px solid color-mix(in oklab, var(--cyan) 35%, transparent);
+	--field-shadow: 0 0 14px rgb(63 216 245 / 0.07);
+	--tag-radius: 0;
+	--tag-clip: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+	--tag-bg: color-mix(in oklab, var(--accent) 14%, transparent);
+	--track-radius: 0;
+	--entry-rule: var(--cyan);
+	--tab-mark: '▸ ';
+	--code-field: var(--cyan);
+	--code-num: #fbbf24;
+	--code-str: #a3e635;
+	color-scheme: dark;
+}
+
+:root[data-theme='neon'] .label {
+	color: var(--cyan);
+	text-transform: uppercase;
+}
+
+/*
+ * Case file, for investigation and modern horror: typed report paper on a manila folder,
+ * in typewriter type, with a rubber stamp's red. Entries are ruled with a notepad's red
+ * margin; track boxes are a form's squares.
+ */
+[data-theme='case'] {
+	--page: #e6dcc0;
+	--surface: #f5f2e8;
+	--ink: #1f1d1a;
+	--muted: #5f5a4e;
+	--accent: #b3261e;
+	--line: #cdc3a6;
+	--chrome: #dcd0b0;
+	--backdrop: #e1d6b8;
+
+	--font-body:
+		'American Typewriter', 'Courier Prime', 'Courier New', Courier, 'Songti TC', 'Noto Serif TC',
+		'PMingLiU', monospace;
+	--label-tracking: 0.08em;
+
+	--radius: 1px;
+	--field-border: 1px solid #bdb291;
+	--field-shadow: 2px 2px 0 rgb(80 65 30 / 0.12);
+	--tag-radius: 2px;
+	--tag-bg: color-mix(in oklab, var(--accent) 8%, transparent);
+	--track-radius: 0;
+	--entry-rule: var(--accent);
+	--tab-mark: '§ ';
+	color-scheme: light;
+}
+
+:root[data-theme='case'] .label {
+	text-transform: uppercase;
+}
+
 * {
 	box-sizing: border-box;
 }
@@ -178,9 +291,11 @@ input::-webkit-outer-spin-button {
 	margin: 0;
 }
 
+/* One line, always: a font Chrome measures a hair short, like the typewriter, would wrap it. */
 select {
 	appearance: none;
 	padding-right: 1.5rem;
+	white-space: nowrap;
 	background-image:
 		linear-gradient(45deg, transparent 50%, var(--muted) 50%),
 		linear-gradient(135deg, var(--muted) 50%, transparent 50%);
