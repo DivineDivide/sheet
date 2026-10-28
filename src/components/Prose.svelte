@@ -2,24 +2,31 @@
 	import { untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import { markdown } from '../lib/markdown';
+	import { COLORS } from '../lib/presence';
+	import { presence } from '../lib/presence.svelte';
 
 	// Text shown as Markdown, with its source only while it is being written. A `line` is a
-	// title: its source is one line, and Enter commits rather than breaking it.
+	// title: its source is one line, and Enter commits rather than breaking it. `at` names the
+	// box in the room, so others see its text as it is typed.
 	let {
 		value,
 		label,
 		empty = 'Click to write. Markdown works.',
 		line = false,
+		at,
 		onchange
 	}: {
 		value: string;
 		label: string;
 		empty?: string;
 		line?: boolean;
+		at?: string;
 		onchange: (text: string) => void;
 	} = $props();
 
 	let writing = $state(false);
+	const draft = $derived(at && !writing ? presence.draftAt(at) : undefined);
+	const shown = $derived(draft ? draft.text + (draft.cut ? '…' : '') : value);
 
 	const focusAtEnd: Attachment<HTMLTextAreaElement> = (el) => {
 		el.focus();
@@ -42,16 +49,23 @@
 			e.preventDefault();
 			e.currentTarget.blur();
 		}}
+		oninput={(e) => at && presence.draft(at, e.currentTarget.value)}
 		onchange={(e) => {
 			const text = e.currentTarget.value;
 			onchange(line ? text.replace(/\n/g, ' ') : text);
 		}}
-		onblur={() => (writing = false)}></textarea>
+		onblur={() => {
+			writing = false;
+			// After the change it follows, so others never see the old text in between.
+			if (at) presence.draft(null);
+		}}></textarea>
 {:else}
 	<!-- The source shows while this has focus, from a click or Tab. Pressing a link takes
 	     no focus, so in Safari too the link opens instead. -->
 	<div
 		class="md {line ? 'line' : 'grow'}"
+		class:drafting={draft}
+		style:--peer={draft && `var(--peer-${draft.peer.color % COLORS})`}
 		role="textbox"
 		aria-multiline={!line}
 		aria-label={label}
@@ -59,7 +73,7 @@
 		onfocus={() => (writing = true)}
 		onpointerdown={(e) => (e.target as Element).closest('a') && e.preventDefault()}
 	>
-		{#if value}{@html markdown(value)}{:else}<span class="hint">{empty}</span>{/if}
+		{#if shown}{@html markdown(shown)}{:else}<span class="hint">{empty}</span>{/if}
 	</div>
 {/if}
 
@@ -94,6 +108,10 @@
 	}
 	.md:hover {
 		border-color: var(--line);
+	}
+	/* Someone else's text as they type it, not saved yet. */
+	.md.drafting {
+		border-color: var(--peer);
 	}
 	.hint {
 		color: var(--muted);

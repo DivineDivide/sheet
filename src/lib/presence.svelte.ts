@@ -1,4 +1,4 @@
-import type { Peer, Presence } from './presence';
+import { cut, type Draft, type Peer, type Presence } from './presence';
 import { session } from './session.svelte';
 
 // Apart from `session`, so presence never enters the doc or undo.
@@ -67,5 +67,15 @@ export const presence = {
 	set(patch: Presence) {
 		mine = { ...mine, ...patch };
 		timer ??= setTimeout(flush, 50);
+	},
+	/** Text typed in box `at` and not saved yet, or null once the box is left. */
+	draft(at: string | null, text = '') {
+		mine = { ...mine, draft: at === null ? undefined : { at, ...cut(text) } };
+		timer ??= setTimeout(flush, 250);
+	},
+	/** Someone else's unsaved text in box `at`, and who is typing it. */
+	draftAt(at: string): (Draft & { peer: Peer }) | undefined {
+		const peer = this.others.find((p) => p.draft?.at === at);
+		return peer?.draft && { ...peer.draft, peer };
 	}
 };

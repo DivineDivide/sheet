@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		globalId,
 		newId,
 		valueOf,
 		type Character,
@@ -197,7 +198,7 @@
 			<span class="none">No formula yet. Set one in Edit layout.</span>
 		{/if}
 	{:else if field.kind === 'text'}
-		<Prose value={v as string} label={field.label} onchange={set} />
+		<Prose value={v as string} label={field.label} at={globalId(character, field)} onchange={set} />
 	{:else if field.kind === 'entries'}
 		{@const entries = v as Entry[]}
 		{@const put = (i: number, patch: Partial<Entry>) =>
@@ -209,6 +210,7 @@
 						<Prose
 							line
 							value={entry.name}
+							at="{globalId(character, field)}/{i}/name"
 							label="{field.label} name"
 							empty="Name"
 							onchange={(name) => put(i, { name })}
@@ -221,6 +223,7 @@
 					</div>
 					<Prose
 						value={entry.text}
+						at="{globalId(character, field)}/{i}/text"
 						label="{entry.name} description"
 						empty="Description, in Markdown."
 						onchange={(text) => put(i, { text })}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstFree, nameOf, presenceIn } from './presence';
+import { cut, firstFree, nameOf, presenceIn } from './presence';
 
 describe('presenceIn', () => {
 	it('keeps what it knows and drops the rest', () => {
@@ -29,6 +29,14 @@ describe('presenceIn', () => {
 		expect(p?.picked).toHaveLength(50);
 	});
 
+	it('keeps a draft, cut to size, and the cut its sender made', () => {
+		const p = presenceIn({ presence: { draft: { at: 'c!f', text: 'x'.repeat(9000) } } });
+		expect(p?.draft).toEqual({ at: 'c!f', text: 'x'.repeat(4096), cut: true });
+		const sent = presenceIn({ presence: { draft: { at: 'c!f', text: 'short', cut: true } } });
+		expect(sent?.draft).toEqual({ at: 'c!f', text: 'short', cut: true });
+		expect(presenceIn({ presence: { draft: { at: 'a'.repeat(201), text: '' } } })).toEqual({});
+	});
+
 	it('is null for any other message', () => {
 		expect(presenceIn({ id: 'x', ops: [] })).toBeNull();
 		expect(presenceIn({ presence: [] })).toBeNull();
@@ -47,4 +55,10 @@ it('nameOf falls back to GM, then to the guest by colour', () => {
 	expect(nameOf({ who: 'w', color: 2, name: 'Ash' })).toBe('Ash');
 	expect(nameOf({ who: 'w', color: 2, gm: true })).toBe('GM');
 	expect(nameOf({ who: 'w', color: 2 })).toBe('Guest 3');
+});
+
+it('cut never splits a character', () => {
+	expect(cut('short')).toEqual({ text: 'short' });
+	// 4097 UTF-16 units: the cut falls inside the last emoji, which goes whole.
+	expect(cut('x' + '😀'.repeat(2048))).toEqual({ text: 'x' + '😀'.repeat(2047), cut: true });
 });

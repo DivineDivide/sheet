@@ -61,7 +61,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   enters undo; `Sheet` sends the character, tab, Edit-layout selection and the field with
   focus, and outlines others' in their colours. Anyone can claim anything here, so a GM
   label grants nothing. `Prose` takes its textarea's value once, so another person's save
-  never overwrites typing.
+  never overwrites typing. While someone types in a `Prose`, its text rides their presence
+  as a `draft` (every 250 ms, cut at 4,096 UTF-16 units so the attachment fits), named by the
+  box's `at`, and others' `Prose` there shows it until the box is left: still one save.
 - **`src/lib/io.ts`** — export and import. `parse` refuses bad structure or dangling
   tab/clock references whole. Older files are checked as written, then migrated. `v1.ts`
   gives each character its own copy of its template's layout on one tab, and turns the old

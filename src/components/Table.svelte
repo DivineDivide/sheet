@@ -10,6 +10,7 @@
 <script lang="ts">
 	import {
 		cellOf,
+		globalId,
 		uniqueLabel,
 		type Cell,
 		type Character,
@@ -291,6 +292,7 @@
 							{:else}
 								<Prose
 									value={v === undefined ? '' : String(v)}
+									at="{globalId(character, field)}/{row.id}/{c.id}"
 									label={c.name}
 									empty=""
 									onchange={(t) => put(row, c.id, t)}
