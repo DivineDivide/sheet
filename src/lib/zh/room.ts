@@ -48,6 +48,9 @@ export default {
 	'Bind the selected fields, to move, copy and delete as one':
 		'綁定已選取的欄位，一起移動、複製和刪除',
 	'Unbind them': '解除綁定',
+	'Bring them forward / send them backward, past a field they overlap':
+		'上移 / 下移一層，越過一個與它們重疊的欄位',
+	'Bring them to the front / send them to the back': '移到最上層 / 最下層',
 	again: '再一次',
 	'Pick one field out of a selected binding': '從已選取的綁定中單獨選出一個欄位',
 	'Waiting for the room to come back': '等待房間重新連線',

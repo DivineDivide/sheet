@@ -18,7 +18,7 @@ import {
 import { mates } from '../bind';
 import { frame, placed, room } from '../cards';
 import { cellResult, nameOf, names, render, result, rowNames, show, type Name } from '../formula';
-import { readingOrder } from '../layout';
+import { hits, readingOrder } from '../layout';
 import { mapSource, treeOf } from '../map';
 import { picksIn } from '../markdown';
 import { sheetOf } from '../rules';
@@ -241,8 +241,13 @@ export function fieldView(doc: Doc, c: Character, f: Field, full = false): strin
 	const bound = mates(c.fields, f.id)
 		.slice(0, -1)
 		.map((id) => c.fields.find((x) => x.id === id)!.label);
+	// A later field lies over an earlier one.
+	const under = c.fields
+		.slice(c.fields.findIndex((x) => x.id === f.id) + 1)
+		.filter((x) => x.tab === f.tab && hits(x.box, b))
+		.map((x) => x.label);
 	return [
-		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.cards ? ', as cards' : ''}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${f.bar ? ', as a bar' : ''}${bound.length ? `, bound with ${bound.join(', ')}` : ''}${first === undefined ? '' : `: ${first}`}`,
+		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.cards ? ', as cards' : ''}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${f.bar ? ', as a bar' : ''}${bound.length ? `, bound with ${bound.join(', ')}` : ''}${under.length ? `, under ${under.join(', ')}` : ''}${first === undefined ? '' : `: ${first}`}`,
 		...rest,
 		...(f.rules ?? []).map((r) => `  rule: ${ruleText(doc, c, r, known)}`)
 	].join('\n');

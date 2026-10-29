@@ -184,7 +184,10 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
 - **`src/lib/layout.ts`** — a field's `box` is pixels on its tab, snapped to 8 by `clamp`,
   which every write goes through. A tab runs on in every direction from 0,0, so boxes may
   be negative; layouts made before that sit right of and below 0,0, unmoved. Boxes may
-  overlap; nothing settles them. A field's box is its size in play too, and content beyond
+  overlap; nothing settles them, and a later field lies over an earlier, so the order of
+  `fields` is the layering. `restack` moves a selection past the nearest field it overlaps,
+  whole and in its own order, so every press shows: the inspector's Layer, ⌘] and ⌘[, and
+  the chat's `edit_field` `layer`. A field's box is its size in play too, and content beyond
   it scrolls, inside the box (`.content`), so what sits on its edge is never clipped: a
   `hideLabel` field's controls float there on hover. In Edit layout every label shows, with
   the toggle that hides it right after it; a hidden one, struck through, floats on the edge

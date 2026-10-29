@@ -441,6 +441,28 @@ describe('a table as cards', () => {
 	});
 });
 
+describe('layers', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+
+	it('lays a field behind those it overlaps, or in front of them, and shows which', () => {
+		ok(doc, 'add_field', { character: 'Ash', label: 'Badge', kind: 'image', at: { x: 2, y: 2 } });
+		expect(ok(doc, 'edit_field', { character: 'Ash', field: 'Badge', layer: 'back' })).toContain(
+			'under HP, Notes'
+		);
+		ok(doc, 'edit_field', { character: 'Ash', field: 'Badge', layer: 'front' });
+		const view = ok(doc, 'read', { character: 'Ash' });
+		expect(view).toMatch(/- HP: [^\n]*, under Badge/);
+		expect(view).not.toMatch(/- Badge: [^\n]*, under/);
+	});
+
+	it('refuses a layer other than front or back', () => {
+		expect(refused(doc, 'edit_field', { character: 'Ash', field: 'Badge', layer: 'up' })).toMatch(
+			/front or back/
+		);
+	});
+});
+
 describe('a hidden label', () => {
 	const doc = newDoc();
 	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });

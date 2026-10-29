@@ -35,6 +35,15 @@ describe('changes', () => {
 		expect([...fields].sort()).toEqual([luck.id, hp.id].sort());
 	});
 
+	it('says which fields lie on top changed', () => {
+		const base = room();
+		const draft = structuredClone(base);
+		draft.characters[0].fields.reverse();
+		expect(changes(base, diff(base, draft)).lines).toEqual([
+			"Changed which of Ash's fields lie on top"
+		]);
+	});
+
 	it('says a character was renamed, and a template saved', () => {
 		const base = room();
 		const draft = structuredClone(base);

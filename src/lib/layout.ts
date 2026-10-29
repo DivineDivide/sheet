@@ -50,6 +50,36 @@ export function bounds(boxes: Box[]): Box {
 export const hits = (a: Box, b: Box) =>
 	a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
+export type Layer = 'front' | 'forward' | 'backward' | 'back';
+
+/**
+ * `fields` with the fields `ids` moved through the stack, a later field lying over an
+ * earlier, or `fields` itself when nothing they overlap is in the way. A step passes the
+ * nearest field over one of them that it overlaps, taking along those of them it lies
+ * over, in their order; front and back step until nothing is left to pass.
+ */
+export function restack<T extends { id: string; tab: string; box: Box }>(
+	fields: T[],
+	ids: string[],
+	to: Layer
+): T[] {
+	const up = to === 'front' || to === 'forward';
+	const moving = (f: T) => ids.includes(f.id);
+	const order = up ? fields : [...fields].reverse();
+	const i = order.findIndex(
+		(o, j) =>
+			!moving(o) &&
+			order.slice(0, j).some((f) => moving(f) && f.tab === o.tab && hits(f.box, o.box))
+	);
+	if (i < 0) return fields;
+	// None of these overlaps a field between it and the one passed, which would be nearer.
+	const passing = order.slice(0, i).filter(moving);
+	const out = order.filter((f) => !passing.includes(f));
+	out.splice(out.indexOf(order[i]) + 1, 0, ...passing);
+	if (!up) out.reverse();
+	return to === 'front' || to === 'back' ? restack(out, ids, to) : out;
+}
+
 /** Top to bottom, then left to right: the order fields and card columns stack in when narrow. */
 export const readingOrder = <T extends { box: Box }>(items: T[]) =>
 	[...items].sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);

@@ -29,7 +29,7 @@ import { loosen } from '../bind';
 import { lay, room, spot } from '../cards';
 import { FormulaError, compile, compileLine, isErr, refText, result, same, show } from '../formula';
 import { ImportError, validate } from '../io';
-import { GAP, clamp, defaultSize, hits, type Box } from '../layout';
+import { GAP, clamp, defaultSize, hits, restack, type Box } from '../layout';
 import { canHang, mapSource } from '../map';
 import { picksIn } from '../markdown';
 import { ruled, ruledColumns, sheetOf } from '../rules';
@@ -208,7 +208,7 @@ function shows(doc: Doc, c: Character, f: Field) {
 function overlaps(c: Character, f: Field) {
 	const over = c.fields.filter((g) => g !== f && g.tab === f.tab && hits(g.box, f.box));
 	return over.length
-		? ` It overlaps ${over.map((g) => g.label).join(', ')}; move one unless that is wanted.`
+		? ` It overlaps ${over.map((g) => g.label).join(', ')}; move one unless that is wanted, and then edit_field's layer sets which lies on top.`
 		: '';
 }
 
@@ -716,7 +716,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_field',
 		description:
-			"Changes a field's label, kind, tab, place, size or formula, a choice field's choices, whether its label shows, whether a long list flips pages, whether a table shows as cards, or whether a resource shows as a bar. A value left from its old kind reads as blank.",
+			"Changes a field's label, kind, tab, place, size, layer or formula, a choice field's choices, whether its label shows, whether a long list flips pages, whether a table shows as cards, or whether a resource shows as a bar. A value left from its old kind reads as blank.",
 		input_schema: obj(
 			{
 				...who,
@@ -741,7 +741,12 @@ export const tools: Tool[] = [
 					description:
 						"A table: true shows each row as a card, laid out by edit_table's card_at and card_size, its columns stacked down the card the first time; false as a grid, keeping the card's layout"
 				},
-				bar
+				bar,
+				layer: {
+					type: 'string',
+					enum: ['front', 'back'],
+					description: 'front lays it over every field it overlaps; back, under them'
+				}
 			},
 			['character', 'field']
 		),
@@ -758,6 +763,11 @@ export const tools: Tool[] = [
 					f.columns = [{ id: newId(), name: 'Name', kind: 'text' }];
 			}
 			Object.assign(f, placed(c, i, f.kind, f));
+			const layer = opt(i, 'layer') as 'front' | 'back' | undefined;
+			if (layer) {
+				if (layer !== 'front' && layer !== 'back') fail(`layer is front or back, not ${layer}`);
+				c.fields = restack(c.fields, [f.id], layer);
+			}
 			const formula = opt(i, 'formula');
 			if (formula !== undefined) {
 				if (f.kind !== 'formula') fail('only a formula field has a formula');

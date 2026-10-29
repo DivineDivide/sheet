@@ -37,6 +37,8 @@ export function changes(room: Doc, ops: Op[]): { lines: string[]; fields: Set<st
 		else if (was && now) {
 			if (part === 'name') lines.add(`Renamed ${was.name} to ${now.name}`);
 			else if (part === 'tabs') lines.add(`Changed ${now.name}'s tabs`);
+			else if (part === 'fields' && !sub)
+				lines.add(`Changed which of ${now.name}'s fields lie on top`);
 			else if ((part === 'fields' || part === 'values') && sub) {
 				const before = was.fields.find((f) => f.id === sub);
 				const field = now.fields.find((f) => f.id === sub);

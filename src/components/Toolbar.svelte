@@ -13,7 +13,9 @@
 		type When
 	} from '../lib/doc';
 	import { compileLine, nameOf, names as namesOf, rowNames, type Name } from '../lib/formula';
-	import { t } from '../lib/i18n.svelte';
+	import { t, type Phrase } from '../lib/i18n.svelte';
+	import { mod } from '../lib/keys';
+	import { restack, type Layer } from '../lib/layout';
 	import { session } from '../lib/session.svelte';
 	import { maps, sources } from '../lib/source';
 	import { tip } from '../lib/tip';
@@ -31,6 +33,7 @@
 		column,
 		editField,
 		remove,
+		layer,
 		saveTemplate
 	}: {
 		character: Character;
@@ -41,6 +44,8 @@
 		column: Column | undefined;
 		editField: (id: string, fn: (f: Field) => void) => void;
 		remove: (ids: string[]) => void;
+		/** Moves the selected fields over or under those they overlap. */
+		layer: (to: Layer) => void;
 		saveTemplate: (name: string) => void;
 	} = $props();
 
@@ -55,6 +60,13 @@
 	});
 
 	let templateName = $state('');
+
+	const layers: [Layer, Phrase, string][] = [
+		['front', 'Bring to front ({keys})', `⇧${mod}]`],
+		['forward', 'Bring forward ({keys})', `${mod}]`],
+		['backward', 'Send backward ({keys})', `${mod}[`],
+		['back', 'Send to back ({keys})', `⇧${mod}[`]
+	];
 
 	const known = $derived(namesOf(sheetOf(session.doc, character)));
 	type Whens = { when: When; text: string }[];
@@ -125,6 +137,22 @@
 	}
 </script>
 
+{#snippet layering(ids: string[])}
+	{@const over = restack(character.fields, ids, 'forward') !== character.fields}
+	{@const under = restack(character.fields, ids, 'backward') !== character.fields}
+	<span class="muted">{t('Layer')}</span>
+	<div class="layers">
+		{#each layers as [to, hint, keys] (to)}
+			<button
+				aria-label={t(hint, { keys })}
+				{@attach tip(t(hint, { keys }))}
+				disabled={!(to === 'front' || to === 'forward' ? over : under)}
+				onclick={() => layer(to)}><Icon name={to} /></button
+			>
+		{/each}
+	</div>
+{/snippet}
+
 <aside class="rail">
 	<div class="icons">
 		{#each ['field', 'template'] as const as p (p)}
@@ -144,6 +172,7 @@
 				<h2>{t('Selected')}</h2>
 				{#if group.length > 1}
 					<p class="muted">{group.map((f) => f.label).join(', ')}</p>
+					{@render layering(group.map((f) => f.id))}
 					<button onclick={() => remove(group.map((f) => f.id))}
 						>{t('Delete {n} fields', { n: group.length })}</button
 					>
@@ -371,6 +400,7 @@
 							</select>
 						</label>
 					{/if}
+					{@render layering([field.id])}
 					<button onclick={() => remove([field.id])}>{t('Delete field')}</button>
 				{:else}
 					<p class="muted">{t('Nothing selected.')}</p>
@@ -449,6 +479,15 @@
 	form input {
 		flex: 1;
 		width: 0;
+	}
+	.layers {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 0.3rem;
+	}
+	.layers button {
+		display: grid;
+		place-items: center;
 	}
 	.muted {
 		margin: 0;

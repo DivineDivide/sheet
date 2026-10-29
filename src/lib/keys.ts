@@ -57,6 +57,11 @@ export const shortcuts: [
 			[[`${mod}V`], 'Paste them on this tab, of any character'],
 			[[`${mod}G`], 'Bind the selected fields, to move, copy and delete as one'],
 			[[`⇧${mod}G`], 'Unbind them'],
+			[
+				[`${mod}]`, `${mod}[`],
+				'Bring them forward / send them backward, past a field they overlap'
+			],
+			[[`⇧${mod}]`, `⇧${mod}[`], 'Bring them to the front / send them to the back'],
 			[[{ word: 'click' }, { word: 'again' }], 'Pick one field out of a selected binding']
 		]
 	]

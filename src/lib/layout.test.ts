@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Field, Kind } from './doc';
-import { MIN, bounds, clamp, readingOrder, settle, type Box } from './layout';
+import { MIN, bounds, clamp, readingOrder, restack, settle, type Box } from './layout';
 
 const f = (id: string, kind: Kind, box: Box): Field => ({ id, label: id, kind, tab: 't', box });
 
@@ -65,5 +65,41 @@ describe('readingOrder', () => {
 			f('hp', 'resource', { x: 0, y: 0, w: 240, h: 88 })
 		];
 		expect(readingOrder(fields).map((x) => x.id)).toEqual(['hp', 'luck', 'story']);
+	});
+});
+
+describe('restack', () => {
+	const ids = (fields: Field[]) => fields.map((x) => x.id);
+	const a = f('a', 'number', { x: 0, y: 0, w: 160, h: 88 });
+	const c = f('c', 'number', { x: 80, y: 40, w: 160, h: 88 });
+	const d = f('d', 'number', { x: 40, y: 24, w: 160, h: 88 });
+	const apart = f('apart', 'number', { x: 400, y: 0, w: 160, h: 88 });
+
+	it('steps past the nearest field it overlaps, and front and back past them all', () => {
+		expect(ids(restack([a, c, d], ['a'], 'forward'))).toEqual(['c', 'a', 'd']);
+		expect(ids(restack([a, c, d], ['a'], 'front'))).toEqual(['c', 'd', 'a']);
+		expect(ids(restack([a, c, d], ['d'], 'backward'))).toEqual(['a', 'd', 'c']);
+		expect(ids(restack([a, c, d], ['d'], 'back'))).toEqual(['d', 'a', 'c']);
+	});
+
+	it('passes a field it does not overlap only on the way to one it does', () => {
+		expect(ids(restack([a, apart, c], ['a'], 'forward'))).toEqual(['apart', 'c', 'a']);
+	});
+
+	it('gives back the list itself when nothing it overlaps is in the way', () => {
+		const fields = [a, apart, { ...c, tab: 'other' }];
+		expect(restack(fields, ['a'], 'front')).toBe(fields);
+		expect(restack(fields, ['a'], 'forward')).toBe(fields);
+		expect(restack([a, c], ['c'], 'front')).toEqual([a, c]);
+	});
+
+	it('moves a selection whole, keeping a caption over its picture', () => {
+		const picture = f('picture', 'image', { x: 0, y: 0, w: 320, h: 240 });
+		const caption = f('caption', 'text', { x: 16, y: 16, w: 160, h: 48 });
+		const badge = f('badge', 'image', { x: 200, y: 104, w: 160, h: 88 });
+		const sel = ['picture', 'caption'];
+		const up = restack([picture, caption, badge], sel, 'forward');
+		expect(ids(up)).toEqual(['badge', 'picture', 'caption']);
+		expect(ids(restack(up, sel, 'backward'))).toEqual(['picture', 'caption', 'badge']);
 	});
 });

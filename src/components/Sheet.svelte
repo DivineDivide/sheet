@@ -22,7 +22,16 @@
 	import { lift, place } from '../lib/group';
 	import { t } from '../lib/i18n.svelte';
 	import { free, mod } from '../lib/keys';
-	import { SNAP, bounds, clamp, defaultSize, readingOrder, type Box } from '../lib/layout';
+	import {
+		SNAP,
+		bounds,
+		clamp,
+		defaultSize,
+		readingOrder,
+		restack,
+		type Box,
+		type Layer
+	} from '../lib/layout';
 	import { COLORS, nameOf, type Peer } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
@@ -216,6 +225,7 @@
 	}
 
 	const bind = () => edit((c) => toggleBind(c.fields, chosen));
+	const layer = (to: Layer) => edit((c) => (c.fields = restack(c.fields, chosen, to)));
 
 	function copy(ids: string[]) {
 		const g = lift(character, session.doc.clocks, ids, true, session.doc.characters);
@@ -478,6 +488,9 @@
 			if (key === 'c' && f) copy(group.map((g) => g.id));
 			else if (key === 'v' && laying && kept()) paste(kept()!);
 			else if (key === 'g' && laying && binding === (e.shiftKey ? 'unbind' : 'bind')) bind();
+			// By code, since ⇧ turns ] into } on most layouts.
+			else if (e.code === 'BracketRight' && f) layer(e.shiftKey ? 'front' : 'forward');
+			else if (e.code === 'BracketLeft' && f) layer(e.shiftKey ? 'back' : 'backward');
 			else return;
 		} else if (key === 'e') {
 			if (!stacked && !drafting) toggleEditing();
@@ -750,7 +763,7 @@
 			<Palette grab={(e, kind) => grab(e, 'new', null, kind)} {add} {binding} {bind} />
 		{/if}
 		{#if laying}
-			<Toolbar {character} {field} {group} {column} {editField} {remove} {saveTemplate} />
+			<Toolbar {character} {field} {group} {column} {editField} {remove} {layer} {saveTemplate} />
 		{/if}
 		<div class="zoom" role="group" aria-label={t('Zoom and chat')}>
 			{#if !stacked}

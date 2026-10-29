@@ -28,6 +28,10 @@
 		label: 'M4 7V4h16v3M9 20h6M12 4v16',
 		'label-off': 'M4 7V4h16v3M9 20h6M12 4v16M2 2l20 20',
 		minus: 'M5 12h14',
+		front: 'M5 3h14M18 13l-6-6-6 6M12 7v14',
+		forward: 'M5 12l7-7 7 7M12 19V5',
+		backward: 'M12 5v14M19 12l-7 7-7-7',
+		back: 'M12 17V3M6 11l6 6 6-6M19 21H5',
 		fit: 'M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3',
 		home: 'M12 2v4M12 18v4M2 12h4M18 12h4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
 		chat: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'
