@@ -160,7 +160,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   with those controls, while the box is hovered or selected, so the box reads as in play.
   `FieldValue` keeps all else inert there. A table or entries list with `pages` flips
   pages instead (`Pages`): every row stays drawn and measured, `pageStarts` fits whole rows to the box,
-  and rows off the page carry `data-off`. Each browser keeps its own page in `ui.pages`. Narrower than 640px the
+  and rows off the page carry `data-off`. An entries list `flow`s instead: its pages are CSS columns
+  shifted into view, so an entry taller than the box runs on by line, and one that fits stays whole.
+  Each browser keeps its own page in `ui.pages`. Narrower than 640px the
   sheet ignores boxes and stacks fields in `readingOrder`.
 - **`src/lib/view.ts`** — pan and zoom, in play and Edit layout alike. A `View` is the
   sheet point at the middle of the stage plus the zoom, so the window's size never enters

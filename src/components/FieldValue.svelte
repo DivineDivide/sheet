@@ -322,9 +322,10 @@
 				on={!!field.pages}
 				at={globalId(character, field)}
 				rows=".entries > li"
+				flow
 				bind:count={pageCount}
 			>
-				<ol class="entries">
+				<ol class="entries" class:flow={field.pages}>
 					{#each entries as entry, i (i)}
 						<li>
 							<div class="row top">
@@ -633,6 +634,19 @@
 		gap: 0.2rem;
 		padding-left: 0.6rem;
 		border-left: 2px solid var(--entry-rule);
+	}
+	/* Paged, an entry runs on from page to page with its title kept to its first lines;
+	   blocks, since a grid may not break across pages. */
+	.entries.flow,
+	.entries.flow li {
+		display: block;
+	}
+	.entries.flow li + li {
+		margin-top: 0.6rem;
+	}
+	.entries.flow .row.top {
+		margin-bottom: 0.2rem;
+		break-after: avoid;
 	}
 	.row.top {
 		align-items: start;
