@@ -23,7 +23,8 @@ const DRAFT = 4096;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
-const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 64;
+export const isId = (v: unknown): v is string =>
+	typeof v === 'string' && v.length > 0 && v.length <= 64;
 
 /** The presence a message carries, cut to size, or null when it carries none. */
 export function presenceIn(m: unknown): Presence | null {
@@ -57,5 +58,16 @@ export function firstFree(taken: number[]): number {
 	while (taken.includes(n)) n++;
 	return n;
 }
+
+/** A browser's slot: the one its other tabs hold, else the lowest free. */
+export function slotFor(seats: { color: number; browser?: string }[], browser?: string): number {
+	const same = browser ? seats.find((s) => s.browser === browser) : undefined;
+	return same?.color ?? firstFree(seats.map((s) => s.color));
+}
+
+/** One per person, as a slot is: its newest connection, where its first came. */
+export const people = (list: Peer[]): Peer[] => [
+	...new Map(list.map((p) => [p.color, p])).values()
+];
 
 export const nameOf = (p: Peer) => p.name || (p.gm ? 'GM' : `Guest ${p.color + 1}`);

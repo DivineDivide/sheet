@@ -60,7 +60,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   (`presenceIn`). The room keeps each person's with their socket (`serializeAttachment`),
   never in storage, and passes it on before it loads the doc, so it costs no rows read or
   written. It names each connection and gives it the lowest free colour slot, drawn as
-  `--peer-N`. `presence.svelte.ts` holds it in the browser, apart from `session`, so it never
+  `--peer-N`; a browser's tabs share one (`slotFor`), so a slot is a person (`people`), and a
+  page that connects again has its old socket ended. `presence.svelte.ts` holds it in the browser, apart from `session`, so it never
   enters undo; `Sheet` sends the character, tab, Edit-layout selection and the field with
   focus, and outlines others' in their colours. Anyone can claim anything here, so a GM
   label grants nothing. `Prose` takes its textarea's value once, so another person's save

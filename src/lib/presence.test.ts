@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cut, firstFree, nameOf, presenceIn } from './presence';
+import { cut, firstFree, nameOf, people, presenceIn, slotFor } from './presence';
 
 describe('presenceIn', () => {
 	it('keeps what it knows and drops the rest', () => {
@@ -49,6 +49,25 @@ it('firstFree gives the lowest colour nobody holds', () => {
 	expect(firstFree([])).toBe(0);
 	expect(firstFree([1])).toBe(0);
 	expect(firstFree([0, 1, 3])).toBe(2);
+});
+
+it('slotFor gives a browser the colour its other tabs hold', () => {
+	const seats = [{ color: 0, browser: 'a' }, { color: 1, browser: 'b' }, { color: 3 }];
+	expect(slotFor(seats, 'b')).toBe(1);
+	expect(slotFor(seats, 'c')).toBe(2);
+	expect(slotFor(seats)).toBe(2);
+});
+
+it('people shows each slot once, as its newest connection, where it first came', () => {
+	const list = [
+		{ who: 'a1', color: 0, character: 'old' },
+		{ who: 'b1', color: 1 },
+		{ who: 'a2', color: 0, character: 'new' }
+	];
+	expect(people(list)).toEqual([
+		{ who: 'a2', color: 0, character: 'new' },
+		{ who: 'b1', color: 1 }
+	]);
 });
 
 it('nameOf falls back to GM, then to the guest by colour', () => {

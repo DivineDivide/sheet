@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { COLORS, nameOf, type Peer } from '../lib/presence';
+	import { COLORS, nameOf, people, type Peer } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
 	import { shown } from '../lib/doc';
@@ -16,7 +16,7 @@
 </script>
 
 <div class="peers" role="group" aria-label={t('Here now')}>
-	{#each presence.others as p (p.who)}
+	{#each people(presence.others) as p (p.color)}
 		{@const where = on(p)}
 		<span
 			class="peer"

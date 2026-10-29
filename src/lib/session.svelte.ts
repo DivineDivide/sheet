@@ -27,6 +27,19 @@ function visited(token: string, name: string) {
 	} catch {}
 }
 
+// The room shows a browser's tabs as one person, and ends the socket a page leaves behind
+// when that page connects again.
+const page = newId();
+const browser = (() => {
+	try {
+		const id = localStorage.getItem('sheet.browser') ?? newId();
+		localStorage.setItem('sheet.browser', id);
+		return id;
+	} catch {
+		return page;
+	}
+})();
+
 /** A change this client made: the ops it sent, and the ops that take it back. */
 type Step = { f: Op[]; i: Op[] };
 type Status = 'connecting' | 'open' | 'offline' | 'missing';
@@ -161,7 +174,9 @@ async function connect() {
 		status = 'missing';
 		return;
 	}
-	const ws = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/api/rooms/${token}/ws`);
+	const ws = new WebSocket(
+		`${location.origin.replace(/^http/, 'ws')}/api/rooms/${token}/ws?browser=${browser}&page=${page}`
+	);
 	socket = ws;
 	ws.onmessage = (e) => e.data !== 'pong' && receive(JSON.parse(e.data));
 	ws.onclose = () => {

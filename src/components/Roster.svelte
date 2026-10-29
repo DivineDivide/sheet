@@ -3,7 +3,7 @@
 	import { flip } from 'svelte/animate';
 	import { scale } from 'svelte/transition';
 	import { newCharacter, shown, type Character } from '../lib/doc';
-	import { COLORS, nameOf } from '../lib/presence';
+	import { COLORS, nameOf, people } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
 	import { session } from '../lib/session.svelte';
 	import { t } from '../lib/i18n.svelte';
@@ -98,7 +98,7 @@
 				in:scale={{ start: 0.6, duration: 200 }}
 			>
 				<span class="cname">{c.name}</span>
-				{#each presence.others.filter((p) => p.character === c.id) as p (p.who)}
+				{#each people(presence.others.filter((p) => p.character === c.id)) as p (p.color)}
 					<span
 						class="here"
 						style:--peer="var(--peer-{p.color % COLORS})"

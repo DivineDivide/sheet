@@ -11,7 +11,7 @@ import {
 } from '../src/lib/cursor';
 import { VERSION, newId, type Doc } from '../src/lib/doc';
 import { ImportError, validate } from '../src/lib/io';
-import { firstFree, presenceIn, type Peer, type Presence } from '../src/lib/presence';
+import { isId, presenceIn, slotFor, type Peer, type Presence } from '../src/lib/presence';
 import { fire, isAct, type Act, type Done } from '../src/lib/rules';
 import {
 	apply,
@@ -27,11 +27,14 @@ import { realtime } from './realtime';
 
 const send = (ws: WebSocket, m: Down) => ws.send(JSON.stringify(m));
 
-/** A socket's attachment: the person, and their Realtime session, which never leaves here. */
-type Seat = Peer & { rtc?: Rtc };
+/**
+ * A socket's attachment: the person, and what never leaves here: their Realtime session,
+ * and the browser and page that opened it, so nobody else can end their socket.
+ */
+type Seat = Peer & { rtc?: Rtc; browser?: string; page?: string };
 /** A cursor session: its own channel once connected, and the one hearing each person, by `who`. */
 type Rtc = { session: string; own?: number; hears: Record<string, number> };
-const peerOf = ({ rtc: _, ...peer }: Seat): Peer => peer;
+const peerOf = ({ rtc: _, browser: _b, page: _p, ...peer }: Seat): Peer => peer;
 const off = (why: Extract<RtcDown, { k: 'off' }>['why']): RtcDown => ({ k: 'off', why });
 
 /** Dice are rolled here, never in a browser that could roll again. */
@@ -171,12 +174,29 @@ export class Room extends DurableObject<Env> {
 		if (name === null) return new Response('no such room', { status: 404 });
 		if (request.headers.get('Upgrade') !== 'websocket') return Response.json({ name });
 
+		const param = (k: string) => {
+			const v = new URL(request.url).searchParams.get(k);
+			return isId(v) ? v : undefined;
+		};
+		const browser = param('browser');
+		const page = param('page');
+		// A page connecting again: the room may not have heard its old socket drop.
+		for (const [ws, seat] of this.seats()) {
+			if (!page || seat.page !== page) continue;
+			ws.serializeAttachment(null);
+			await this.leave(ws, seat);
+			try {
+				ws.close(1000, 'connected again');
+			} catch {}
+		}
+
 		const { 0: client, 1: server } = new WebSocketPair();
-		const here = this.seats().map(([, s]) => peerOf(s));
-		const me: Peer = { who: newId(), color: firstFree(here.map((p) => p.color)) };
+		const seats = this.seats().map(([, s]) => s);
+		const here = seats.map(peerOf);
+		const me: Peer = { who: newId(), color: slotFor(seats, browser) };
 		this.ctx.acceptWebSocket(server);
 		// Kept with the socket, through hibernation, so presence is never stored.
-		server.serializeAttachment(me);
+		server.serializeAttachment({ ...me, browser, page } satisfies Seat);
 		send(server, { t: 'hello', name, doc: (this.doc ??= this.load()) });
 		send(server, { t: 'proposals', list: this.proposals() });
 		send(server, { t: 'peers', me: me.who, list: [...here, me] });
@@ -212,12 +232,11 @@ export class Room extends DurableObject<Env> {
 		const was = this.seatOf(ws);
 		if (!was) return;
 		const peer: Peer = { ...p, who: was.who, color: was.color };
-		ws.serializeAttachment({ ...peer, rtc: was.rtc });
+		ws.serializeAttachment({ ...peer, rtc: was.rtc, browser: was.browser, page: was.page });
 		this.others(ws, { t: 'peer', peer });
 	}
 
-	private async leave(ws: WebSocket) {
-		const seat = this.seatOf(ws);
+	private async leave(ws: WebSocket, seat = this.seatOf(ws)) {
 		if (!seat) return;
 		this.others(ws, { t: 'left', who: seat.who });
 		if (seat.rtc) await this.queue(() => this.hangUp(ws, seat.who, seat.rtc!));

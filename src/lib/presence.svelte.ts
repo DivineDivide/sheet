@@ -44,9 +44,13 @@ session.onPeers = (m) => {
 };
 
 export const presence = {
-	/** Everyone else here, in the order they came; nobody while offline. */
+	/**
+	 * Everyone else's connections, in the order they came; nobody while offline. This
+	 * browser's other tabs share its slot, so they are not others.
+	 */
 	get others(): Peer[] {
-		return session.status === 'open' ? list.filter((p) => p.who !== me) : [];
+		const color = list.find((p) => p.who === me)?.color;
+		return session.status === 'open' ? list.filter((p) => p.color !== color) : [];
 	},
 	/** This person, as the others see them. */
 	get self(): Peer | null {
