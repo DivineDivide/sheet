@@ -34,6 +34,14 @@ const PICK = /^\{([^{}=\n]*[!|][^{}=\n]*)(?:=([^{}\n]*))?\}/;
 type Env = { tables?: (ref: string) => string[] | undefined };
 type Pick = { ref: string; value: string; pos: number; at: number };
 
+const choicesOf = (ref: string, tables?: Env['tables']): string[] | undefined =>
+	ref.includes('|')
+		? ref
+				.split('|')
+				.map((s) => s.trim())
+				.filter(Boolean)
+		: tables?.(ref);
+
 md.inline.ruler.after('text', 'pick', (state, silent) => {
 	if (state.src.charCodeAt(state.pos) !== 0x7b) return false;
 	const m = PICK.exec(state.src.slice(state.pos));
@@ -72,12 +80,7 @@ md.renderer.rules.pick = (tokens, i, _options, env) => {
 	const tables = (env as Env | undefined)?.tables;
 	const esc = md.utils.escapeHtml;
 	const typed = ref.includes('|');
-	const options: string[] | undefined = typed
-		? ref
-				.split('|')
-				.map((s: string) => s.trim())
-				.filter(Boolean)
-		: tables?.(ref);
+	const options = choicesOf(ref, tables);
 	if (!tables || !options || at < 0) return esc(value || tokens[i].content);
 	// Blank shows what to choose: the table's name, or for typed choices only that there are some.
 	const blank = typed ? '…' : ref.slice(ref.indexOf('!') + 1).trim();
@@ -92,6 +95,26 @@ md.renderer.rules.pick = (tokens, i, _options, env) => {
 
 /** `text` as HTML. Given `tables`, which names a table's rows, its picks are dropdowns. */
 export const markdown = (text: string, tables?: Env['tables']) => md.render(text, { tables });
+
+/**
+ * Each pick in `text` that `markdown` draws, with its table's name (`from`) unless its choices
+ * are typed, and what it offers: none at all when `tables` names no such table.
+ */
+export function picksIn(text: string, tables: Env['tables']) {
+	return md
+		.parse(text, {})
+		.flatMap((block) => block.children ?? [])
+		.filter((t) => t.type === 'pick')
+		.map((t) => {
+			const { ref, value } = t.meta as Pick;
+			return {
+				text: t.content,
+				from: ref.includes('|') ? undefined : ref,
+				value,
+				choices: choicesOf(ref, tables)
+			};
+		});
+}
 
 /** `text` with the pick starting at `at` holding `value`, or unchanged if none starts there. */
 export function setPick(text: string, at: number, value: string): string {

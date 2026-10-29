@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdown, setPick } from './markdown';
+import { markdown, picksIn, setPick } from './markdown';
 
 describe('markdown', () => {
 	it('renders emphasis, lists and headings', () => {
@@ -52,6 +52,15 @@ describe('markdown', () => {
 		const at = [...markdown(text, () => undefined).matchAll(/data-at="(\d+)"/g)].map((m) => +m[1]);
 		expect(at).toEqual([12, 21, 33, 41]);
 		expect(setPick(text, 41, 'b').slice(41)).toBe('{a|b=b}');
+	});
+
+	it('lists the picks it draws, with what each offers', () => {
+		const tables = (ref: string) => (ref === 'GM!Elements' ? ['Fire', 'Ice'] : undefined);
+		expect(picksIn('`{a|b}` {GM!Elements=Ice} {near| far} {Nobody!X}', tables)).toEqual([
+			{ text: '{GM!Elements=Ice}', from: 'GM!Elements', value: 'Ice', choices: ['Fire', 'Ice'] },
+			{ text: '{near| far}', from: undefined, value: '', choices: ['near', 'far'] },
+			{ text: '{Nobody!X}', from: 'Nobody!X', value: '', choices: undefined }
+		]);
 	});
 
 	it('writes a choice into the text, and clears it', () => {

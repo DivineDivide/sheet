@@ -18,8 +18,9 @@ import { mates } from '../bind';
 import { cellResult, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
 import { mapSource, treeOf } from '../map';
+import { picksIn } from '../markdown';
 import { sheetOf } from '../rules';
-import { choicesOf, keyOf, nameColumn, sourceOf } from '../source';
+import { choicesOf, keyOf, nameColumn, namesFor, sourceOf } from '../source';
 
 /** The sheet's dots are 16px apart; boxes are shown and placed in them. */
 export const DOT = 16;
@@ -103,6 +104,17 @@ function followsText(doc: Doc, row: Row): string {
 	return ` (follows ${tableName(doc, src.id)}: ${key ? (item.cells[key.id] ?? '?') : '?'})`;
 }
 
+/** A text's picks, each with what it offers, listed whether or not the text is cut. */
+function pickLines(doc: Doc, text: string, lead: string): string[] {
+	return picksIn(text, (ref) => namesFor(doc, ref)).map((p) => {
+		const chosen = p.value ? JSON.stringify(p.value) : 'none chosen';
+		const offer = !p.choices
+			? `but no table is named ${p.from}`
+			: `of ${p.from ? `${p.from}'s rows: ` : ''}${p.choices.join(', ') || 'nothing yet'}`;
+		return `${lead}pick ${p.text}: ${chosen}, ${offer}`;
+	});
+}
+
 function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 	const v = valueOf(c, f);
 	switch (f.kind) {
@@ -119,7 +131,10 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 		case 'button':
 			return [];
 		case 'text':
-			return [v ? JSON.stringify(cut(v as string, full)) : 'empty'];
+			return [
+				v ? JSON.stringify(cut(v as string, full)) : 'empty',
+				...pickLines(doc, v as string, '  ')
+			];
 		case 'choice': {
 			const offer = f.from ? `${tableName(doc, f.from)}'s rows: ` : '';
 			const choices = choicesOf(doc, f).join(', ') || 'nothing yet';
@@ -146,7 +161,11 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 			const list = v as Entry[];
 			return [
 				`${list.length} entries`,
-				...list.map((e) => `  · ${e.name}: ${JSON.stringify(cut(e.text, full))}`)
+				...list.flatMap((e) => [
+					`  · ${e.name}: ${JSON.stringify(cut(e.text, full))}`,
+					...pickLines(doc, e.name, '    '),
+					...pickLines(doc, e.text, '    ')
+				])
 			];
 		}
 		case 'table': {
@@ -162,12 +181,18 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 				...cols.flatMap((col) =>
 					(col.rules ?? []).map((r) => `  rule on ${col.name}: ${ruleText(doc, c, r, known)}`)
 				),
-				...shown.map((row, i) => {
+				...shown.flatMap((row, i) => {
 					const cells = cols.flatMap((col) => {
 						const t = cellText(doc, c, f, row, col);
 						return t === undefined ? [] : [`${col.name}=${cut(t, full)}`];
 					});
-					return `  ${i + 1}. ${cells.join('; ') || '(empty)'}${followsText(doc, row)}`;
+					return [
+						`  ${i + 1}. ${cells.join('; ') || '(empty)'}${followsText(doc, row)}`,
+						...cols.flatMap((col) => {
+							const v = col.kind === 'text' ? cellOf(row, col) : undefined;
+							return typeof v === 'string' ? pickLines(doc, v, `     ${col.name}'s `) : [];
+						})
+					];
 				}),
 				...(shown.length < rows.length ? [`  … ${rows.length - shown.length} more rows`] : [])
 			];

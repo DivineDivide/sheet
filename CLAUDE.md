@@ -221,7 +221,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   (`.md` in `app.css`): scoped ones miss `{@html}`. A pick, `{Character!Table}` or `{a|b|c}`,
   keeps its choice in the text (`{a|b|c=b}`); only `Prose` draws it as a dropdown, finding it in
   the source by `data-at` for `setPick`, and elsewhere it shows the choice. It names its table by
-  name, not id, so a rename leaves it showing as typed.
+  name, not id, so a rename leaves it showing as typed. The chat reads each pick with what it
+  offers (`picksIn`), and its tools refuse a new choice it doesn't offer.
 - **`src/lib/picture.ts`** — an image field's value is a data URL inside the document, so
   `shrink` caps a picture at 1024px as WebP (JPEG in Safari) before it is stored, and an
   image column's at 512px (`CELL`), since a table holds many. A

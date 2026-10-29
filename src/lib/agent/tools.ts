@@ -17,6 +17,7 @@ import {
 	type Column,
 	type ColumnKind,
 	type Doc,
+	type Entry,
 	type Field,
 	type Kind,
 	type Resource,
@@ -29,6 +30,7 @@ import { FormulaError, compile, compileLine, isErr, refText, result, show } from
 import { ImportError, validate } from '../io';
 import { GAP, clamp, defaultSize, type Box } from '../layout';
 import { canHang, mapSource } from '../map';
+import { picksIn } from '../markdown';
 import { ruled, ruledColumns, sheetOf } from '../rules';
 import {
 	choicesOf,
@@ -37,6 +39,7 @@ import {
 	fromSource,
 	keyOf,
 	nameColumn,
+	namesFor,
 	rowFrom,
 	sourceOf,
 	type Source
@@ -253,6 +256,21 @@ const shapes: Record<Kind | ColumnKind, string> = {
 	map: "the name of a node, which becomes current; only a person's press also runs its rules"
 };
 
+/**
+ * Refuses a pick in `texts` whose choice it doesn't offer, as a choice field refuses one. A
+ * pick `was` held already passes, so a row renamed since never blocks writing the rest.
+ */
+function checkPicks(doc: Doc, texts: string[], was: string[]) {
+	const tables = (ref: string) => namesFor(doc, ref);
+	const kept = new Set(was.flatMap((w) => picksIn(w, tables).map((p) => p.text)));
+	for (const p of texts.flatMap((t) => picksIn(t, tables))) {
+		if (!p.value || kept.has(p.text)) continue;
+		if (!p.choices) fail(`${p.text}: there is no table ${p.from}; name one as Character!Table`);
+		else if (!p.choices.includes(p.value))
+			fail(`${p.text} offers ${p.choices.join(', ') || 'nothing yet'}, not "${p.value}"`);
+	}
+}
+
 function cellFor(col: Column, v: unknown): Cell | undefined {
 	if (v === null || v === '') return undefined;
 	const ok = (() => {
@@ -301,6 +319,8 @@ function cellsFor(doc: Doc, cols: Column[], row: Row, cells: unknown) {
 			Object.assign(row, choose(src, itemOf(doc, src, keyOf(src, col), v), row, cols));
 			continue;
 		}
+		if (col.kind === 'text' && typeof v === 'string')
+			checkPicks(doc, [v], [String(row.cells[col.id] ?? '')]);
 		const cell = cellFor(col, v);
 		if (cell === undefined) delete row.cells[col.id];
 		else row.cells[col.id] = cell;
@@ -855,6 +875,13 @@ export const tools: Tool[] = [
 			const offered = f.kind === 'choice' && v !== '' ? choicesOf(doc, f) : undefined;
 			if (offered && !offered.includes(v as string))
 				fail(`${f.label} offers ${offered.join(', ') || 'nothing yet'}, not "${v}"`);
+			const texts = (x: Value) =>
+				f.kind === 'text'
+					? [x as string]
+					: f.kind === 'entries'
+						? (x as Entry[]).flatMap((e) => [e.name, e.text])
+						: [];
+			checkPicks(doc, texts(v), texts(valueOf(c, f)));
 			c.values[f.id] = structuredClone(v);
 			return `Set.\n${fieldView(doc, c, f)}`;
 		}

@@ -657,3 +657,95 @@ describe('a map, built by a scripted chat', () => {
 		expect(() => validate(JSON.parse(JSON.stringify(doc)))).not.toThrow();
 	});
 });
+
+describe('picks in text, written by a scripted chat', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'GM', gm_only: true });
+	ok(doc, 'add_field', {
+		character: 'GM',
+		label: '元素',
+		kind: 'table',
+		columns: [{ name: 'Name', kind: 'text' }]
+	});
+	ok(doc, 'edit_table', {
+		character: 'GM',
+		table: '元素',
+		add_rows: [{ Name: '火' }, { Name: '冰' }]
+	});
+	ok(doc, 'add_character', { name: 'Ash' });
+	ok(doc, 'add_field', { character: 'Ash', label: 'Note', kind: 'text' });
+	ok(doc, 'add_field', { character: 'Ash', label: '技能', kind: 'entries' });
+	ok(doc, 'add_field', {
+		character: 'Ash',
+		label: 'Gear',
+		kind: 'table',
+		columns: [{ name: 'Item', kind: 'text' }]
+	});
+	const long = `${'守護對象受到攻擊時，你可以代替承受。'.repeat(12)}屬性{GM!元素=冰}`;
+
+	it('reads each pick with what it offers, even past where the text is cut', () => {
+		const text = ok(doc, 'set_value', {
+			character: 'Ash',
+			field: 'Note',
+			value: '附帶{GM!元素=火}，射程{近|遠}，{GM!Nope}'
+		});
+		expect(text).toContain(`pick {GM!元素=火}: "火", of GM!元素's rows: 火, 冰`);
+		expect(text).toContain('pick {近|遠}: none chosen, of 近, 遠');
+		expect(text).toContain('pick {GM!Nope}: none chosen, but no table is named GM!Nope');
+		ok(doc, 'set_value', {
+			character: 'Ash',
+			field: '技能',
+			value: [{ name: '守護誓約', text: long }]
+		});
+		ok(doc, 'edit_table', { character: 'Ash', table: 'Gear', add_rows: [{ Item: '{劍|弓=弓}' }] });
+		const read = ok(doc, 'read', { character: 'Ash' });
+		expect(read).toContain('more characters)');
+		expect(read).toContain(`    pick {GM!元素=冰}: "冰", of GM!元素's rows: 火, 冰`);
+		expect(read).toContain(`     Item's pick {劍|弓=弓}: "弓", of 劍, 弓`);
+	});
+
+	it('refuses a choice a pick does not offer, in text, entries and cells', () => {
+		const set = (field: string, value: unknown) =>
+			refused(doc, 'set_value', { character: 'Ash', field, value });
+		expect(set('Note', '{GM!元素=雷}')).toMatch(/\{GM!元素=雷\} offers 火, 冰, not "雷"/);
+		expect(set('Note', '{近|遠=中}')).toMatch(/\{近\|遠=中\} offers 近, 遠, not "中"/);
+		expect(set('Note', '{GM!Nope=火}')).toMatch(/there is no table GM!Nope/);
+		expect(set('技能', [{ name: '{GM!元素=風}', text: '' }])).toMatch(/not "風"/);
+		expect(
+			refused(doc, 'edit_table', {
+				character: 'Ash',
+				table: 'Gear',
+				change_rows: [{ row: 1, cells: { Item: '{劍|弓=槍}' } }]
+			})
+		).toMatch(/offers 劍, 弓, not "槍"/);
+	});
+
+	it("lets a player's chat choose from the GM's table", () => {
+		ok(doc, 'set_value', { character: 'Ash', field: 'Note', value: '附帶{GM!元素=冰}' }, false);
+		expect(ok(doc, 'read', { character: 'Ash' }, false)).toContain(
+			`pick {GM!元素=冰}: "冰", of GM!元素's rows: 火, 冰`
+		);
+	});
+
+	it('keeps a pick its table has stopped offering, while the rest is rewritten', () => {
+		ok(doc, 'edit_table', {
+			character: 'GM',
+			table: '元素',
+			change_rows: [{ row: 2, cells: { Name: '霜' } }]
+		});
+		const text = ok(doc, 'set_value', {
+			character: 'Ash',
+			field: 'Note',
+			value: '武器附帶{GM!元素=冰}，持續 3 回合'
+		});
+		expect(text).toContain(`pick {GM!元素=冰}: "冰", of GM!元素's rows: 火, 霜`);
+		expect(
+			refused(doc, 'set_value', {
+				character: 'Ash',
+				field: 'Note',
+				value: '{GM!元素=冰} {近|遠=中}'
+			})
+		).toMatch(/not "中"/);
+		expect(() => validate(JSON.parse(JSON.stringify(doc)))).not.toThrow();
+	});
+});
