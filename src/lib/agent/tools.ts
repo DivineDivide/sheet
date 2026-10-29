@@ -28,6 +28,7 @@ import { loosen } from '../bind';
 import { FormulaError, compile, compileLine, isErr, refText, result, show } from '../formula';
 import { ImportError, validate } from '../io';
 import { GAP, clamp, defaultSize, type Box } from '../layout';
+import { canHang, mapSource } from '../map';
 import { ruled, ruledColumns, sheetOf } from '../rules';
 import {
 	choicesOf,
@@ -134,16 +135,39 @@ function tableIn(doc: Doc, c: Character, ref: string): string {
 	return f.kind === 'table' ? globalId(owner, f) : fail(`${f.label} is a ${f.kind}, not a table`);
 }
 
+/** A map anywhere in the room as Character!Map, or `c`'s own. */
+function mapIn(doc: Doc, c: Character, ref: string): string {
+	const plain = (s: string) => s.trim().replace(/^\[(.*)\]$/, '$1');
+	const m = /^(.+?)!(.+)$/.exec(ref);
+	const owner = m ? named(doc.characters, plain(m[1]), (x) => x.name, 'character') : c;
+	const f = fieldOf(owner, plain(m ? m[2] : ref));
+	return f.kind === 'map' ? globalId(owner, f) : fail(`${f.label} is a ${f.kind}, not a map`);
+}
+
+/** A map's table, or the reason it has none. */
+const sourceFor = (doc: Doc, f: Field): Source =>
+	mapSource(doc, f) ?? fail(`${f.label} has no table yet: give it one with edit_field's from`);
+
+/** A map's node, by its row's name. */
+const nodeOf = (doc: Doc, src: Source, name: unknown) => itemOf(doc, src, nameColumn(src), name).id;
+
 /** The source a table or choice column names by `from`, set or, when empty, cleared. */
 function setFrom(doc: Doc, c: Character, on: { from?: string }, ref: string) {
 	if (ref) on.from = tableIn(doc, c, ref);
 	else delete on.from;
 }
 
-/** A choice field's typed choices and source, as add_field and edit_field take them. */
+/** A choice field's typed choices and source, or a map's source, as add_field and edit_field take them. */
 function setChoices(doc: Doc, c: Character, f: Field, i: Input) {
 	const from = opt(i, 'from');
 	if (i.choices === undefined && from === undefined) return;
+	if (f.kind === 'map' && i.choices === undefined) {
+		const was = f.from;
+		setFrom(doc, c, f, from!);
+		// Another table's rows have other ids.
+		if (f.from !== was) delete f.parents;
+		return;
+	}
 	if (f.kind !== 'choice') fail(`only a choice field has choices, and ${f.label} is a ${f.kind}`);
 	if (from !== undefined) setFrom(doc, c, f, from);
 	if (i.choices === undefined) return;
@@ -226,7 +250,7 @@ const shapes: Record<Kind | ColumnKind, string> = {
 	button: 'no value',
 	table: 'rows, which edit_table changes',
 	image: 'a picture, which only a person can add',
-	map: 'its current node, which a person presses'
+	map: "the name of a node, which becomes current; only a person's press also runs its rules"
 };
 
 function cellFor(col: Column, v: unknown): Cell | undefined {
@@ -365,7 +389,7 @@ const from = text(
 const offers = {
 	choices: list({ type: 'string' }, "A choice field's typed choices"),
 	from: text(
-		"A choice field's source, a table as Character!Table: it offers that table's rows by name, keeping only the name. Empty stops it"
+		"A choice field's source, a table as Character!Table: it offers that table's rows by name, keeping only the name. A map's table, whose rows are its nodes. Empty stops it"
 	)
 };
 const bar = {
@@ -394,7 +418,7 @@ function setBar(on: { kind: string; bar?: true }, name: string, shown: boolean) 
 const ruleSpec = obj(
 	{
 		press: text(
-			'Runs when this button is pressed: a button field, or Table[Column] for a button column'
+			'Runs when this is pressed: a button field, Table[Column] for a button column, or a map, at any of its nodes'
 		),
 		tick: text('Runs when this clock ticks'),
 		if: text('Runs only when this formula holds'),
@@ -761,9 +785,51 @@ export const tools: Tool[] = [
 		}
 	},
 	{
+		name: 'arrange_map',
+		description:
+			"Arranges a map's tree, naming nodes as its table's rows are named. Each of place hangs a node under another, or makes it a root without one; unplace takes nodes off the map, leaving their children as roots. A node never goes under itself or anything below it.",
+		input_schema: obj(
+			{
+				...who,
+				map: text('The map field, by label'),
+				place: list(
+					obj(
+						{
+							node: text('The node, by its row name'),
+							under: text('Its parent node; left out or empty makes it a root')
+						},
+						['node']
+					),
+					'Nodes to place, in order'
+				),
+				unplace: list({ type: 'string' }, 'Nodes to take off the map')
+			},
+			['character', 'map']
+		),
+		run(doc, i, gm) {
+			const c = characterIn(doc, i, gm);
+			const f = fieldOf(c, need(i, 'map'));
+			if (f.kind !== 'map') fail(`${f.label} is a ${f.kind}, not a map`);
+			const src = sourceFor(doc, f);
+			const parents = { ...f.parents };
+			for (const p of objs(i, 'place')) {
+				const node = nodeOf(doc, src, need(p, 'node'));
+				const under = opt(p, 'under');
+				const parent = under ? nodeOf(doc, src, under) : '';
+				if (parent && !canHang(parents, node, parent))
+					fail(`${p.node} cannot go under ${under}, which is ${p.node} or below it`);
+				parents[node] = parent;
+			}
+			for (const name of texts(i, 'unplace')) delete parents[nodeOf(doc, src, name)];
+			if (Object.keys(parents).length) f.parents = parents;
+			else delete f.parents;
+			return `Arranged.\n${fieldView(doc, c, f)}`;
+		}
+	},
+	{
 		name: 'set_value',
 		description:
-			"Sets a field's value, in its kind's shape: number a number; resource {cur, max}; track a list of true/false, one per box; text Markdown; choice one of what it offers, or empty; tags a list of texts; entries a list of {name, text}. Tables change through edit_table.",
+			"Sets a field's value, in its kind's shape: number a number; resource {cur, max}; track a list of true/false, one per box; text Markdown; choice one of what it offers, or empty; tags a list of texts; entries a list of {name, text}; map a node's name, which becomes current without running the map's rules, or empty. Tables change through edit_table.",
 		input_schema: obj(
 			{
 				...who,
@@ -775,8 +841,13 @@ export const tools: Tool[] = [
 		run(doc, i, gm) {
 			const c = characterIn(doc, i, gm);
 			const f = fieldOf(c, need(i, 'field'));
-			if (['formula', 'button', 'table', 'image', 'map'].includes(f.kind))
+			if (['formula', 'button', 'table', 'image'].includes(f.kind))
 				fail(`${f.label} is a ${f.kind}, which takes ${shapes[f.kind]}`);
+			if (f.kind === 'map') {
+				const empty = i.value === '' || i.value === null;
+				c.values[f.id] = empty ? '' : nodeOf(doc, sourceFor(doc, f), i.value);
+				return `Set.\n${fieldView(doc, c, f)}`;
+			}
 			let v = i.value as Value;
 			if (f.kind === 'resource' && isObj(v)) v = { cur: v.cur as number, max: v.max as number };
 			if (!equal(valueOf({ values: { [f.id]: v } }, f), v))
@@ -816,6 +887,9 @@ export const tools: Tool[] = [
 				column_order: list({ type: 'string' }, 'Every column, in the order wanted'),
 				rows_from: text(
 					"A table, as Character!Table, whose rows add_rows_from and the table's + offer. Empty stops it"
+				),
+				follows: text(
+					"A map, as Character!Map: the table keeps one row, on the map's current node, its columns named as the map's table's filling from it. Empty stops it"
 				),
 				change_rows: list(
 					obj(
@@ -889,6 +963,20 @@ export const tools: Tool[] = [
 			for (const [col, formula] of formulas) columnFormula(doc, c, f, col, formula);
 			const rowsFrom = opt(i, 'rows_from');
 			if (rowsFrom !== undefined) setFrom(doc, c, f, rowsFrom);
+			const follows = opt(i, 'follows');
+			if (follows) f.follows = mapIn(doc, c, follows);
+			else if (follows !== undefined) delete f.follows;
+			if (f.follows) {
+				if (
+					objs(i, 'change_rows').length ||
+					Array.isArray(i.remove_rows) ||
+					Array.isArray(i.add_rows) ||
+					texts(i, 'add_rows_from').length
+				)
+					fail(`${f.label} follows ${tableName(doc, f.follows)}, which keeps its one row`);
+				follow(doc);
+				return `Changed.\n${fieldView(doc, c, f)}`;
+			}
 
 			const rows = valueOf(c, f) as Row[];
 			const at = (n: unknown) =>
@@ -942,7 +1030,9 @@ export const tools: Tool[] = [
 			const button = (name: string) => {
 				const ref = columnRef(c, name);
 				const b = ref ? ref[1] : fieldOf(c, name);
-				return b.kind === 'button' ? b.id : fail(`${name} is not a button`);
+				return b.kind === 'button' || b.kind === 'map'
+					? b.id
+					: fail(`${name} is not a button or a map`);
 			};
 			const rules: Rule[] = objs(i, 'rules').map((r) => {
 				const press = opt(r, 'press');

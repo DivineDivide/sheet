@@ -153,6 +153,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   one row, linked to the current node (`track` in `source.ts`, which `follow` runs first),
   so a shared page shows the place's own cells, picture and all, and the press's ⌘Z takes
   both back. The row stays from node to node, so its cells the place has no column for stay.
+  The chat hangs nodes with `arrange_map` and moves a map with `set_value`, which runs no
+  rules: only a person's press is an act.
 - **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
   not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically

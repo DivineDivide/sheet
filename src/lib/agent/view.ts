@@ -158,6 +158,7 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 				`${rows.length} rows`,
 				`  columns: ${cols.map((col) => columnText(doc, col, known)).join(', ') || 'none'}`,
 				...(f.from ? [`  rows from: ${tableName(doc, f.from)}`] : []),
+				...(f.follows ? [`  follows map: ${tableName(doc, f.follows)}, keeping one row`] : []),
 				...cols.flatMap((col) =>
 					(col.rules ?? []).map((r) => `  rule on ${col.name}: ${ruleText(doc, c, r, known)}`)
 				),
