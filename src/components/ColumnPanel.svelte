@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { below } from '../lib/cards';
+	import { room, spot } from '../lib/cards';
 	import { columnKinds, type Column, type Field, type When } from '../lib/doc';
 	import { compile, type Name } from '../lib/formula';
 	import { t } from '../lib/i18n.svelte';
@@ -67,7 +67,7 @@
 					cs.map((c) => {
 						if (c.id !== column.id) return c;
 						const { box: _, ...off } = c;
-						return on ? { ...c, box: below(cs, c.kind) } : off;
+						return on ? { ...c, box: spot(cs, c.kind, room(field).w) } : off;
 					})
 				);
 			}}

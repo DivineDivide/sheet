@@ -158,8 +158,10 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   `cards` shows each row as a card (`Cards`), every card laid out alike: a column's `box` is
   px on the card, which is the frame around them (`cards.ts`), and a column with none is off
   it, in Edit layout's Unplaced tray. A kind dropped on the card lands where it is dropped.
-  The first switch stacks the columns (`stack`), and switching back to a grid keeps the
-  boxes. `Cell` edits a cell the same in the grid and on a card.
+  The first switch lays the columns in rows as wide as the field (`lay`), and a column
+  placed by no point takes the first free spot beside another (`spot`); switching back to a
+  grid keeps the boxes. The chat's view gives a card's size and says when its field has no
+  room for it (`room`). `Cell` edits a cell the same in the grid and on a card.
 - **Maps** — from `notes/trpg/plan-sheet-map.md`. A `map` field draws a table's rows (its
   `from`, usually a GM-only character's) as a tree, left to right by depth (`map.ts`), so
   all it stores of the shape is `parents`, each placed row's parent and `''` for a root. A

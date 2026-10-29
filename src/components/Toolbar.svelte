@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { stack } from '../lib/cards';
+	import { lay, room } from '../lib/cards';
 	import {
 		globalId,
 		kinds,
@@ -188,7 +188,7 @@
 									editField(field.id, (f) => {
 										if (!cards) return delete f.cards;
 										f.cards = true;
-										f.columns = stack(f.columns ?? []);
+										f.columns = lay(f.columns ?? [], room(f).w);
 									});
 								}}
 							>

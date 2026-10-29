@@ -379,10 +379,17 @@ describe('a table as cards', () => {
 	const statuses = () => doc.characters[0].fields.find((f) => f.label === 'Statuses')!;
 	const col = (name: string) => statuses().columns!.find((c) => c.name === name)!;
 
-	it('stacks the columns down the card the first time, and says where each sits', () => {
-		const text = ok(doc, 'edit_field', { character: 'Ash', field: 'Statuses', cards: true });
+	it('lays the columns in rows as wide as the field the first time, and says where each sits', () => {
+		const text = ok(doc, 'edit_field', {
+			character: 'Ash',
+			field: 'Statuses',
+			size: { w: 34, h: 12 },
+			cards: true
+		});
 		expect(text).toContain('as cards');
-		expect(text).toContain('card: Name at 0,0, 15×3.5; Stacks at 0,4, 15×3.5; Left at 0,8, 15×3.5');
+		expect(text).toContain(
+			'card: 31×7.5; Name at 0,0, 15×3.5; Stacks at 16,0, 15×3.5; Left at 0,4, 15×3.5'
+		);
 		expect(statuses().cards).toBe(true);
 	});
 
@@ -400,11 +407,11 @@ describe('a table as cards', () => {
 		expect(col('Name').hideLabel).toBe(true);
 		expect(col('Left').box).toBeUndefined();
 		expect(text).toContain(
-			'card: Name at 0,0, 15×3.5, name hidden; Stacks at 16,0, 5×3; off it: Left'
+			'card: 21×3.5; Name at 0,0, 15×3.5, name hidden; Stacks at 16,0, 5×3; off it: Left'
 		);
 	});
 
-	it('puts a new column under the rest, and a column back on the card there too', () => {
+	it('puts a new column beside the last while the card fits its field, else under the rest', () => {
 		ok(doc, 'edit_table', {
 			character: 'Ash',
 			table: 'Statuses',
@@ -412,7 +419,16 @@ describe('a table as cards', () => {
 			change_columns: [{ column: 'Left', on_card: true }]
 		});
 		expect(col('Left').box).toEqual({ x: 0, y: 64, w: 240, h: 56 });
-		expect(col('Note').box).toEqual({ x: 0, y: 128, w: 240, h: 56 });
+		expect(col('Note').box).toEqual({ x: 256, y: 64, w: 240, h: 56 });
+	});
+
+	it('says when its field cannot show a card whole', () => {
+		const text = ok(doc, 'edit_field', {
+			character: 'Ash',
+			field: 'Statuses',
+			size: { w: 34, h: 8 }
+		});
+		expect(text).toContain('card: 31×7.5, bigger than the 31.5×4 its field has room for');
 	});
 
 	it('keeps the layout while shown as a grid, and refuses cards on what is not a table', () => {

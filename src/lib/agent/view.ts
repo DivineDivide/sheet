@@ -16,7 +16,7 @@ import {
 	type Rule
 } from '../doc';
 import { mates } from '../bind';
-import { placed } from '../cards';
+import { frame, placed, room } from '../cards';
 import { cellResult, nameOf, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
 import { mapSource, treeOf } from '../map';
@@ -101,16 +101,29 @@ function columnText(doc: Doc, col: Column, known: Name[]) {
 	return `${col.name} (${col.kind}${col.bar ? ', as a bar' : ''})`;
 }
 
-/** Where each column sits on a table's cards, in dots from the card's top-left. */
-function cardText(cols: Column[]): string {
+/**
+ * A table's card: its size, said to be too big when its field has no room for one, and
+ * where each column sits, in dots from the card's top-left.
+ */
+function cardText(f: Field): string {
+	const cols = f.columns ?? [];
 	const on = placed(cols).map(
 		(col) =>
 			`${col.name} at ${dots(col.box.x)},${dots(col.box.y)}, ${dots(col.box.w)}×${dots(col.box.h)}${col.hideLabel ? ', name hidden' : ''}`
 	);
 	const off = cols.filter((col) => !col.box).map((col) => col.name);
+	const offText = off.length ? [`off it: ${off.join(', ')}`] : [];
+	if (!on.length) return ['nothing on it', ...offText].join('; ');
+	const fr = frame(cols);
+	const r = room(f);
+	const size = `${dots(fr.w)}×${dots(fr.h)}`;
+	const big = fr.w > r.w || fr.h > r.h;
 	return [
-		on.join('; ') || 'nothing on it',
-		...(off.length ? [`off it: ${off.join(', ')}`] : [])
+		big
+			? `${size}, bigger than the ${dots(Math.max(0, r.w))}×${dots(Math.max(0, r.h))} its field has room for: put columns side by side, shrink them or grow the field`
+			: size,
+		on.join('; '),
+		...offText
 	].join('; ');
 }
 
@@ -195,7 +208,7 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 			return [
 				`${rows.length} rows`,
 				`  columns: ${cols.map((col) => columnText(doc, col, known)).join(', ') || 'none'}`,
-				...(f.cards ? [`  card: ${cardText(cols)}`] : []),
+				...(f.cards ? [`  card: ${cardText(f)}`] : []),
 				...(f.from ? [`  rows from: ${tableName(doc, f.from)}`] : []),
 				...(f.follows ? [`  follows map: ${tableName(doc, f.follows)}, keeping one row`] : []),
 				...cols.flatMap((col) =>

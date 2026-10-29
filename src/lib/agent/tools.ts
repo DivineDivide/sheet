@@ -26,10 +26,10 @@ import {
 	type Value
 } from '../doc';
 import { loosen } from '../bind';
-import { below, stack } from '../cards';
+import { lay, room, spot } from '../cards';
 import { FormulaError, compile, compileLine, isErr, refText, result, same, show } from '../formula';
 import { ImportError, validate } from '../io';
-import { GAP, clamp, defaultSize, type Box } from '../layout';
+import { GAP, clamp, defaultSize, hits, type Box } from '../layout';
 import { canHang, mapSource } from '../map';
 import { picksIn } from '../markdown';
 import { ruled, ruledColumns, sheetOf } from '../rules';
@@ -205,8 +205,6 @@ function shows(doc: Doc, c: Character, f: Field) {
 	return ` It shows ${show(v)}${isErr(v) && v.why ? ` (${v.why})` : ''}.`;
 }
 
-const hits = (a: Box, b: Box) =>
-	a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 function overlaps(c: Character, f: Field) {
 	const over = c.fields.filter((g) => g !== f && g.tab === f.tab && hits(g.box, f.box));
 	return over.length
@@ -429,14 +427,14 @@ const columnSpec = obj(
 );
 
 /** Places a column on its table's cards, sizes it there, or takes it off; hides its name. */
-function setCard(col: Column, i: Input, cols: Column[]) {
+function setCard(col: Column, i: Input, cols: Column[], width: number) {
 	const at = pair(i, 'card_at', 'x', 'y');
 	const size = pair(i, 'card_size', 'w', 'h');
 	if (i.on_card === false) {
 		if (at || size) fail(`${col.name} cannot be taken off the card and placed on it at once`);
 		delete col.box;
 	} else if (at || size || (i.on_card === true && !col.box)) {
-		const b = col.box ?? below(cols, col.kind);
+		const b = col.box ?? spot(cols, col.kind, width);
 		col.box = clamp({
 			x: at ? at[0] * DOT : b.x,
 			y: at ? at[1] * DOT : b.y,
@@ -783,7 +781,7 @@ export const tools: Tool[] = [
 				if (!i.cards) delete f.cards;
 				else {
 					f.cards = true;
-					f.columns = stack(f.columns ?? []);
+					f.columns = lay(f.columns ?? [], room(f).w);
 				}
 			}
 			if (typeof i.bar === 'boolean') setBar(f, f.label, i.bar);
@@ -924,7 +922,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_table',
 		description:
-			"Changes a table's columns, then its rows. Rows are numbered as read shows them, before this call; cells are {column name: value}, and null empties a cell. A row that follows a source row takes its cells from there. On a table shown as cards a new column goes under the rest of the card.",
+			"Changes a table's columns, then its rows. Rows are numbered as read shows them, before this call; cells are {column name: value}, and null empties a cell. A row that follows a source row takes its cells from there. On a table shown as cards a new column goes beside the last, while the card stays within its field, else under the rest.",
 		input_schema: obj(
 			{
 				...who,
@@ -950,7 +948,7 @@ export const tools: Tool[] = [
 							},
 							on_card: {
 								type: 'boolean',
-								description: 'false takes it off the cards; true puts it back, under the rest'
+								description: 'false takes it off the cards; true puts it back, as a new column goes'
 							},
 							hide_label: {
 								type: 'boolean',
@@ -1026,11 +1024,11 @@ export const tools: Tool[] = [
 				const formula = opt(ch, 'formula');
 				if (formula !== undefined) formulas.push([col, formula]);
 				if (typeof ch.bar === 'boolean') setBar(col, col.name, ch.bar);
-				setCard(col, ch, cols);
+				setCard(col, ch, cols, room(f).w);
 			}
 			for (const spec of objs(i, 'add_columns')) {
 				const col = newColumn(doc, c, spec, cols);
-				if (f.cards) col.box = below(cols, col.kind);
+				if (f.cards) col.box = spot(cols, col.kind, room(f).w);
 				cols.push(col);
 				const formula = opt(spec, 'formula');
 				if (formula) formulas.push([col, formula]);

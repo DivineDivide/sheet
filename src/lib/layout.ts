@@ -47,6 +47,9 @@ export function bounds(boxes: Box[]): Box {
 	};
 }
 
+export const hits = (a: Box, b: Box) =>
+	a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
 /** Top to bottom, then left to right: the order fields and card columns stack in when narrow. */
 export const readingOrder = <T extends { box: Box }>(items: T[]) =>
 	[...items].sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
