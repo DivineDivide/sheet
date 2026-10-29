@@ -7,7 +7,8 @@ are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built. Form
 tables and Excel import followed, planned in `notes/trpg/plan-sheet-formulas-import.md`,
 then buttons and rules, in `notes/trpg/plan-sheet-rules.md`, which folded statuses into
 tables. A GM's page of data that other sheets draw on is `notes/trpg/plan-sheet-gm-page.md`.
-Long lists that flip pages are `notes/trpg/plan-sheet-pages.md`.
+Long lists that flip pages are `notes/trpg/plan-sheet-pages.md`; picks inside text, and entries
+that run on across pages, `notes/trpg/plan-sheet-picks.md`.
 
 ## Commands
 
@@ -202,7 +203,10 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   shows Markdown and the source only while it has focus; entry titles too, typed on one
   line, and field labels render the same Markdown wherever they show. `html: false` is
   what makes the `{@html}` safe for an imported file, so keep it. The styles are global
-  (`.md` in `app.css`): scoped ones miss `{@html}`.
+  (`.md` in `app.css`): scoped ones miss `{@html}`. A pick, `{Character!Table}` or `{a|b|c}`,
+  keeps its choice in the text (`{a|b|c=b}`); only `Prose` draws it as a dropdown, finding it in
+  the source by `data-at` for `setPick`, and elsewhere it shows the choice. It names its table by
+  name, not id, so a rename leaves it showing as typed.
 - **`src/lib/picture.ts`** — an image field's value is a data URL inside the document, so
   `shrink` caps a picture at 1024px as WebP (JPEG in Safari) before it is stored. A
   character row has a 2MB limit, and a change that would overflow it is rejected with

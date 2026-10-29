@@ -512,3 +512,54 @@ button.dot[aria-expanded='true'] {
 .md img {
 	max-width: 100%;
 }
+/* A pick reads as a word. Hovering the text marks which words are picks, and hovering one
+   shows the dropdown it is, its arrow under it, between the lines, so nothing reflows. */
+.md .pick {
+	position: relative;
+	white-space: nowrap;
+}
+.md .pick select {
+	width: auto;
+	min-width: 0;
+	margin: 0;
+	padding: 0 1px;
+	border: none;
+	background: none;
+	box-shadow: inset 0 -1px transparent;
+	font: inherit;
+	line-height: inherit;
+	vertical-align: baseline;
+	field-sizing: content;
+	cursor: pointer;
+}
+.md .pick select.none {
+	color: var(--muted);
+}
+.md:hover .pick select {
+	box-shadow: inset 0 -1px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+.md .pick select:is(:hover, :focus-visible) {
+	outline: 1px solid var(--accent);
+	background: var(--surface);
+	box-shadow: none;
+}
+.md .pick::after {
+	content: '';
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	margin-left: -4px;
+	border: 4px solid transparent;
+	border-top-color: var(--accent);
+	opacity: 0;
+	pointer-events: none;
+}
+.md .pick:is(:hover, :focus-within)::after {
+	opacity: 1;
+}
+/* Nothing hovers on a touch screen, so there the picks stay marked. */
+@media (hover: none) {
+	.md .pick select {
+		box-shadow: inset 0 -1px color-mix(in oklab, var(--accent) 60%, transparent);
+	}
+}

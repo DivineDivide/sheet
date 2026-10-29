@@ -2,9 +2,11 @@
 	import { untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import { t } from '../lib/i18n.svelte';
-	import { markdown } from '../lib/markdown';
+	import { markdown, setPick } from '../lib/markdown';
 	import { COLORS } from '../lib/presence';
 	import { presence } from '../lib/presence.svelte';
+	import { session } from '../lib/session.svelte';
+	import { namesFor } from '../lib/source';
 
 	// Text shown as Markdown, with its source only while it is being written. A `line` is a
 	// title: its source is one line, and Enter commits rather than breaking it. `at` names the
@@ -30,6 +32,8 @@
 	let writing = $state(false);
 	const draft = $derived(at && !writing ? presence.draftAt(at) : undefined);
 	const shown = $derived(draft ? draft.text + (draft.cut ? '…' : '') : value);
+	// Someone else's typing shows as it is, its picks too, since it is not this text yet.
+	const tables = $derived(draft ? undefined : (ref: string) => namesFor(session.doc, ref));
 
 	const focusAtEnd: Attachment<HTMLTextAreaElement> = (el) => {
 		el.focus();
@@ -64,7 +68,8 @@
 		}}></textarea>
 {:else}
 	<!-- The source shows while this has focus, from a click or Tab. Pressing a link takes
-	     no focus, so in Safari too the link opens instead. -->
+	     no focus, so in Safari too the link opens instead. A pick's dropdown takes the focus
+	     itself, and writes its choice into the text as one change. -->
 	<div
 		class="md {line ? 'line' : 'grow'}"
 		class:drafting={draft}
@@ -75,8 +80,13 @@
 		tabindex="0"
 		onfocus={() => (writing = true)}
 		onpointerdown={(e) => (e.target as Element).closest('a') && e.preventDefault()}
+		onchange={(e) => {
+			const pick = e.target as HTMLSelectElement;
+			const text = setPick(value, Number(pick.dataset.at), pick.value);
+			if (text !== value) onchange(text);
+		}}
 	>
-		{#if shown}{@html markdown(shown)}{:else}<span class="hint">{blank}</span>{/if}
+		{#if shown}{@html markdown(shown, tables)}{:else}<span class="hint">{blank}</span>{/if}
 	</div>
 {/if}
 

@@ -27,4 +27,75 @@ md.block.ruler.before(
 	{ alt: ['paragraph'] }
 );
 
-export const markdown = (text: string) => md.render(text);
+// A pick: `{Character!Table}` offers that table's rows by name, `{a|b|c}` its own choices,
+// and the choice is kept in the text, as `{a|b|c=b}`. Braces without `!` or `|` are text.
+const PICK = /^\{([^{}=\n]*[!|][^{}=\n]*)(?:=([^{}\n]*))?\}/;
+
+type Env = { tables?: (ref: string) => string[] | undefined };
+type Pick = { ref: string; value: string; pos: number; at: number };
+
+md.inline.ruler.after('text', 'pick', (state, silent) => {
+	if (state.src.charCodeAt(state.pos) !== 0x7b) return false;
+	const m = PICK.exec(state.src.slice(state.pos));
+	if (!m) return false;
+	if (!silent) {
+		const t = state.push('pick', '', 0);
+		t.content = m[0];
+		t.meta = { ref: m[1].trim(), value: (m[2] ?? '').trim(), pos: state.pos, at: -1 } as Pick;
+	}
+	state.pos += m[0].length;
+	return true;
+});
+
+// Where each pick starts in the source, for `setPick`. A block's inline text has lost only
+// its markers (`> `, `- `, indents), never a brace, so the nth copy of a pick there is the
+// nth copy from the block's first line.
+md.core.ruler.after('inline', 'pick_at', (state) => {
+	let line = 0;
+	for (const block of state.tokens) {
+		if (block.map) line = block.map[0];
+		for (const t of block.children ?? []) {
+			if (t.type !== 'pick') continue;
+			const pick = t.meta as Pick;
+			let at = -1;
+			for (let i = 0; i < line; i++) at = state.src.indexOf('\n', at + 1);
+			const nth = block.content.slice(0, pick.pos).split(t.content).length - 1;
+			for (let i = 0; i <= nth && (i === 0 || at >= 0); i++)
+				at = state.src.indexOf(t.content, at + 1);
+			pick.at = at;
+		}
+	}
+});
+
+md.renderer.rules.pick = (tokens, i, _options, env) => {
+	const { ref, value, at } = tokens[i].meta as Pick;
+	const tables = (env as Env | undefined)?.tables;
+	const esc = md.utils.escapeHtml;
+	const typed = ref.includes('|');
+	const options: string[] | undefined = typed
+		? ref
+				.split('|')
+				.map((s: string) => s.trim())
+				.filter(Boolean)
+		: tables?.(ref);
+	if (!tables || !options || at < 0) return esc(value || tokens[i].content);
+	// Blank shows what to choose: the table's name, or for typed choices only that there are some.
+	const blank = typed ? '…' : ref.slice(ref.indexOf('!') + 1).trim();
+	const all = value && !options.includes(value) ? [...options, value] : options;
+	return (
+		`<span class="pick"><select data-at="${at}" tabindex="-1" aria-label="${esc(typed ? options.join(' / ') : blank)}"${value ? '' : ' class="none"'}>` +
+		`<option value="">${esc(blank)}</option>` +
+		all.map((o) => `<option${o === value ? ' selected' : ''}>${esc(o)}</option>`).join('') +
+		'</select></span>'
+	);
+};
+
+/** `text` as HTML. Given `tables`, which names a table's rows, its picks are dropdowns. */
+export const markdown = (text: string, tables?: Env['tables']) => md.render(text, { tables });
+
+/** `text` with the pick starting at `at` holding `value`, or unchanged if none starts there. */
+export function setPick(text: string, at: number, value: string): string {
+	const m = PICK.exec(text.slice(at));
+	if (!m || /[{}\n]/.test(value)) return text;
+	return `${text.slice(0, at)}{${m[1]}${value ? `=${value}` : ''}}${text.slice(at + m[0].length)}`;
+}

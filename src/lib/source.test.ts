@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { globalId, newCharacter, newDoc, newId, type Character, type Field, type Row } from './doc';
 import { names, rowNames } from './formula';
 import { compileRule, fire, sheetOf } from './rules';
-import { choose, follow, rowFrom, sourceOf } from './source';
+import { choose, follow, namesFor, rowFrom, sourceOf } from './source';
 import { apply } from './sync';
 
 function table(c: Character, label: string, names: string[], rows: string[][] = []): Field {
@@ -110,6 +110,13 @@ describe('rows drawn from another table', () => {
 		expect(names(bea)).toEqual([{ [mine.columns![0].id]: 'Rope' }]);
 		expect(names(ash)).toEqual([{ [mine.columns![0].id]: 'Lamp' }]);
 		expect(sourceOf(doc, globalId(gm, mine))).toBeUndefined();
+	});
+
+	it('names a table as Character!Table for a pick in text', () => {
+		const { doc } = setup();
+		expect(namesFor(doc, 'gm!weapons')).toEqual(['Longsword', 'Dagger']);
+		expect(namesFor(doc, 'GM!Armour')).toBeUndefined();
+		expect(namesFor(doc, 'Weapons')).toBeUndefined();
 	});
 
 	it('keeps a row as it is once its source row is gone', () => {
