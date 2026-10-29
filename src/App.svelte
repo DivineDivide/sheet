@@ -38,7 +38,9 @@
 	let keys: Keys;
 
 	function exportFile() {
-		const text = serialize({ ...doc, characters: shown(doc.characters, session.gm) });
+		// The room, not a chat's draft shown in its place.
+		const room = session.room;
+		const text = serialize({ ...room, characters: shown(room.characters, session.gm) });
 		const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
 		const a = document.createElement('a');
 		a.href = url;
