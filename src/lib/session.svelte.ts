@@ -236,8 +236,9 @@ export const session = {
 		const id = newId();
 		return tell({ id, propose: { ops, asked } }) ? id : null;
 	},
-	settle(proposal: string, ok: boolean) {
-		tell({ id: newId(), settle: { proposal, ok } });
+	/** False while the room isn't connected, when the proposal stays where it is. */
+	settle(proposal: string, ok: boolean): boolean {
+		return tell({ id: newId(), settle: { proposal, ok } });
 	},
 	set onSettled(fn: (id: string, ok: boolean) => void) {
 		onSettled = fn;

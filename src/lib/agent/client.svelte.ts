@@ -144,26 +144,23 @@ export const chat = {
 			if (waiting) note(t('Sent to the GM, who will apply it or turn it down.'));
 		}
 	},
-	discard() {
-		if (waiting) {
-			const id = waiting;
-			waiting = null;
-			session.settle(id, false);
-		}
+	/** False while a draft sent to the GM can't be taken back, since the room isn't connected. */
+	discard(): boolean {
+		if (waiting && !session.settle(waiting, false)) return false;
+		waiting = null;
 		forget();
 		note(t('Discarded.'));
+		return true;
 	},
 	/** Takes a draft back from the GM, to change it. */
 	withdraw() {
-		if (!waiting) return;
-		const id = waiting;
+		if (!waiting || !session.settle(waiting, false)) return;
 		waiting = null;
-		session.settle(id, false);
 		note(t('Taken back from the GM.'));
 	},
 	clear() {
-		if (session.draft) this.discard();
-		else forget();
+		if (session.draft && !this.discard()) return;
+		forget();
 		said = [];
 	}
 };

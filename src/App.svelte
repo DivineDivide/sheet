@@ -217,8 +217,8 @@
 			<button
 				class="primary"
 				onclick={() => {
-					session.land(p.ops);
-					session.settle(p.id, true);
+					// Settled first, so a room that isn't connected keeps it to apply once.
+					if (session.settle(p.id, true)) session.land(p.ops);
 				}}>{t('Apply')}</button
 			>
 			<button onclick={() => session.settle(p.id, false)}>{t('Turn down')}</button>
