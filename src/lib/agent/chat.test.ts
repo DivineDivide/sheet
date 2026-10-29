@@ -1,7 +1,10 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
-import { newCharacter, newDoc, type Doc } from '../doc';
+import { newCharacter, newDoc, type Doc, type Row } from '../doc';
+import { apply, diff } from '../sync';
 import { MAX_CALLS, addPrompt, forAgent, respond, type Event, type Step, type Turn } from './chat';
+import { pictureAt, withPictures } from './pictures';
+import { runTool } from './tools';
 
 type Block = Anthropic.Beta.BetaContentBlock;
 /** A reply as the API would send it, cut down to what `respond` reads. */
@@ -107,41 +110,72 @@ describe('respond', () => {
 	});
 });
 
+/** Ash with a face, and a table of places with a picture of one. */
+function pictured(): Doc {
+	const doc = room();
+	const ash = doc.characters[0];
+	ash.fields.push({
+		id: 'p',
+		label: 'Face',
+		kind: 'image',
+		tab: ash.tabs[0].id,
+		box: { x: 0, y: 0, w: 48, h: 48 }
+	});
+	ash.fields.push({
+		id: 't',
+		label: 'Places',
+		kind: 'table',
+		tab: ash.tabs[0].id,
+		box: { x: 0, y: 0, w: 48, h: 48 },
+		columns: [
+			{ id: 'n', name: 'Name', kind: 'text' },
+			{ id: 'pic', name: 'Picture', kind: 'image' }
+		]
+	});
+	ash.values.p = 'data:image/webp;base64,AAAA';
+	ash.values.t = [
+		{ id: 'r1', cells: { n: 'Town', pic: 'data:image/webp;base64,BBBB' } },
+		{ id: 'r2', cells: { n: 'Hut' } }
+	];
+	return doc;
+}
+
 describe('forAgent', () => {
 	it('leaves out the log and the pictures', () => {
-		const doc = room();
+		const doc = pictured();
 		const ash = doc.characters[0];
-		ash.fields.push({
-			id: 'p',
-			label: 'Face',
-			kind: 'image',
-			tab: ash.tabs[0].id,
-			box: { x: 0, y: 0, w: 48, h: 48 }
-		});
-		ash.fields.push({
-			id: 't',
-			label: 'Places',
-			kind: 'table',
-			tab: ash.tabs[0].id,
-			box: { x: 0, y: 0, w: 48, h: 48 },
-			columns: [
-				{ id: 'n', name: 'Name', kind: 'text' },
-				{ id: 'pic', name: 'Picture', kind: 'image' }
-			]
-		});
-		ash.values.p = 'data:image/webp;base64,AAAA';
-		ash.values.t = [
-			{ id: 'r1', cells: { n: 'Town', pic: 'data:image/webp;base64,BBBB' } },
-			{ id: 'r2', cells: { n: 'Hut' } }
-		];
 		doc.log = [{ id: 'l', at: 0, text: 'Turn 1 → 2' }];
 		const seen = forAgent(doc);
 		expect(seen.log).toBeUndefined();
-		expect(seen.characters[0].values.p).toBe('[picture]');
+		expect(seen.characters[0].values.p).toBe(pictureAt(ash.id, 'p'));
 		expect(seen.characters[0].values.t).toEqual([
-			{ id: 'r1', cells: { n: 'Town', pic: '[picture]' } },
+			{ id: 'r1', cells: { n: 'Town', pic: pictureAt(ash.id, 't', 'r1', 'pic') } },
 			{ id: 'r2', cells: { n: 'Hut' } }
 		]);
 		expect(ash.values.p).toBe('data:image/webp;base64,AAAA');
+	});
+
+	it("gives a character the chat copied the room's own pictures", () => {
+		const doc = pictured();
+		const base = forAgent(doc);
+		const draft = structuredClone(base);
+		expect(runTool(draft, 'add_character', { name: 'Ash 2', copy_of: 'Ash' }, true).ok).toBe(true);
+		const landed = structuredClone(doc);
+		for (const op of diff(base, draft)) apply(landed, op);
+		withPictures(landed, doc);
+		const copy = landed.characters.find((c) => c.name === 'Ash 2')!;
+		expect(copy.values.p).toBe('data:image/webp;base64,AAAA');
+		expect((copy.values.t as Row[])[0].cells.pic).toBe('data:image/webp;base64,BBBB');
+	});
+
+	it('blanks a copied picture that is gone from the room', () => {
+		const doc = pictured();
+		const draft = forAgent(doc);
+		delete doc.characters[0].values.p;
+		withPictures(draft, doc);
+		expect(draft.characters[0].values.p).toBeUndefined();
+		expect((draft.characters[0].values.t as Row[])[0].cells.pic).toBe(
+			'data:image/webp;base64,BBBB'
+		);
 	});
 });

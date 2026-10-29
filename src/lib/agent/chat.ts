@@ -3,6 +3,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { Doc, Row } from '../doc';
 import type { Op } from '../sync';
+import { pictureAt } from './pictures';
 import { runTool } from './tools';
 
 type Reply = Anthropic.Beta.BetaMessage;
@@ -22,18 +23,19 @@ export type Line = Event | { t: 'start'; chat: string } | { t: 'done'; ops: Op[]
 export type Step = (history: Turn[], onText: (text: string) => void) => Promise<Reply>;
 
 /**
- * The room as the chat gets it: without its log, and with pictures as a placeholder. A
- * draft never changes a picture, so its changes against this base never carry one.
+ * The room as the chat gets it: without its log, and with each picture a placeholder that
+ * names where it is, so a copy in the draft gets the picture back (`withPictures`).
  */
 export function forAgent(doc: Doc): Doc {
 	const { log: _, ...rest } = structuredClone(doc);
 	for (const c of rest.characters)
 		for (const f of c.fields) {
-			if (f.kind === 'image' && c.values[f.id]) c.values[f.id] = '[picture]';
+			if (f.kind === 'image' && c.values[f.id]) c.values[f.id] = pictureAt(c.id, f.id);
 			const pics = f.kind === 'table' ? (f.columns ?? []).filter((x) => x.kind === 'image') : [];
 			if (!pics.length || !Array.isArray(c.values[f.id])) continue;
 			for (const row of c.values[f.id] as Row[])
-				for (const col of pics) if (row.cells[col.id]) row.cells[col.id] = '[picture]';
+				for (const col of pics)
+					if (row.cells[col.id]) row.cells[col.id] = pictureAt(c.id, f.id, row.id, col.id);
 		}
 	return rest;
 }

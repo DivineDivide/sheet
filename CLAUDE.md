@@ -131,6 +131,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   A GM's page asks through `/gm/api/rooms/<token>/agent`, behind Access, and only that chat
   reads, changes or marks GM-only characters (the tools' `gm`); a player's works on the
   room as their page shows it. `runTool` runs `follow` after each call, as the editor does.
+  The chat gets each picture as a placeholder naming where it is (`pictures.ts`), so a copy
+  in a draft takes the room's own picture wherever the draft shows or lands.
 - **Tables** — a `table` field's columns live on the field and its rows, each with an id,
   are the character's value, so rows and cells sync one by one through the keyed-list diff.
   A column holds any kind a cell can (`columnKinds`), read through `cellOf` as `valueOf`

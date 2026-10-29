@@ -1,4 +1,5 @@
 import type { RtcDown, RtcUp } from './cursor';
+import { withPictures } from './agent/pictures';
 import { newId, type Doc } from './doc';
 import { History } from './history';
 import { t } from './i18n.svelte';
@@ -64,6 +65,7 @@ const shown = $derived.by(() => {
 	if (!draft || !doc) return null;
 	const d = $state.snapshot(doc) as Doc;
 	for (const op of draft) apply(d, op);
+	withPictures(d, doc);
 	return d;
 });
 const history = new History<Step>();
@@ -224,7 +226,9 @@ export const session = {
 	/** Applies a draft's changes to the room as one edit of this client's, which ⌘Z takes back. */
 	land(ops: Op[]) {
 		commit((d) => {
+			const room = $state.snapshot(d) as Doc;
 			for (const op of ops) apply(d, op);
+			withPictures(d, room);
 		});
 	},
 	/** Sends a draft to the GM; returns its id, or null when the room isn't connected. */
