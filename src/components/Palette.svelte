@@ -9,6 +9,7 @@
 		formula: 'worked out from other fields, as in Excel',
 		button: "press it to run fields' rules",
 		text: 'free text, in Markdown',
+		choice: 'one of a list, typed or from a table',
 		tags: 'a list of short labels',
 		entries: 'titled items, described in Markdown',
 		table: 'rows under columns: drop kinds onto it',

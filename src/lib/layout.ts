@@ -16,6 +16,7 @@ const sizes: Record<Kind, Pick<Box, 'w' | 'h'>> = {
 	formula: { w: 160, h: 88 },
 	button: { w: 160, h: 88 },
 	text: { w: 480, h: 160 },
+	choice: { w: 240, h: 88 },
 	tags: { w: 480, h: 104 },
 	entries: { w: 480, h: 240 },
 	table: { w: 560, h: 240 },

@@ -138,7 +138,7 @@ const listensTo = (r: Rule, w: When) =>
 type Listener = { rule: Rule; owner: string; row?: InRow };
 
 /** The kinds a rule can change, and so the only fields and columns whose rules run. */
-export const ruled: Field['kind'][] = ['number', 'resource', 'track', 'text', 'tags'];
+export const ruled: Field['kind'][] = ['number', 'resource', 'track', 'text', 'choice', 'tags'];
 export const ruledColumns: Column['kind'][] = [
 	'number',
 	'resource',

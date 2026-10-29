@@ -78,6 +78,7 @@ export default {
 	'worked out from other fields, as in Excel': '像 Excel 一樣由其他欄位算出',
 	"press it to run fields' rules": '按下就執行欄位的規則',
 	'free text, in Markdown': '自由文字，使用 Markdown',
+	'one of a list, typed or from a table': '從清單選一個，自行輸入或取自表格',
 	'a list of short labels': '一串簡短的標籤',
 	'titled items, described in Markdown': '有標題的項目，以 Markdown 描述',
 	'rows under columns: drop kinds onto it': '各欄下的多列資料：可把類型拖到上面',
@@ -112,6 +113,7 @@ export default {
 	"The table whose rows this one's + offers; a row added from it follows that row":
 		'這個表格的 + 從哪個表格提供列；從中加入的列會跟著原本那一列更新',
 	'Rows from': '列的來源',
+	"Another table's rows, by name, as the choices": '以另一個表格各列的名稱作為選項',
 	'No table': '無表格',
 	Rules: '規則',
 	Tab: '分頁',

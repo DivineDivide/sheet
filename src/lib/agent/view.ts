@@ -18,7 +18,7 @@ import { mates } from '../bind';
 import { cellResult, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
 import { sheetOf } from '../rules';
-import { keyOf, nameColumn, sourceOf } from '../source';
+import { choicesOf, keyOf, nameColumn, sourceOf } from '../source';
 
 /** The sheet's dots are 16px apart; boxes are shown and placed in them. */
 export const DOT = 16;
@@ -118,6 +118,11 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 			return [];
 		case 'text':
 			return [v ? JSON.stringify(cut(v as string, full)) : 'empty'];
+		case 'choice': {
+			const offer = f.from ? `${tableName(doc, f.from)}'s rows: ` : '';
+			const choices = choicesOf(doc, f).join(', ') || 'nothing yet';
+			return [`${v ? JSON.stringify(v) : 'none chosen'}, of ${offer}${choices}`];
+		}
 		case 'image':
 			return [v ? '[picture]' : 'no picture'];
 		case 'tags':

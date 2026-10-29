@@ -464,3 +464,86 @@ describe('bound fields', () => {
 		expect(field('HP').bind).toBeUndefined();
 	});
 });
+
+describe('a choice field', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'GM' });
+	ok(doc, 'add_field', {
+		character: 'GM',
+		label: '元素',
+		kind: 'table',
+		columns: [{ name: 'Name', kind: 'text' }]
+	});
+	ok(doc, 'edit_table', {
+		character: 'GM',
+		table: '元素',
+		add_rows: [{ Name: '火' }, { Name: '冰' }]
+	});
+	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	const ash = () => doc.characters.find((c) => c.name === 'Ash')!;
+	const value = (label: string) =>
+		valueOf(
+			ash(),
+			ash().fields.find((f) => f.label === label)!
+		);
+
+	it('offers typed choices, and refuses one it does not offer', () => {
+		const text = ok(doc, 'add_field', {
+			character: 'Ash',
+			label: 'Range',
+			kind: 'choice',
+			choices: ['近', '遠']
+		});
+		expect(text).toContain('none chosen, of 近, 遠');
+		ok(doc, 'set_value', { character: 'Ash', field: 'Range', value: '遠' });
+		expect(value('Range')).toBe('遠');
+		expect(refused(doc, 'set_value', { character: 'Ash', field: 'Range', value: '中' })).toMatch(
+			/Range offers 近, 遠, not "中"/
+		);
+	});
+
+	it("offers a table's rows by name, and keeps only the name", () => {
+		const text = ok(doc, 'add_field', {
+			character: 'Ash',
+			label: 'Element',
+			kind: 'choice',
+			from: 'GM!元素'
+		});
+		expect(text).toContain("none chosen, of GM!元素's rows: 火, 冰");
+		ok(doc, 'set_value', { character: 'Ash', field: 'Element', value: '冰' });
+		expect(value('Element')).toBe('冰');
+		expect(refused(doc, 'set_value', { character: 'Ash', field: 'Element', value: '雷' })).toMatch(
+			/Element offers 火, 冰, not "雷"/
+		);
+	});
+
+	it('reads as its text in a formula, and a rule sets it', () => {
+		expect(
+			ok(doc, 'add_field', {
+				character: 'Ash',
+				label: 'Cold',
+				kind: 'formula',
+				formula: '=IF(Element = "冰", 1, 0)'
+			})
+		).toContain('→ 1');
+		ok(doc, 'add_field', { character: 'Ash', label: 'Ignite', kind: 'button' });
+		ok(doc, 'set_rules', {
+			character: 'Ash',
+			target: 'Element',
+			rules: [{ press: 'Ignite', then: ['Element = "火"'] }]
+		});
+		const ignite = ash().fields.find((f) => f.label === 'Ignite')!;
+		fire(doc, { press: { character: ash().id, field: ignite.id } }, () => 1);
+		expect(value('Element')).toBe('火');
+	});
+
+	it('switches from a table to typed choices, and refuses choices elsewhere', () => {
+		ok(doc, 'edit_field', { character: 'Ash', field: 'Element', from: '', choices: ['風'] });
+		const element = ash().fields.find((f) => f.label === 'Element')!;
+		expect(element.from).toBeUndefined();
+		expect(element.choices).toEqual(['風']);
+		expect(refused(doc, 'edit_field', { character: 'Ash', field: 'HP', choices: ['a'] })).toMatch(
+			/only a choice field has choices/
+		);
+	});
+});

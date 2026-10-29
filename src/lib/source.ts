@@ -50,6 +50,15 @@ export const nameColumn = (src: Source): Column | undefined =>
 export const keyOf = (src: Source, col: Column): Column | undefined =>
 	src.columns.find((c) => same(c.name, col.name)) ?? nameColumn(src);
 
+/** What a choice field offers: its source's rows by name, else its typed choices. */
+export function choicesOf(doc: Doc, f: Pick<Field, 'from' | 'choices'>): string[] {
+	const src = sourceOf(doc, f.from);
+	if (!src) return f.choices ?? [];
+	const key = nameColumn(src);
+	const names = key ? src.rows.map((r) => r.cells[key.id]).filter((v) => v !== undefined) : [];
+	return [...new Set(names.map(String))];
+}
+
 /** Whether `col` of a row following `src` is filled from it. */
 export const fromSource = (src: Source, col: Column) =>
 	col.from === src.id || src.columns.some((c) => same(c.name, col.name));

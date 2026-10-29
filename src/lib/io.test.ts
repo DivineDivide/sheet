@@ -83,6 +83,14 @@ describe('parse', () => {
 		expect(() => parse(mangle((d) => (d.characters[0].fields[0].pages = 'yes')))).toThrow(/pages/);
 	});
 
+	it("keeps a choice field's choices, and refuses any that are not text", () => {
+		const kept = parse(mangle((d) => (d.characters[0].fields[0].choices = ['火', '冰'])));
+		expect(kept.characters[0].fields[0].choices).toEqual(['火', '冰']);
+		expect(() => parse(mangle((d) => (d.characters[0].fields[0].choices = [1])))).toThrow(
+			/choices/
+		);
+	});
+
 	it('keeps a hidden label, and refuses any other setting', () => {
 		const kept = parse(mangle((d) => (d.characters[0].fields[0].hideLabel = true)));
 		expect(kept.characters[0].fields[0].hideLabel).toBe(true);

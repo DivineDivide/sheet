@@ -3,6 +3,7 @@
 	import {
 		globalId,
 		kinds,
+		tagsIn,
 		uniqueLabel,
 		type Character,
 		type Column,
@@ -223,6 +224,38 @@
 								fresh={fresh(column.name, column.kind, rowKnown)}
 								{editField}
 							/>
+						{/if}
+					{:else if field.kind === 'choice'}
+						{@const tables = sources(session.doc)}
+						{#if tables.length}
+							<label {@attach tip(t("Another table's rows, by name, as the choices"))}>
+								<span class="muted">{t('From')}</span>
+								<select
+									value={field.from ?? ''}
+									onchange={(e) => {
+										const from = e.currentTarget.value;
+										editField(field.id, (f) => (from ? (f.from = from) : delete f.from));
+									}}
+								>
+									<option value="">{t('Typed choices')}</option>
+									{#each tables as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+								</select>
+							</label>
+						{/if}
+						{#if !field.from}
+							<label>
+								<span class="muted">{t('Choices')}</span>
+								<input
+									value={(field.choices ?? []).join(', ')}
+									placeholder={t('Held, Sacrificed, Spent')}
+									onchange={(e) => {
+										const choices = tagsIn(e.currentTarget.value);
+										editField(field.id, (f) =>
+											choices.length ? (f.choices = choices) : delete f.choices
+										);
+									}}
+								/>
+							</label>
 						{/if}
 					{/if}
 					{#if ruled.includes(field.kind)}

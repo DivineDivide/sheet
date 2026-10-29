@@ -860,6 +860,7 @@ function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 		case 'number':
 			return v as number;
 		case 'text':
+		case 'choice':
 			return (v as string) || null;
 		case 'tags':
 			return v as string[];

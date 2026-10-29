@@ -139,7 +139,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   character's (`source.ts`): a choice column's `from` offers that table's rows by name, and
   a table's `from` its +. Such a row keeps a `link` and follows its source row, since
   `session.change` runs `follow` after every edit and `fire` after every event, through its
-  own writes so Back and ⌘Z take both; its cells from the source are read-only.
+  own writes so Back and ⌘Z take both; its cells from the source are read-only. A `choice`
+  field is a dropdown on its own, of typed `choices` or of a `from` table's rows by name
+  (`choicesOf`); it keeps only the name, since a field has no row to follow.
 - **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
   not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically

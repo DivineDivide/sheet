@@ -34,6 +34,7 @@ export const kinds = [
 	'formula',
 	'button',
 	'text',
+	'choice',
 	'tags',
 	'entries',
 	'table',
@@ -83,8 +84,13 @@ export type Field = {
 	formula?: string;
 	/** A table field's columns. Its rows are the character's value. */
 	columns?: Column[];
-	/** A table's source table, by `globalId`, whose rows its + offers, each following its own. */
+	/**
+	 * A table's source table, by `globalId`, whose rows its + offers, each following its own;
+	 * or a choice field's, whose rows' names it offers, keeping only the name.
+	 */
 	from?: string;
+	/** What a choice field offers when it has no `from`. */
+	choices?: string[];
 	/** A table's or entries list's rows flip by page, as many as fit its box, not scroll. */
 	pages?: true;
 	/** Its label is hidden from everyone, and its label's controls float on hover. */
@@ -257,6 +263,7 @@ export function blank(kind: Kind): Value {
 		case 'track':
 			return [false, false, false, false];
 		case 'text':
+		case 'choice':
 		case 'image':
 		case 'formula':
 		case 'button':
@@ -282,6 +289,7 @@ function fits(kind: Kind, v: unknown): boolean {
 		case 'track':
 			return Array.isArray(v) && v.every((b) => typeof b === 'boolean');
 		case 'text':
+		case 'choice':
 		case 'image':
 		case 'formula':
 		case 'button':

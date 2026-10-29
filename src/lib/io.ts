@@ -151,6 +151,9 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		if (f.from !== undefined && !isStr(f.from)) {
 			throw new ImportError(`"${f.label}" on ${name} names its source table wrongly`);
 		}
+		if (f.choices !== undefined && !(Array.isArray(f.choices) && f.choices.every(isStr))) {
+			throw new ImportError(`"${f.label}" on ${name} has choices that are not all text`);
+		}
 		if (f.pages !== undefined && f.pages !== true) {
 			throw new ImportError(`"${f.label}" on ${name} says wrongly whether it has pages`);
 		}

@@ -91,6 +91,8 @@
 							{#if v}<div class="md">{@html markdown(v as string)}</div>{:else}<span class="none"
 									>—</span
 								>{/if}
+						{:else if f.kind === 'choice'}
+							{#if v}<span>{v}</span>{:else}<span class="none">—</span>{/if}
 						{:else if f.kind === 'image'}
 							<!-- Its box's own height, unlike the rest: known before the picture loads. -->
 							{#if v}<img class="pic" src={v as string} alt={f.label} />{:else}<span class="none"

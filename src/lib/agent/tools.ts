@@ -30,6 +30,7 @@ import { ImportError, validate } from '../io';
 import { GAP, clamp, defaultSize, type Box } from '../layout';
 import { ruled, ruledColumns, sheetOf } from '../rules';
 import {
+	choicesOf,
 	choose,
 	follow,
 	fromSource,
@@ -137,6 +138,18 @@ function tableIn(doc: Doc, c: Character, ref: string): string {
 function setFrom(doc: Doc, c: Character, on: { from?: string }, ref: string) {
 	if (ref) on.from = tableIn(doc, c, ref);
 	else delete on.from;
+}
+
+/** A choice field's typed choices and source, as add_field and edit_field take them. */
+function setChoices(doc: Doc, c: Character, f: Field, i: Input) {
+	const from = opt(i, 'from');
+	if (i.choices === undefined && from === undefined) return;
+	if (f.kind !== 'choice') fail(`only a choice field has choices, and ${f.label} is a ${f.kind}`);
+	if (from !== undefined) setFrom(doc, c, f, from);
+	if (i.choices === undefined) return;
+	const choices = texts(i, 'choices');
+	if (choices.length) f.choices = choices;
+	else delete f.choices;
 }
 
 /** A source's row by the name it is chosen by. */
@@ -348,6 +361,12 @@ const placing = {
 const from = text(
 	"A choice column's source, a table as Character!Table: it offers that table's rows by name, choosing one fills the row's columns of the same names, and the row then follows it. Empty stops it"
 );
+const offers = {
+	choices: list({ type: 'string' }, "A choice field's typed choices"),
+	from: text(
+		"A choice field's source, a table as Character!Table: it offers that table's rows by name, keeping only the name. Empty stops it"
+	)
+};
 const bar = {
 	type: 'boolean',
 	description:
@@ -592,7 +611,8 @@ export const tools: Tool[] = [
 				kind: { type: 'string', enum: [...kinds] },
 				...placing,
 				formula: text("A formula field's formula, naming fields by label"),
-				columns: list(columnSpec, "A table's columns")
+				columns: list(columnSpec, "A table's columns"),
+				...offers
 			},
 			['character', 'label', 'kind']
 		),
@@ -624,13 +644,14 @@ export const tools: Tool[] = [
 				if (kind !== 'formula') fail('only a formula field has a formula');
 				f.formula = compiled(formula, () => compile(formula, knownOn(doc, c)));
 			}
+			setChoices(doc, c, f, i);
 			return `Added.${renamed(asked, f.label)}${shows(doc, c, f)}${overlaps(c, f)}\n${fieldView(doc, c, f)}`;
 		}
 	},
 	{
 		name: 'edit_field',
 		description:
-			"Changes a field's label, kind, tab, place, size or formula, whether its label shows, whether a long list flips pages, or whether a resource shows as a bar. A value left from its old kind reads as blank.",
+			"Changes a field's label, kind, tab, place, size or formula, a choice field's choices, whether its label shows, whether a long list flips pages, or whether a resource shows as a bar. A value left from its old kind reads as blank.",
 		input_schema: obj(
 			{
 				...who,
@@ -639,6 +660,7 @@ export const tools: Tool[] = [
 				kind: { type: 'string', enum: [...kinds] },
 				...placing,
 				formula: text('Its new formula; empty removes it'),
+				...offers,
 				pages: {
 					type: 'boolean',
 					description:
@@ -685,6 +707,7 @@ export const tools: Tool[] = [
 				else delete f.hideLabel;
 			}
 			if (typeof i.bar === 'boolean') setBar(f, f.label, i.bar);
+			setChoices(doc, c, f, i);
 			return `Changed.${asked ? renamed(asked, f.label) : ''}${shows(doc, c, f)}${overlaps(c, f)}\n${fieldView(doc, c, f)}`;
 		}
 	},
@@ -739,7 +762,7 @@ export const tools: Tool[] = [
 	{
 		name: 'set_value',
 		description:
-			"Sets a field's value, in its kind's shape: number a number; resource {cur, max}; track a list of true/false, one per box; text Markdown; tags a list of texts; entries a list of {name, text}. Tables change through edit_table.",
+			"Sets a field's value, in its kind's shape: number a number; resource {cur, max}; track a list of true/false, one per box; text Markdown; choice one of what it offers, or empty; tags a list of texts; entries a list of {name, text}. Tables change through edit_table.",
 		input_schema: obj(
 			{
 				...who,
@@ -757,6 +780,9 @@ export const tools: Tool[] = [
 			if (f.kind === 'resource' && isObj(v)) v = { cur: v.cur as number, max: v.max as number };
 			if (!equal(valueOf({ values: { [f.id]: v } }, f), v))
 				fail(`${f.label} is a ${f.kind}, which takes ${shapes[f.kind]}`);
+			const offered = f.kind === 'choice' && v !== '' ? choicesOf(doc, f) : undefined;
+			if (offered && !offered.includes(v as string))
+				fail(`${f.label} offers ${offered.join(', ') || 'nothing yet'}, not "${v}"`);
 			c.values[f.id] = structuredClone(v);
 			return `Set.\n${fieldView(doc, c, f)}`;
 		}

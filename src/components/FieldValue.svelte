@@ -16,7 +16,7 @@
 	import { shrink } from '../lib/picture';
 	import { hint, ready, sheetOf } from '../lib/rules';
 	import { session } from '../lib/session.svelte';
-	import { rowFrom, sourceOf } from '../lib/source';
+	import { choicesOf, rowFrom, sourceOf } from '../lib/source';
 	import { tip } from '../lib/tip';
 	import { pageOf, ui } from '../lib/ui.svelte';
 	import Bar from './Bar.svelte';
@@ -298,6 +298,21 @@
 				at={globalId(character, field)}
 				onchange={set}
 			/>
+		{:else if field.kind === 'choice'}
+			{@const choices = choicesOf(session.doc, field)}
+			<div class="row">
+				<select
+					class="choice"
+					value={v as string}
+					aria-label={field.label}
+					onchange={(e) => set(e.currentTarget.value)}
+				>
+					<option value=""></option>
+					{#each choices as o (o)}<option>{o}</option>{/each}
+					<!-- A value from before the choices changed still shows. -->
+					{#if v && !choices.includes(v as string)}<option>{v}</option>{/if}
+				</select>
+			</div>
 		{:else if field.kind === 'entries'}
 			{@const entries = v as Entry[]}
 			{@const put = (i: number, patch: Partial<Entry>) =>
@@ -554,6 +569,9 @@
 		display: flex;
 		align-items: center;
 		gap: 0.3rem;
+	}
+	.choice {
+		flex: 1;
 	}
 	.wrap {
 		flex-wrap: wrap;
