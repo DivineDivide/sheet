@@ -289,6 +289,14 @@ describe('tables', () => {
 	it('offers columns after a table name and a bracket', () => {
 		expect(suggest('COUNTA(碎片库[状', 12, s.fields)).toEqual({ from: 10, options: ['[状态]'] });
 	});
+
+	it('reads a picture column as #VALUE!, as a picture field', () => {
+		const pics = {
+			fields: [{ ...lib, columns: [{ id: 'p', name: 'Pic', kind: 'image' as const }] }],
+			values: { lib: [{ id: 'r1', cells: { p: 'data:image/webp;base64,AAAA' } }] }
+		};
+		expect(code('CONCAT(碎片库[Pic])', pics)).toBe('#VALUE!');
+	});
 });
 
 describe('columns of every kind, worked out row by row', () => {

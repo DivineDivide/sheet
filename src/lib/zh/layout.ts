@@ -118,6 +118,8 @@ export default {
 	"Keeps one row, on the map's current node: its columns named as the map's table's fill from it":
 		'只保留一列，跟著地圖目前的節點：與地圖表格同名的欄會從那裡填入',
 	'Follows map': '跟隨地圖',
+	'Replace the picture': '更換圖片',
+	'Pick or drop a picture': '選取或拖入圖片',
 	'No map': '無地圖',
 	"Another table's rows, by name, as the choices": '以另一個表格各列的名稱作為選項',
 	'No table': '無表格',

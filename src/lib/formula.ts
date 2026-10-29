@@ -906,6 +906,7 @@ function cell(table: Field, col: Column, r: Row, ctx: Ctx, prop?: string): Val {
 	if (!has) return E('#VALUE!', `${col.name} has no .${prop}`);
 	if (col.kind === 'formula') return runCell(table, col, r, ctx);
 	if (col.kind === 'button') return null;
+	if (col.kind === 'image') return E('#VALUE!', 'a picture has no value');
 	const v = cellOf(r, col);
 	if (v === undefined) return null;
 	if (col.kind === 'resource') return p === 'max' ? (v as Resource).max : (v as Resource).cur;

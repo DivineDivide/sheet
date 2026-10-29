@@ -147,6 +147,12 @@
 															{(cell as Resource).cur} / {(cell as Resource).max}
 														{:else if c.kind === 'tags'}
 															{((cell as string[] | undefined) ?? []).join(', ')}
+														{:else if c.kind === 'image'}
+															{#if cell}<img
+																	class="cellpic"
+																	src={cell as string}
+																	alt={c.name}
+																/>{/if}
 														{:else}
 															{@html markdown(String(cell ?? ''))}
 														{/if}
@@ -330,6 +336,11 @@
 		min-height: 0;
 		width: 100%;
 		object-fit: contain;
+	}
+	.cellpic {
+		display: block;
+		max-width: 8rem;
+		max-height: 6rem;
 	}
 	.none {
 		color: var(--muted);

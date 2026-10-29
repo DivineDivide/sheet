@@ -73,6 +73,7 @@ function cellText(doc: Doc, c: Character, table: Field, row: Row, col: Column) {
 	if (col.kind === 'button') return undefined;
 	const v = cellOf(row, col);
 	if (v === undefined) return undefined;
+	if (col.kind === 'image') return '[picture]';
 	if (col.kind === 'resource') return `${(v as Resource).cur}/${(v as Resource).max}`;
 	if (col.kind === 'track') return ticked(v as boolean[]);
 	if (col.kind === 'tags') return (v as string[]).join(', ');

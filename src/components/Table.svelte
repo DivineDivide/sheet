@@ -23,6 +23,7 @@
 	import { cellResult, isErr, show } from '../lib/formula';
 	import { t } from '../lib/i18n.svelte';
 	import { hint, ready, sheetOf } from '../lib/rules';
+	import { CELL, shrink } from '../lib/picture';
 	import { session } from '../lib/session.svelte';
 	import { choose, fromSource, keyOf, sources, type Source } from '../lib/source';
 	import { tip } from '../lib/tip';
@@ -80,6 +81,18 @@
 		if (cell === undefined || cell === '') delete cells[col];
 		else cells[col] = cell;
 		set(rows.map((r) => (r.id === row.id ? { ...r, cells } : r)));
+	}
+
+	async function take(row: Row, col: string, file: File | undefined) {
+		if (!file?.type.startsWith('image/')) return;
+		try {
+			const pic = await shrink(file, CELL);
+			// The row as it is now: another edit may have reached it while the picture shrank.
+			const now = rows.find((r) => r.id === row.id);
+			if (now) put(now, col, pic);
+		} catch {
+			session.notice = t('{name} could not be read as a picture.', { name: file.name });
+		}
 	}
 
 	const columns = (fn: (cols: Column[]) => Column[]) =>
@@ -289,6 +302,43 @@
 											press: { character: character.id, field: field.id, column: c.id, row: row.id }
 										})}>{c.name}</button
 								>
+							{:else if c.kind === 'image'}
+								<!-- A drop stops here: on the window it would be taken for a file to import. -->
+								<div
+									class="cellpic"
+									role="group"
+									aria-label={c.name}
+									ondragover={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+									}}
+									ondrop={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										take(row, c.id, e.dataTransfer?.files[0]);
+									}}
+								>
+									<label
+										class:pick={!v}
+										{@attach tip(t(v ? 'Replace the picture' : 'Pick or drop a picture'))}
+									>
+										{#if v}<img src={v as string} alt={c.name} />{:else}+{/if}
+										<input
+											type="file"
+											accept="image/*"
+											hidden
+											onchange={(e) => {
+												take(row, c.id, e.currentTarget.files?.[0]);
+												e.currentTarget.value = '';
+											}}
+										/>
+									</label>
+									{#if v && !held}<button
+											class="x"
+											aria-label={t('Remove the picture')}
+											onclick={() => put(row, c.id, undefined)}>×</button
+										>{/if}
+								</div>
 							{:else if c.kind === 'tags'}
 								<input
 									value={((v as string[] | undefined) ?? []).join(', ')}
@@ -470,6 +520,33 @@
 	}
 	output {
 		font-variant-numeric: tabular-nums;
+	}
+	.cellpic {
+		display: flex;
+		align-items: start;
+		gap: 0.15rem;
+	}
+	.cellpic label {
+		cursor: pointer;
+	}
+	.cellpic img {
+		display: block;
+		max-width: 8rem;
+		max-height: 6rem;
+		border-radius: var(--radius);
+	}
+	.cellpic .pick {
+		padding: 0.1rem 0.6rem;
+		border: 1px dashed var(--line);
+		border-radius: var(--radius);
+		color: var(--muted);
+	}
+	.cellpic .x {
+		opacity: 0;
+	}
+	.cellpic:hover .x,
+	.cellpic:focus-within .x {
+		opacity: 1;
 	}
 	.press {
 		padding: 0.05rem 0.5rem;
