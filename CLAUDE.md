@@ -8,7 +8,8 @@ tables and Excel import followed, planned in `notes/trpg/plan-sheet-formulas-imp
 then buttons and rules, in `notes/trpg/plan-sheet-rules.md`, which folded statuses into
 tables. A GM's page of data that other sheets draw on is `notes/trpg/plan-sheet-gm-page.md`.
 Long lists that flip pages are `notes/trpg/plan-sheet-pages.md`; picks inside text, and entries
-that run on across pages, `notes/trpg/plan-sheet-picks.md`.
+that run on across pages, `notes/trpg/plan-sheet-picks.md`; a table shown as cards,
+`notes/trpg/plan-sheet-cards.md`.
 
 ## Commands
 
@@ -151,7 +152,12 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   `session.change` runs `follow` after every edit and `fire` after every event, through its
   own writes so Back and ⌘Z take both; its cells from the source are read-only. A `choice`
   field is a dropdown on its own, of typed `choices` or of a `from` table's rows by name
-  (`choicesOf`); it keeps only the name, since a field has no row to follow.
+  (`choicesOf`); it keeps only the name, since a field has no row to follow. A table with
+  `cards` shows each row as a card (`Cards`), every card laid out alike: a column's `box` is
+  px on the card, which is the frame around them (`cards.ts`), and a column with none is off
+  it, in Edit layout's Unplaced tray. A kind dropped on the card lands where it is dropped.
+  The first switch stacks the columns (`stack`), and switching back to a grid keeps the
+  boxes. `Cell` edits a cell the same in the grid and on a card.
 - **Maps** — from `notes/trpg/plan-sheet-map.md`. A `map` field draws a table's rows (its
   `from`, usually a GM-only character's) as a tree, left to right by depth (`map.ts`), so
   all it stores of the shape is `parents`, each placed row's parent and `''` for a root. A
@@ -239,8 +245,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
 - **Copy image** — `Sheet` mounts `ShareCard` off screen, draws it with `html-to-image`
   and puts the PNG on the clipboard, or downloads it where that is refused. The card keeps
   every box's x and width but grows it to its whole value; `settle` then moves down only
-  what sat under a grown box. `html-to-image` waits on `requestAnimationFrame`, so it
-  never finishes in a hidden tab.
+  what sat under a grown box; a card's boxes grow and settle the same way first.
+  `html-to-image` waits on `requestAnimationFrame`, so it never finishes in a hidden tab.
 
 Bump `VERSION` in `doc.ts` for any change to the document's shape, and teach `parse` to
 migrate the old one. Rooms already store the old shape too, so `Room.load` must migrate

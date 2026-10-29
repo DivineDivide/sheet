@@ -1,17 +1,19 @@
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
+	import { frame, labelled, placed } from '../lib/cards';
 	import {
 		cellOf,
 		valueOf,
 		type Character,
 		type Clock,
+		type Column,
 		type Entry,
 		type Field,
 		type Resource,
 		type Row
 	} from '../lib/doc';
 	import { cellResult, result, show } from '../lib/formula';
-	import { bounds, settle } from '../lib/layout';
+	import { bounds, settle, type Box } from '../lib/layout';
 	import { mapSource, nameIn } from '../lib/map';
 	import { markdown } from '../lib/markdown';
 	import { session } from '../lib/session.svelte';
@@ -38,22 +40,58 @@
 		return src && row ? nameIn(src, row) : '';
 	}
 
-	// Per tab, known only once the grown boxes have been measured.
-	let laid = $state<Record<string, { tops: Record<string, number>; h: number }>>({});
+	type Laid = { tops: Record<string, number>; h: number };
+	// Per tab, and per card as `<field>/<row>`, known only once the grown boxes are measured.
+	let laid = $state<Record<string, Laid>>({});
+	let cards = $state<Record<string, Laid>>({});
+
+	/** A card's columns in the picture: a button, as on its own, has nothing to show. */
+	const onCard = (f: Field) => placed(f.columns ?? []).filter((c) => c.kind !== 'button');
+
+	/** Each box's top once grown to its element's height, counted from `y0`. */
+	function grown(items: { id: string; box: Box }[], els: HTMLCollection, y0: number): Laid {
+		const heights: Record<string, number> = {};
+		for (const el of els as HTMLCollectionOf<HTMLElement>)
+			heights[el.dataset.id!] = el.offsetHeight;
+		const settled = settle(items, heights);
+		const tops = Object.fromEntries(items.map((x) => [x.id, settled[x.id] - y0]));
+		return { tops, h: Math.max(...items.map((x) => tops[x.id] + heights[x.id])) };
+	}
 
 	const measure =
 		(tab: string, fields: Field[]): Attachment<HTMLElement> =>
 		(canvas) => {
-			const heights: Record<string, number> = {};
-			for (const el of canvas.children as HTMLCollectionOf<HTMLElement>)
-				heights[el.dataset.id!] = el.offsetHeight;
-			const settled = settle(fields, heights);
+			// Reading a card's layout back makes this run again once the cards have grown, in
+			// the same flush, so the fields settle around them before the picture is taken.
+			for (const el of canvas.querySelectorAll<HTMLElement>('[data-card]')) {
+				const on = onCard(fields.find((f) => f.id === el.dataset.field)!);
+				const next = grown(on, el.children, frame(on).y);
+				const key = el.dataset.card!;
+				if (JSON.stringify(cards[key]) !== JSON.stringify(next)) cards[key] = next;
+			}
 			// Blank sheet above a tab's first field is no use in a picture.
-			const y0 = Math.min(...fields.map((f) => f.box.y));
-			const tops = Object.fromEntries(fields.map((f) => [f.id, settled[f.id] - y0]));
-			laid[tab] = { tops, h: Math.max(...fields.map((f) => tops[f.id] + heights[f.id])) };
+			laid[tab] = grown(fields, canvas.children, Math.min(...fields.map((f) => f.box.y)));
 		};
 </script>
+
+{#snippet cell(f: Field, r: Row, c: Column)}
+	{@const v = cellOf(r, c)}
+	{#if c.kind === 'track'}
+		<span class="track">
+			{#each v as boolean[] as on, j (j)}<span class="box" class:on></span>{/each}
+		</span>
+	{:else if c.kind === 'formula'}
+		{c.formula?.trim() ? show(cellResult({ ...character, clocks }, f.id, c.id, r.id)) : ''}
+	{:else if c.kind === 'resource'}
+		{(v as Resource).cur} / {(v as Resource).max}
+	{:else if c.kind === 'tags'}
+		{((v as string[] | undefined) ?? []).join(', ')}
+	{:else if c.kind === 'image'}
+		{#if v}<img class="cellpic" src={v as string} alt={c.name} />{/if}
+	{:else}
+		{@html markdown(String(v ?? ''))}
+	{/if}
+{/snippet}
 
 <article class="card" style:width="{span.w}px">
 	<header>
@@ -117,6 +155,41 @@
 									{#each tags as tag, j (j)}<span class="tag">{tag}</span>{/each}
 								</span>
 							{:else}<span class="none">—</span>{/if}
+						{:else if f.kind === 'table' && f.cards}
+							{@const rows = v as Row[]}
+							{@const on = onCard(f)}
+							{@const fr = frame(on)}
+							{#if rows.length && on.length}
+								<ol class="cards">
+									{#each rows as r (r.id)}
+										{@const at = cards[`${f.id}/${r.id}`]}
+										<li>
+											<div
+												class="inner"
+												data-card="{f.id}/{r.id}"
+												data-field={f.id}
+												style:width="{fr.w}px"
+												style:height="{at?.h ?? fr.h}px"
+											>
+												{#each on as c (c.id)}
+													<div
+														class="cbox md"
+														data-id={c.id}
+														style:left="{c.box.x - fr.x}px"
+														style:top="{at?.tops[c.id] ?? c.box.y - fr.y}px"
+														style:width="{c.box.w}px"
+														style:min-height="{c.box.h}px"
+														style:height={c.kind === 'image' ? `${c.box.h}px` : undefined}
+													>
+														{#if labelled(c)}<div class="label">{c.name}</div>{/if}
+														{@render cell(f, r, c)}
+													</div>
+												{/each}
+											</div>
+										</li>
+									{/each}
+								</ol>
+							{:else}<span class="none">—</span>{/if}
 						{:else if f.kind === 'table'}
 							{@const rows = v as Row[]}
 							<!-- Buttons, as on their own, have nothing to show. -->
@@ -132,31 +205,7 @@
 										{#each rows as r (r.id)}
 											<tr>
 												{#each cols as c (c.id)}
-													{@const cell = cellOf(r, c)}
-													<td class="md">
-														{#if c.kind === 'track'}
-															{@const boxes = cell as boolean[]}
-															<span class="track">
-																{#each boxes as on, j (j)}<span class="box" class:on></span>{/each}
-															</span>
-														{:else if c.kind === 'formula'}
-															{c.formula?.trim()
-																? show(cellResult({ ...character, clocks }, f.id, c.id, r.id))
-																: ''}
-														{:else if c.kind === 'resource'}
-															{(cell as Resource).cur} / {(cell as Resource).max}
-														{:else if c.kind === 'tags'}
-															{((cell as string[] | undefined) ?? []).join(', ')}
-														{:else if c.kind === 'image'}
-															{#if cell}<img
-																	class="cellpic"
-																	src={cell as string}
-																	alt={c.name}
-																/>{/if}
-														{:else}
-															{@html markdown(String(cell ?? ''))}
-														{/if}
-													</td>
+													<td class="md">{@render cell(f, r, c)}</td>
 												{/each}
 											</tr>
 										{/each}
@@ -341,6 +390,39 @@
 		display: block;
 		max-width: 8rem;
 		max-height: 6rem;
+	}
+	.cards {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: start;
+		gap: 8px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.cards li {
+		padding: 8px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+	}
+	.inner {
+		position: relative;
+	}
+	.cbox {
+		position: absolute;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		font-size: 0.9rem;
+	}
+	/* A picture fills its box, whose height is its own, as an image field's is. */
+	.cbox .cellpic {
+		flex: 1;
+		min-height: 0;
+		max-width: 100%;
+		max-height: none;
+		object-fit: contain;
 	}
 	.none {
 		color: var(--muted);

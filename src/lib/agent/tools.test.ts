@@ -373,6 +373,58 @@ describe('a long list in pages', () => {
 	});
 });
 
+describe('a table as cards', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });
+	const statuses = () => doc.characters[0].fields.find((f) => f.label === 'Statuses')!;
+	const col = (name: string) => statuses().columns!.find((c) => c.name === name)!;
+
+	it('stacks the columns down the card the first time, and says where each sits', () => {
+		const text = ok(doc, 'edit_field', { character: 'Ash', field: 'Statuses', cards: true });
+		expect(text).toContain('as cards');
+		expect(text).toContain('card: Name at 0,0, 15×3.5; Stacks at 0,4, 15×3.5; Left at 0,8, 15×3.5');
+		expect(statuses().cards).toBe(true);
+	});
+
+	it('places, sizes and hides a column on the card, and takes one off', () => {
+		const text = ok(doc, 'edit_table', {
+			character: 'Ash',
+			table: 'Statuses',
+			change_columns: [
+				{ column: 'Stacks', card_at: { x: 16, y: 0 }, card_size: { w: 5, h: 3 } },
+				{ column: 'Name', hide_label: true },
+				{ column: 'Left', on_card: false }
+			]
+		});
+		expect(col('Stacks').box).toEqual({ x: 256, y: 0, w: 80, h: 48 });
+		expect(col('Name').hideLabel).toBe(true);
+		expect(col('Left').box).toBeUndefined();
+		expect(text).toContain(
+			'card: Name at 0,0, 15×3.5, name hidden; Stacks at 16,0, 5×3; off it: Left'
+		);
+	});
+
+	it('puts a new column under the rest, and a column back on the card there too', () => {
+		ok(doc, 'edit_table', {
+			character: 'Ash',
+			table: 'Statuses',
+			add_columns: [{ name: 'Note', kind: 'text' }],
+			change_columns: [{ column: 'Left', on_card: true }]
+		});
+		expect(col('Left').box).toEqual({ x: 0, y: 64, w: 240, h: 56 });
+		expect(col('Note').box).toEqual({ x: 0, y: 128, w: 240, h: 56 });
+	});
+
+	it('keeps the layout while shown as a grid, and refuses cards on what is not a table', () => {
+		ok(doc, 'edit_field', { character: 'Ash', field: 'Statuses', cards: false });
+		expect(statuses().cards).toBeUndefined();
+		expect(col('Stacks').box).toEqual({ x: 256, y: 0, w: 80, h: 48 });
+		expect(refused(doc, 'edit_field', { character: 'Ash', field: 'HP', cards: true })).toMatch(
+			/only a table shows as cards/
+		);
+	});
+});
+
 describe('a hidden label', () => {
 	const doc = newDoc();
 	ok(doc, 'add_character', { name: 'Ash', template: 'Basic' });

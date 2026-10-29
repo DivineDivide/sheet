@@ -16,6 +16,7 @@
 	import type { Attachment } from 'svelte/attachments';
 	import { chat } from '../lib/agent/client.svelte';
 	import { bindAction, clicked, loosen, mates, toggleBind, toggled } from '../lib/bind';
+	import { cardBox } from '../lib/cards';
 	import { keep, kept, type Clip } from '../lib/clip';
 	import { cursors } from '../lib/cursors.svelte';
 	import { lift, place } from '../lib/group';
@@ -27,6 +28,7 @@
 	import { session } from '../lib/session.svelte';
 	import { ui } from '../lib/ui.svelte';
 	import { HOME, fit, toSheet, zoomAt, type View } from '../lib/view';
+	import { cardPoint } from './Cards.svelte';
 	import FieldValue from './FieldValue.svelte';
 	import Icon from './Icon.svelte';
 	import Palette from './Palette.svelte';
@@ -55,7 +57,7 @@
 		by?: { x: number; y: number };
 	} | null>(null);
 	/** A kind from the palette held over a table, to land as a column at `index`. */
-	let drop = $state<{ field: string; index: number } | null>(null);
+	let drop = $state<{ field: string; index: number; at?: Box } | null>(null);
 	/** The table column the inspector shows. */
 	let picked = $state<{ field: string; column: string } | null>(null);
 	let panning = $state(false);
@@ -190,14 +192,14 @@
 		chosen = [id];
 	}
 
-	function addColumn(id: string, kind: ColumnKind, at: number) {
+	function addColumn(id: string, kind: ColumnKind, at: number, box?: Box) {
 		const col = newId();
 		editField(id, (f) => {
 			const cols = f.columns ?? [];
 			const named = cols.map((c) => ({ id: c.id, label: c.name }));
 			const shown = t(kind);
 			const name = uniqueLabel(shown[0].toUpperCase() + shown.slice(1), named);
-			cols.splice(at, 0, { id: col, name, kind });
+			cols.splice(at, 0, { id: col, name, kind, ...(box && { box }) });
 			f.columns = cols;
 		});
 		chosen = [id];
@@ -273,7 +275,14 @@
 							.elementFromPoint(ev.clientX, ev.clientY)
 							?.closest<HTMLElement>('.slot[data-table]')
 					: null;
-				drop = over ? { field: over.dataset.table!, index: gapAt(over, ev.clientX) } : null;
+				// On a table shown as cards it lands where it is dropped, after the other columns.
+				const card = over?.querySelector<HTMLElement>('[data-card]');
+				if (over && card) {
+					const p = cardPoint(card, ev.clientX, ev.clientY);
+					const at = cardBox(kind as ColumnKind, { x: p.x - 16, y: p.y - 12 });
+					const index = fieldOf(character, over.dataset.table!).columns?.length ?? 0;
+					drop = { field: over.dataset.table!, index, at };
+				} else drop = over ? { field: over.dataset.table!, index: gapAt(over, ev.clientX) } : null;
 				if (over) {
 					drag = null;
 					return;
@@ -313,7 +322,7 @@
 			drop = null;
 			// Only the release is written, so a whole gesture is one undo step.
 			if (mode === 'new') {
-				if (into) addColumn(into.field, kind as ColumnKind, into.index);
+				if (into) addColumn(into.field, kind as ColumnKind, into.index, into.at);
 				else if (done) add(kind, done.box);
 				else if (!moved) add(kind);
 			} else if (done?.by) {
@@ -690,7 +699,7 @@
 								field={f}
 								{laying}
 								picked={picked?.field === f.id ? picked.column : null}
-								drop={drop?.field === f.id ? drop.index : null}
+								drop={drop?.field === f.id ? drop : null}
 								onpick={(col) => {
 									chosen = [f.id];
 									picked = { field: f.id, column: col };

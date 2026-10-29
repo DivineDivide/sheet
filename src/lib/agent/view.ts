@@ -16,6 +16,7 @@ import {
 	type Rule
 } from '../doc';
 import { mates } from '../bind';
+import { placed } from '../cards';
 import { cellResult, nameOf, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
 import { mapSource, treeOf } from '../map';
@@ -100,6 +101,19 @@ function columnText(doc: Doc, col: Column, known: Name[]) {
 	return `${col.name} (${col.kind}${col.bar ? ', as a bar' : ''})`;
 }
 
+/** Where each column sits on a table's cards, in dots from the card's top-left. */
+function cardText(cols: Column[]): string {
+	const on = placed(cols).map(
+		(col) =>
+			`${col.name} at ${dots(col.box.x)},${dots(col.box.y)}, ${dots(col.box.w)}×${dots(col.box.h)}${col.hideLabel ? ', name hidden' : ''}`
+	);
+	const off = cols.filter((col) => !col.box).map((col) => col.name);
+	return [
+		on.join('; ') || 'nothing on it',
+		...(off.length ? [`off it: ${off.join(', ')}`] : [])
+	].join('; ');
+}
+
 /** Which source row a row follows, if any. */
 function followsText(doc: Doc, row: Row): string {
 	const src = sourceOf(doc, row.link?.table);
@@ -181,6 +195,7 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 			return [
 				`${rows.length} rows`,
 				`  columns: ${cols.map((col) => columnText(doc, col, known)).join(', ') || 'none'}`,
+				...(f.cards ? [`  card: ${cardText(cols)}`] : []),
 				...(f.from ? [`  rows from: ${tableName(doc, f.from)}`] : []),
 				...(f.follows ? [`  follows map: ${tableName(doc, f.follows)}, keeping one row`] : []),
 				...cols.flatMap((col) =>
@@ -214,7 +229,7 @@ export function fieldView(doc: Doc, c: Character, f: Field, full = false): strin
 		.slice(0, -1)
 		.map((id) => c.fields.find((x) => x.id === id)!.label);
 	return [
-		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${f.bar ? ', as a bar' : ''}${bound.length ? `, bound with ${bound.join(', ')}` : ''}${first === undefined ? '' : `: ${first}`}`,
+		`- ${f.label}: ${f.kind}, at ${dots(b.x)},${dots(b.y)}, ${dots(b.w)}×${dots(b.h)}${f.cards ? ', as cards' : ''}${f.pages ? ', in pages' : ''}${f.hideLabel ? ', label hidden' : ''}${f.bar ? ', as a bar' : ''}${bound.length ? `, bound with ${bound.join(', ')}` : ''}${first === undefined ? '' : `: ${first}`}`,
 		...rest,
 		...(f.rules ?? []).map((r) => `  rule: ${ruleText(doc, c, r, known)}`)
 	].join('\n');

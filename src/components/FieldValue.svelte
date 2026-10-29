@@ -12,6 +12,7 @@
 	} from '../lib/doc';
 	import { isErr, names, render, result, show } from '../lib/formula';
 	import { t } from '../lib/i18n.svelte';
+	import type { Box } from '../lib/layout';
 	import { markdown } from '../lib/markdown';
 	import { shrink } from '../lib/picture';
 	import { hint, ready, sheetOf } from '../lib/rules';
@@ -20,6 +21,7 @@
 	import { tip } from '../lib/tip';
 	import { pageOf, ui } from '../lib/ui.svelte';
 	import Bar from './Bar.svelte';
+	import Cards from './Cards.svelte';
 	import Icon from './Icon.svelte';
 	import MapTree from './MapTree.svelte';
 	import Pages from './Pages.svelte';
@@ -27,7 +29,7 @@
 	import Prose from './Prose.svelte';
 	import Table from './Table.svelte';
 
-	// The rest are a table's, for its headers in Edit layout.
+	// The rest are a table's, for its headers or its card in Edit layout.
 	let {
 		character,
 		field,
@@ -40,7 +42,8 @@
 		field: Field;
 		laying?: boolean;
 		picked?: string | null;
-		drop?: number | null;
+		/** Where a kind dragged in from the palette would land: a column index, or a card's box. */
+		drop?: { index: number; at?: Box } | null;
 		onpick?: (column: string) => void;
 	} = $props();
 
@@ -363,10 +366,32 @@
 				bind:this={pages}
 				on={!!field.pages}
 				at={globalId(character, field)}
-				rows=".grid > tbody > tr"
+				rows={field.cards ? '.cards > li' : '.grid > tbody > tr'}
 				bind:count={pageCount}
 			>
-				<Table {character} {field} rows={v as Row[]} {set} {laying} {picked} {drop} {onpick} />
+				{#if field.cards}
+					<Cards
+						{character}
+						{field}
+						rows={v as Row[]}
+						{set}
+						{laying}
+						{picked}
+						drop={drop?.at}
+						{onpick}
+					/>
+				{:else}
+					<Table
+						{character}
+						{field}
+						rows={v as Row[]}
+						{set}
+						{laying}
+						{picked}
+						drop={drop?.index}
+						{onpick}
+					/>
+				{/if}
 			</Pages>
 		{:else if field.kind === 'image'}
 			{@const src = v as string}

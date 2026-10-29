@@ -143,6 +143,8 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 			(c.from === undefined || isStr(c.from)) &&
 			(c.formula === undefined || isStr(c.formula)) &&
 			(c.bar === undefined || c.bar === true) &&
+			(c.box === undefined || isBox(c.box)) &&
+			(c.hideLabel === undefined || c.hideLabel === true) &&
 			okRules(c.rules);
 		if (f.columns !== undefined && !(Array.isArray(f.columns) && f.columns.every(okColumn))) {
 			throw new ImportError(`"${f.label}" on ${name} has malformed columns`);
@@ -162,6 +164,9 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		}
 		if (f.pages !== undefined && f.pages !== true) {
 			throw new ImportError(`"${f.label}" on ${name} says wrongly whether it has pages`);
+		}
+		if (f.cards !== undefined && f.cards !== true) {
+			throw new ImportError(`"${f.label}" on ${name} says wrongly whether it shows as cards`);
 		}
 		if (f.hideLabel !== undefined && f.hideLabel !== true) {
 			throw new ImportError(`"${f.label}" on ${name} says wrongly whether its label shows`);

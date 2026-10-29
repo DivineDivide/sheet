@@ -126,6 +126,25 @@ describe('parse', () => {
 		expect(() => parse(mangle((d) => (table(d).columns[0].bar = 1)))).toThrow(/columns/);
 	});
 
+	it("keeps a table as cards and its columns' places, and refuses any other setting", () => {
+		const table = (d: Record<string, any>) =>
+			d.characters[0].fields.find((f: { kind: string }) => f.kind === 'table');
+		const box = { x: 0, y: 8, w: 240, h: 48 };
+		const kept = parse(
+			mangle((d) => {
+				table(d).cards = true;
+				table(d).columns[0].box = box;
+				table(d).columns[0].hideLabel = true;
+			})
+		);
+		const f = kept.characters[0].fields.find((f) => f.kind === 'table')!;
+		expect(f.cards).toBe(true);
+		expect(f.columns![0]).toMatchObject({ box, hideLabel: true });
+		expect(() => parse(mangle((d) => (table(d).cards = 'yes')))).toThrow(/cards/);
+		expect(() => parse(mangle((d) => (table(d).columns[0].box = { x: 0 })))).toThrow(/columns/);
+		expect(() => parse(mangle((d) => (table(d).columns[0].hideLabel = 1)))).toThrow(/columns/);
+	});
+
 	it('refuses an unknown field kind', () => {
 		expect(() => parse(mangle((d) => (d.templates[0].fields[0].kind = 'dice')))).toThrow(
 			/malformed/

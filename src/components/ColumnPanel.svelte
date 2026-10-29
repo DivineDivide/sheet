@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { below } from '../lib/cards';
 	import { columnKinds, type Column, type Field, type When } from '../lib/doc';
 	import { compile, type Name } from '../lib/formula';
 	import { t } from '../lib/i18n.svelte';
@@ -55,6 +56,27 @@
 		{#each columnKinds as k (k)}<option value={k}>{t(k)}</option>{/each}
 	</select>
 </label>
+{#if field.cards}
+	<label>
+		<span class="muted">{t('On the card')}</span>
+		<select
+			value={column.box ? 'placed' : 'unplaced'}
+			onchange={(e) => {
+				const on = e.currentTarget.value === 'placed';
+				change((cs) =>
+					cs.map((c) => {
+						if (c.id !== column.id) return c;
+						const { box: _, ...off } = c;
+						return on ? { ...c, box: below(cs, c.kind) } : off;
+					})
+				);
+			}}
+		>
+			<option value="placed">{t('Placed')}</option>
+			<option value="unplaced">{t('Unplaced')}</option>
+		</select>
+	</label>
+{/if}
 {#if column.kind === 'choice'}
 	{@const tables = sources(session.doc).filter((t) => t.id !== table)}
 	{#if tables.length}

@@ -26,6 +26,7 @@ import {
 	type Value
 } from '../doc';
 import { loosen } from '../bind';
+import { below, stack } from '../cards';
 import { FormulaError, compile, compileLine, isErr, refText, result, same, show } from '../formula';
 import { ImportError, validate } from '../io';
 import { GAP, clamp, defaultSize, type Box } from '../layout';
@@ -427,6 +428,29 @@ const columnSpec = obj(
 	['name', 'kind']
 );
 
+/** Places a column on its table's cards, sizes it there, or takes it off; hides its name. */
+function setCard(col: Column, i: Input, cols: Column[]) {
+	const at = pair(i, 'card_at', 'x', 'y');
+	const size = pair(i, 'card_size', 'w', 'h');
+	if (i.on_card === false) {
+		if (at || size) fail(`${col.name} cannot be taken off the card and placed on it at once`);
+		delete col.box;
+	} else if (at || size || (i.on_card === true && !col.box)) {
+		const b = col.box ?? below(cols, col.kind);
+		col.box = clamp({
+			x: at ? at[0] * DOT : b.x,
+			y: at ? at[1] * DOT : b.y,
+			w: size ? size[0] * DOT : b.w,
+			h: size ? size[1] * DOT : b.h
+		});
+	}
+	if (typeof i.hide_label === 'boolean') {
+		if (col.kind === 'button') fail(`${col.name} is a button column, whose name is its text`);
+		if (i.hide_label) col.hideLabel = true;
+		else delete col.hideLabel;
+	}
+}
+
 /** Shows a resource field or column as a bar, or as numbers again. */
 function setBar(on: { kind: string; bar?: true }, name: string, shown: boolean) {
 	if (on.kind !== 'resource') fail(`only a resource shows as a bar, and ${name} is ${on.kind}`);
@@ -694,7 +718,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_field',
 		description:
-			"Changes a field's label, kind, tab, place, size or formula, a choice field's choices, whether its label shows, whether a long list flips pages, or whether a resource shows as a bar. A value left from its old kind reads as blank.",
+			"Changes a field's label, kind, tab, place, size or formula, a choice field's choices, whether its label shows, whether a long list flips pages, whether a table shows as cards, or whether a resource shows as a bar. A value left from its old kind reads as blank.",
 		input_schema: obj(
 			{
 				...who,
@@ -713,6 +737,11 @@ export const tools: Tool[] = [
 					type: 'boolean',
 					description:
 						"true hides the field's label from everyone, its + and other controls showing on hover; false shows it. A button's label is its text, so it has none to hide"
+				},
+				cards: {
+					type: 'boolean',
+					description:
+						"A table: true shows each row as a card, laid out by edit_table's card_at and card_size, its columns stacked down the card the first time; false as a grid, keeping the card's layout"
 				},
 				bar
 			},
@@ -748,6 +777,14 @@ export const tools: Tool[] = [
 				if (f.kind === 'button') fail(`${f.label} is a button, whose label is its text`);
 				if (i.hide_label) f.hideLabel = true;
 				else delete f.hideLabel;
+			}
+			if (typeof i.cards === 'boolean') {
+				if (f.kind !== 'table') fail(`only a table shows as cards, and ${f.label} is a ${f.kind}`);
+				if (!i.cards) delete f.cards;
+				else {
+					f.cards = true;
+					f.columns = stack(f.columns ?? []);
+				}
 			}
 			if (typeof i.bar === 'boolean') setBar(f, f.label, i.bar);
 			setChoices(doc, c, f, i);
@@ -887,7 +924,7 @@ export const tools: Tool[] = [
 	{
 		name: 'edit_table',
 		description:
-			"Changes a table's columns, then its rows. Rows are numbered as read shows them, before this call; cells are {column name: value}, and null empties a cell. A row that follows a source row takes its cells from there.",
+			"Changes a table's columns, then its rows. Rows are numbered as read shows them, before this call; cells are {column name: value}, and null empties a cell. A row that follows a source row takes its cells from there. On a table shown as cards a new column goes under the rest of the card.",
 		input_schema: obj(
 			{
 				...who,
@@ -902,7 +939,24 @@ export const tools: Tool[] = [
 							choices: list({ type: 'string' }, 'What a choice column offers'),
 							from,
 							formula: text("A formula column's formula; empty removes it"),
-							bar
+							bar,
+							card_at: {
+								...obj({ x: num, y: num }, ['x', 'y']),
+								description: "Its box's top-left on the table's cards, in dots from the card's"
+							},
+							card_size: {
+								...obj({ w: num, h: num }, ['w', 'h']),
+								description: 'Its box on the cards, in dots; 3×3 is the smallest'
+							},
+							on_card: {
+								type: 'boolean',
+								description: 'false takes it off the cards; true puts it back, under the rest'
+							},
+							hide_label: {
+								type: 'boolean',
+								description:
+									"true hides its name above its value on the cards; a button's name is its text"
+							}
 						},
 						['column']
 					),
@@ -972,9 +1026,11 @@ export const tools: Tool[] = [
 				const formula = opt(ch, 'formula');
 				if (formula !== undefined) formulas.push([col, formula]);
 				if (typeof ch.bar === 'boolean') setBar(col, col.name, ch.bar);
+				setCard(col, ch, cols);
 			}
 			for (const spec of objs(i, 'add_columns')) {
 				const col = newColumn(doc, c, spec, cols);
+				if (f.cards) col.box = below(cols, col.kind);
 				cols.push(col);
 				const formula = opt(spec, 'formula');
 				if (formula) formulas.push([col, formula]);

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
+	import { stack } from '../lib/cards';
 	import {
 		globalId,
 		kinds,
@@ -177,6 +178,25 @@
 							{/each}
 						</select>
 					</label>
+					{#if field.kind === 'table'}
+						<label {@attach tip(t('Cards show each row as a card, laid out here in Edit layout'))}>
+							<span class="muted">{t('Shows as')}</span>
+							<select
+								value={field.cards ? 'cards' : 'table'}
+								onchange={(e) => {
+									const cards = e.currentTarget.value === 'cards';
+									editField(field.id, (f) => {
+										if (!cards) return delete f.cards;
+										f.cards = true;
+										f.columns = stack(f.columns ?? []);
+									});
+								}}
+							>
+								<option value="table">{t('Table')}</option>
+								<option value="cards">{t('Cards')}</option>
+							</select>
+						</label>
+					{/if}
 					{#if field.kind === 'table' || field.kind === 'entries'}
 						<label {@attach tip(t('A page holds as many rows as fit the box'))}>
 							<span class="muted">{t('Long lists')}</span>

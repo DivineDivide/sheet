@@ -104,6 +104,12 @@ export default {
 	'Another field is labelled {text}, so this one is {label}.':
 		'已有欄位的標題是 {text}，所以這個改為 {label}。',
 	Kind: '類型',
+	'Cards show each row as a card, laid out here in Edit layout':
+		'卡片把每一列顯示為一張卡片，在編輯版面中排版',
+	Table: '表格',
+	Cards: '卡片',
+	'On the card': '卡片上',
+	Placed: '已放置',
 	'A page holds as many rows as fit the box': '每頁放入框內放得下的列數',
 	'Long lists': '長清單',
 	Scroll: '捲動',

@@ -1,35 +1,50 @@
 <script lang="ts" module>
+	import { uniqueLabel, type Character, type Column, type Field, type Row } from '../lib/doc';
+	import { t } from '../lib/i18n.svelte';
+	import { session } from '../lib/session.svelte';
+
 	/** Which gap between a header row's columns is nearest `x`, counted from the left. */
 	export const gapAt = (head: Element, x: number) =>
 		[...head.querySelectorAll('th[data-col]')].filter((th) => {
 			const r = th.getBoundingClientRect();
 			return r.left + r.width / 2 < x;
 		}).length;
+
+	/** Rewrites a table's columns as one change, for the grid's headers and the card alike. */
+	export const editColumns = (
+		character: Character,
+		field: Field,
+		fn: (cols: Column[]) => Column[]
+	) =>
+		session.change((d) => {
+			const f = d.characters
+				.find((c) => c.id === character.id)!
+				.fields.find((x) => x.id === field.id)!;
+			f.columns = fn(f.columns ?? []);
+		});
+
+	export function renameColumn(character: Character, field: Field, col: Column, text: string) {
+		const name = uniqueLabel(
+			text,
+			(field.columns ?? []).map((c) => ({ id: c.id, label: c.name })),
+			col.id
+		);
+		if (name !== text)
+			session.notice = t('{label} already has {text}, so this is {name}.', {
+				label: field.label,
+				text,
+				name
+			});
+		editColumns(character, field, (cs) => cs.map((c) => (c.id === col.id ? { ...c, name } : c)));
+	}
 </script>
 
 <script lang="ts">
-	import {
-		cellOf,
-		globalId,
-		tagsIn,
-		uniqueLabel,
-		type Cell,
-		type Character,
-		type Column,
-		type Field,
-		type Resource,
-		type Row
-	} from '../lib/doc';
-	import { cellResult, isErr, show } from '../lib/formula';
-	import { t } from '../lib/i18n.svelte';
-	import { hint, ready, sheetOf } from '../lib/rules';
-	import { CELL, shrink } from '../lib/picture';
-	import { session } from '../lib/session.svelte';
-	import { choose, fromSource, keyOf, sources, type Source } from '../lib/source';
+	import { sheetOf } from '../lib/rules';
+	import { sources } from '../lib/source';
 	import { tip } from '../lib/tip';
-	import Bar from './Bar.svelte';
+	import Cell from './Cell.svelte';
 	import Icon from './Icon.svelte';
-	import Prose from './Prose.svelte';
 
 	// A table field: each column holds one kind, and its rows are the character's value. In
 	// Edit layout the headers are what is edited: rename in place, press a column's icon to
@@ -60,68 +75,7 @@
 	const sheet = $derived(sheetOf(session.doc, character));
 	const tables = $derived(new Map(sources(session.doc).map((s) => [s.id, s])));
 
-	/** A choice column's source rows, by the names they are chosen by. */
-	function namesIn(src: Source, c: Column): string[] {
-		const key = keyOf(src, c);
-		const names = key ? src.rows.map((r) => r.cells[key.id]).filter((v) => v !== undefined) : [];
-		return [...new Set(names.map(String))];
-	}
-
-	/** One change, so ⌘Z takes back the whole row's filling. */
-	function pick(row: Row, c: Column, src: Source, name: string) {
-		const key = keyOf(src, c);
-		const item = key && src.rows.find((r) => String(r.cells[key.id] ?? '') === name);
-		if (item) return set(rows.map((r) => (r.id === row.id ? choose(src, item, r, cols) : r)));
-		const { [c.id]: _, ...cells } = row.cells;
-		set(rows.map((r) => (r.id === row.id ? { id: r.id, cells } : r)));
-	}
-
-	function put(row: Row, col: string, cell: Cell | undefined) {
-		const cells = { ...row.cells };
-		if (cell === undefined || cell === '') delete cells[col];
-		else cells[col] = cell;
-		set(rows.map((r) => (r.id === row.id ? { ...r, cells } : r)));
-	}
-
-	async function take(row: Row, col: string, file: File | undefined) {
-		if (!file?.type.startsWith('image/')) return;
-		try {
-			const pic = await shrink(file, CELL);
-			// The row as it is now: another edit may have reached it while the picture shrank.
-			const now = rows.find((r) => r.id === row.id);
-			if (now) put(now, col, pic);
-		} catch {
-			session.notice = t('{name} could not be read as a picture.', { name: file.name });
-		}
-	}
-
-	const columns = (fn: (cols: Column[]) => Column[]) =>
-		session.change((d) => {
-			const f = d.characters
-				.find((c) => c.id === character.id)!
-				.fields.find((x) => x.id === field.id)!;
-			f.columns = fn(f.columns ?? []);
-		});
-
-	function rename(col: Column, text: string) {
-		const name = uniqueLabel(
-			text,
-			cols.map((c) => ({ id: c.id, label: c.name })),
-			col.id
-		);
-		if (name !== text)
-			session.notice = t('{label} already has {text}, so this is {name}.', {
-				label: field.label,
-				text,
-				name
-			});
-		columns((cs) => cs.map((c) => (c.id === col.id ? { ...c, name } : c)));
-	}
-
-	const num = (text: string) => {
-		const n = Number(text);
-		return text.trim() !== '' && Number.isFinite(n) ? n : undefined;
-	};
+	const columns = (fn: (cols: Column[]) => Column[]) => editColumns(character, field, fn);
 
 	/** Where a header dragged by its icon would go, as a column index. */
 	let moving = $state<number | null>(null);
@@ -183,7 +137,7 @@
 									onpointerdown={(e) => e.stopPropagation()}
 									onchange={(e) => {
 										const text = e.currentTarget.value.trim();
-										if (text) rename(c, text);
+										if (text) renameColumn(character, field, c, text);
 										else e.currentTarget.value = c.name;
 									}}
 								/>
@@ -203,162 +157,7 @@
 				{@const follows = row.link && tables.get(row.link.table)}
 				<tr>
 					{#each cols as c (c.id)}
-						{@const v = cellOf(row, c)}
-						{@const held = follows && fromSource(follows, c) && c.from !== follows.id}
-						<!-- A cell its source row fills changes there, not here. -->
-						<td class={c.kind} inert={held || undefined}>
-							{#if c.kind === 'choice'}
-								{@const src = c.from ? tables.get(c.from) : undefined}
-								{@const choices = src ? namesIn(src, c) : (c.choices ?? [])}
-								<select
-									value={v === undefined ? '' : String(v)}
-									aria-label={c.name}
-									onchange={(e) =>
-										src
-											? pick(row, c, src, e.currentTarget.value)
-											: put(row, c.id, e.currentTarget.value)}
-								>
-									<!-- A row drawing on a table is emptied by removing it, so only a blank row shows none. -->
-									{#if !src}<option value=""></option>
-									{:else if v === undefined}<option value="" disabled hidden></option>{/if}
-									{#each choices as o (o)}<option>{o}</option>{/each}
-									<!-- A value from before the choices changed still shows. -->
-									{#if v !== undefined && !choices.includes(String(v))}<option>{v}</option>{/if}
-								</select>
-							{:else if c.kind === 'number'}
-								<input
-									class="short"
-									type="number"
-									value={v ?? ''}
-									aria-label={c.name}
-									onchange={(e) => put(row, c.id, num(e.currentTarget.value))}
-								/>
-							{:else if c.kind === 'resource' && c.bar}
-								<Bar compact value={v as Resource} label={c.name} set={(r) => put(row, c.id, r)} />
-							{:else if c.kind === 'resource'}
-								{@const r = v as Resource}
-								<span class="pair">
-									<input
-										class="short"
-										type="number"
-										value={r.cur}
-										aria-label={t('{label} current', { label: c.name })}
-										onchange={(e) =>
-											put(row, c.id, { ...r, cur: num(e.currentTarget.value) ?? r.cur })}
-									/><span class="of">/</span><input
-										class="short"
-										type="number"
-										value={r.max}
-										aria-label={t('{label} max', { label: c.name })}
-										onchange={(e) =>
-											put(row, c.id, { ...r, max: num(e.currentTarget.value) ?? r.max })}
-									/>
-								</span>
-							{:else if c.kind === 'track'}
-								{@const boxes = v as boolean[]}
-								<span class="pair">
-									{#each boxes as on, i (i)}
-										<button
-											class="box"
-											class:on
-											aria-label={t('{label} box {n}', { label: c.name, n: i + 1 })}
-											aria-pressed={on}
-											onclick={() =>
-												put(
-													row,
-													c.id,
-													boxes.map((b, j) => (j === i ? !b : b))
-												)}
-										></button>
-									{/each}
-									<button
-										class="x"
-										aria-label={t('Remove a box')}
-										disabled={!boxes.length}
-										onclick={() => put(row, c.id, boxes.slice(0, -1))}>−</button
-									>
-									<button
-										class="x"
-										aria-label={t('Add a box')}
-										onclick={() => put(row, c.id, [...boxes, false])}>+</button
-									>
-								</span>
-							{:else if c.kind === 'formula'}
-								{@const out = cellResult(sheet, field.id, c.id, row.id)}
-								<output class:err={isErr(out)} title={isErr(out) ? out.why : undefined}
-									>{c.formula?.trim() ? show(out) : ''}</output
-								>
-							{:else if c.kind === 'button'}
-								{@const why =
-									session.status === 'open'
-										? ready(session.doc, character, c.id, { table: field, row })
-										: t('Waiting for the room to come back.')}
-								<button
-									class="press"
-									disabled={why !== true}
-									{@attach tip(hint(session.doc, character, c.id, why, { table: field, row }))}
-									onclick={() =>
-										session.act({
-											press: { character: character.id, field: field.id, column: c.id, row: row.id }
-										})}>{c.name}</button
-								>
-							{:else if c.kind === 'image'}
-								<!-- A drop stops here: on the window it would be taken for a file to import. -->
-								<div
-									class="cellpic"
-									role="group"
-									aria-label={c.name}
-									ondragover={(e) => {
-										e.preventDefault();
-										e.stopPropagation();
-									}}
-									ondrop={(e) => {
-										e.preventDefault();
-										e.stopPropagation();
-										take(row, c.id, e.dataTransfer?.files[0]);
-									}}
-								>
-									<label
-										class:pick={!v}
-										{@attach tip(t(v ? 'Replace the picture' : 'Pick or drop a picture'))}
-									>
-										{#if v}<img src={v as string} alt={c.name} />{:else}+{/if}
-										<input
-											type="file"
-											accept="image/*"
-											hidden
-											onchange={(e) => {
-												take(row, c.id, e.currentTarget.files?.[0]);
-												e.currentTarget.value = '';
-											}}
-										/>
-									</label>
-									{#if v && !held}<button
-											class="x"
-											aria-label={t('Remove the picture')}
-											onclick={() => put(row, c.id, undefined)}>×</button
-										>{/if}
-								</div>
-							{:else if c.kind === 'tags'}
-								<input
-									value={((v as string[] | undefined) ?? []).join(', ')}
-									aria-label={c.name}
-									placeholder={t('a, b')}
-									onchange={(e) => {
-										const tags = tagsIn(e.currentTarget.value);
-										put(row, c.id, tags.length ? tags : undefined);
-									}}
-								/>
-							{:else}
-								<Prose
-									value={v === undefined ? '' : String(v)}
-									at="{globalId(character, field)}/{row.id}/{c.id}"
-									label={c.name}
-									empty=""
-									onchange={(t) => put(row, c.id, t)}
-								/>
-							{/if}
-						</td>
+						<td><Cell {character} {field} {rows} {set} {row} column={c} {sheet} {tables} /></td>
 					{/each}
 					<td class="ends">
 						<!-- A table following a map keeps its one row there. -->
@@ -465,44 +264,6 @@
 	.grid th:last-child {
 		width: 1.5rem;
 	}
-	/* A cell of text is one line until it holds more. */
-	.grid :global(.grow) {
-		min-height: 1.6em;
-	}
-	/* Wide enough for the chosen word, however the table shares out its width. */
-	.grid select {
-		width: 100%;
-		min-width: 5.5em;
-		field-sizing: content;
-	}
-	.short {
-		width: 6.5ch;
-		font-variant-numeric: tabular-nums;
-	}
-	.tags input {
-		width: 100%;
-		min-width: 6em;
-	}
-	.pair {
-		display: flex;
-		align-items: center;
-		gap: 0.15rem;
-	}
-	.of {
-		color: var(--muted);
-	}
-	.box {
-		width: 1.1rem;
-		height: 1.1rem;
-		margin: 0 0.05rem;
-		padding: 0;
-		border-radius: var(--track-radius);
-		rotate: var(--track-turn);
-	}
-	.box.on {
-		background: var(--accent);
-		border-color: var(--accent);
-	}
 	.ends {
 		white-space: nowrap;
 	}
@@ -510,55 +271,6 @@
 		width: 0.8rem;
 		height: 0.8rem;
 		vertical-align: middle;
-	}
-	.track .x {
-		opacity: 0;
-	}
-	.track:hover .x,
-	.track:focus-within .x {
-		opacity: 1;
-	}
-	output {
-		font-variant-numeric: tabular-nums;
-	}
-	.cellpic {
-		display: flex;
-		align-items: start;
-		gap: 0.15rem;
-	}
-	.cellpic label {
-		cursor: pointer;
-	}
-	.cellpic img {
-		display: block;
-		max-width: 8rem;
-		max-height: 6rem;
-		border-radius: var(--radius);
-	}
-	.cellpic .pick {
-		padding: 0.1rem 0.6rem;
-		border: 1px dashed var(--line);
-		border-radius: var(--radius);
-		color: var(--muted);
-	}
-	.cellpic .x {
-		opacity: 0;
-	}
-	.cellpic:hover .x,
-	.cellpic:focus-within .x {
-		opacity: 1;
-	}
-	.press {
-		padding: 0.05rem 0.5rem;
-		border-color: var(--accent);
-		color: var(--accent);
-		white-space: nowrap;
-	}
-	.press:disabled {
-		opacity: 0.45;
-	}
-	.err {
-		color: var(--accent);
 	}
 	.none {
 		font-size: 0.85rem;

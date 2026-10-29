@@ -49,6 +49,12 @@ export default {
 	'Stop following {name}': '停止跟隨 {name}',
 	'Follows {name}. Press to keep it as it is now.': '跟隨 {name}。按下以保留現在的內容。',
 	'Remove this row': '移除這一列',
+	'Remove this card': '移除這張卡片',
+	'Nothing is on the card yet. In Edit layout, drag columns onto it.':
+		'卡片上還沒有東西。請在編輯版面中把欄拖到卡片上。',
+	'{name}, {kind}. Press to set it up, drag it onto the card.':
+		'{name}，{kind}。按下以設定，拖曳到卡片上。',
+	'Drag a box here to take it off the card': '把框拖到這裡即可移出卡片',
 	'No columns yet. In Edit layout, drag a kind from the left onto this table.':
 		'還沒有欄。請在編輯版面中，從左側把類型拖到這個表格上。',
 

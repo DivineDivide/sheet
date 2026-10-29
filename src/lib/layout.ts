@@ -47,16 +47,19 @@ export function bounds(boxes: Box[]): Box {
 	};
 }
 
-/** Top to bottom, then left to right: the order fields stack in on a narrow screen. */
-export const readingOrder = (fields: Field[]) =>
-	[...fields].sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+/** Top to bottom, then left to right: the order fields and card columns stack in when narrow. */
+export const readingOrder = <T extends { box: Box }>(items: T[]) =>
+	[...items].sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
 
 /**
  * Each field's top once every box has grown to `heights`. A field keeps its x and its gap
  * to each field above it that it overlaps sideways, so a box that grows pushes down only
- * what sits under it, not the whole sheet.
+ * what sits under it, not the whole sheet. A card's columns settle the same way.
  */
-export function settle(fields: Field[], heights: Record<string, number>) {
+export function settle<T extends { id: string; box: Box }>(
+	fields: T[],
+	heights: Record<string, number>
+) {
 	const tops: Record<string, number> = {};
 	// Reading order places everything above a field before the field itself.
 	for (const f of readingOrder(fields)) {

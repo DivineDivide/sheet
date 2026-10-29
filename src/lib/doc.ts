@@ -71,6 +71,10 @@ export type Column = {
 	formula?: string;
 	/** A resource column shows each cell as a bar, pressed or dragged to set it. */
 	bar?: true;
+	/** Where it sits on its table's cards, in px; a column without one is not on them. */
+	box?: Box;
+	/** Its name is not shown above its value on a card. */
+	hideLabel?: true;
 	/** Rules that change this column, run row by row. */
 	rules?: Rule[];
 };
@@ -100,6 +104,8 @@ export type Field = {
 	choices?: string[];
 	/** A table's or entries list's rows flip by page, as many as fit its box, not scroll. */
 	pages?: true;
+	/** A table shows each row as a card, laid out by its columns' boxes. */
+	cards?: true;
 	/** Its label is hidden from everyone, and its label's controls float on hover. */
 	hideLabel?: true;
 	/** A resource field shows as a bar, pressed or dragged to set its current. */
