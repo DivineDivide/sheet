@@ -26,7 +26,7 @@ import {
 	type Value
 } from '../doc';
 import { loosen } from '../bind';
-import { FormulaError, compile, compileLine, isErr, refText, result, show } from '../formula';
+import { FormulaError, compile, compileLine, isErr, refText, result, same, show } from '../formula';
 import { ImportError, validate } from '../io';
 import { GAP, clamp, defaultSize, type Box } from '../layout';
 import { canHang, mapSource } from '../map';
@@ -93,7 +93,6 @@ function pair(i: Input, k: string, a: string, b: string): [number, number] | und
 		: fail(`${k} needs numbers ${a} and ${b}`);
 }
 
-const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 function named<T>(list: T[], name: string, nameOf: (t: T) => string, what: string): T {
 	const hits = list.filter((t) => same(nameOf(t), name));
 	if (hits.length === 1) return hits[0];

@@ -33,6 +33,7 @@ import {
 	render,
 	rolls,
 	rowNames,
+	same,
 	show,
 	str,
 	unwritable,
@@ -340,8 +341,6 @@ function line(
 	// A blank value reads as its kind's blank, so writing that would only store it.
 	if (!equal(now, next)) w.set(p, next);
 }
-
-const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 type Report = { fired: number; notes: string[]; rolled: Rolled[] };
 
