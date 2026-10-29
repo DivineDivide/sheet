@@ -758,3 +758,37 @@ describe('picks in text, written by a scripted chat', () => {
 		expect(() => validate(JSON.parse(JSON.stringify(doc)))).not.toThrow();
 	});
 });
+
+describe('a rule that adds a row, set by a scripted chat', () => {
+	const doc = newDoc();
+	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' }, true);
+	const ash = doc.characters[0];
+
+	it('puts a status on with a button, and shows the rule by column names', () => {
+		ok(doc, 'add_field', { character: 'Ash', label: 'Bite', kind: 'button' });
+		const text = ok(doc, 'set_rules', {
+			character: 'Ash',
+			target: 'Statuses',
+			rules: [{ press: 'Bite', then: ['Statuses += {Name: "Bleed", Stacks: 2}'] }]
+		});
+		expect(text).toBe('Statuses now has:\n- press Bite: Statuses += {Name: "Bleed", Stacks: 2}');
+		expect(ok(doc, 'read', { character: 'Ash', field: 'Statuses' })).toContain(
+			'rule: press Bite: Statuses += {Name: "Bleed", Stacks: 2}'
+		);
+		const bite = ash.fields.find((f) => f.label === 'Bite')!;
+		fire(doc, { press: { character: ash.id, field: bite.id } }, () => 1);
+		expect(ok(doc, 'read', { character: 'Ash', field: 'Statuses' })).toContain(
+			'1. Name=Bleed; Stacks=2'
+		);
+	});
+
+	it('says which columns a row can fill', () => {
+		expect(
+			refused(doc, 'set_rules', {
+				character: 'Ash',
+				target: 'Statuses',
+				rules: [{ press: 'Bite', then: ['Statuses += {Hurt: 1}'] }]
+			})
+		).toBe('"Statuses += {Hurt: 1}": Statuses has Name, Stacks, Left, not Hurt');
+	});
+});

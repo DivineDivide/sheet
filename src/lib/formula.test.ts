@@ -511,7 +511,8 @@ describe('what rules add', () => {
 		['Odds', 'formula'],
 		['Notes', 'text'],
 		['Wait', 'track', [true, false, true]],
-		['Marks', 'tags', ['Poisoned']]
+		['Marks', 'tags', ['Poisoned']],
+		['Skills', 'entries']
 	);
 	const turn = { id: 'k', name: 'Turn', now: 3 };
 	const statuses: Field = {
@@ -570,6 +571,62 @@ describe('what rules add', () => {
 		expect(() => compileLine('Marks.max = 1', known)).toThrow(/has no .max/);
 		expect(() => compileLine('Turn += 1', known)).toThrow(/presses Next/);
 		expect(() => compileLine('Nobody = 1', known)).toThrow(/nothing is called/);
+	});
+
+	it("adds a row by its name or its cells, keyed by its columns' ids, and takes rows by name", () => {
+		expect(compileLine('Statuses += "Poison"', known)).toBe('@st += "Poison"');
+		const stored = compileLine('Statuses += {Name: "Poison", stacks: Wait * MAX(1, 2)}', known);
+		expect(stored).toBe('@st += {@n: "Poison", @x: @f3 * MAX(1, 2)}');
+		expect(render(stored, known)).toBe('Statuses += {Name: "Poison", Stacks: Wait * MAX(1, 2)}');
+		expect(render('@st += {@gone: 1}', known)).toBe('Statuses += {#REF!: 1}');
+		expect(compileLine('Statuses -= "Stun"', known)).toBe('@st -= "Stun"');
+		expect(() => compileLine('Statuses = "x"', known)).toThrow(/takes only \+= and -=/);
+		// A key names a column only, never a field of that label.
+		expect(() => compileLine('Statuses += {Notes: 1}', known)).toThrow(
+			'Statuses has Name, Stacks, not Notes'
+		);
+		expect(() => compileLine('Statuses -= {Name: "x"}', known)).toThrow(/only \+= takes/);
+		expect(() => compileLine('Marks += {Name: "x"}', known)).toThrow(/takes no \{ \}/);
+		expect(() => parseLine('Statuses += {Name "x"}')).toThrow(/a column, a colon and a value/);
+		expect(() => parseLine('Statuses += {Name: "x"')).toThrow(/never closed/);
+		expect(() => parseLine('Statuses += {Name: }')).toThrow(/no value after its colon/);
+		expect(() => parseLine('Statuses += {Name: 1} + 1')).toThrow(/after the \}/);
+		expect(() => parse('{1}')).toThrow(/unexpected/);
+	});
+
+	it('adds an entry by its Name and Text, kept as typed', () => {
+		expect(compileLine('Skills += {name: Notes, Text: "Cold"}', known)).toBe(
+			'@f5 += {name: @f2, Text: "Cold"}'
+		);
+		expect(() => compileLine('Skills += {Cost: 1}', known)).toThrow(
+			'Skills has Name, Text, not Cost'
+		);
+	});
+
+	it('colours and completes the columns inside { }', () => {
+		const painted = highlight('Statuses += {Name: Wait, Left: 1}', known)
+			.filter((p) => p.paint !== 'plain')
+			.map((p) => `${p.text}:${p.paint}`);
+		expect(painted).toEqual([
+			'Statuses:field',
+			'+:op',
+			'=:op',
+			'{:op',
+			'Name:field',
+			'::op',
+			'Wait:field',
+			',:op',
+			'Left:unknown',
+			'::op',
+			'1:num',
+			'}:op'
+		]);
+		const at = (text: string) => suggest(text, text.length, known);
+		expect(at('Statuses += {')).toEqual({ from: 13, options: ['Name: ', 'Stacks: '] });
+		expect(at('Statuses += {Name: MAX(1, 2), st')).toEqual({ from: 30, options: ['Stacks: '] });
+		expect(at('Skills += {Name: "x", T').options).toEqual(['Text: ']);
+		expect(at('Statuses += {Stacks: Wa').options).toEqual(['Wait']);
+		expect(at('Statuses += Wa').options).toEqual(['Wait']);
 	});
 });
 

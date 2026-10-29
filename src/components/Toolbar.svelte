@@ -94,7 +94,13 @@
 	);
 	const rowKnown = $derived(field ? [...rowNames(field), ...known] : known);
 	function fresh(label: string, kind: string, names: Name[]) {
-		const text = `${nameOf({ label })} ${kind === 'text' || kind === 'choice' ? '= ""' : '+= 1'}`;
+		const op =
+			kind === 'text' || kind === 'choice'
+				? '= ""'
+				: kind === 'table' || kind === 'entries'
+					? '+= ""'
+					: '+= 1';
+		const text = `${nameOf({ label })} ${op}`;
 		try {
 			return compileLine(text, names);
 		} catch {

@@ -44,7 +44,7 @@ export const sourceOf = (doc: Doc, id: string | undefined): Source | undefined =
 	id === undefined ? undefined : sources(doc).find((s) => s.id === id);
 
 /** The column a source's rows are known by: Name, else the first. */
-export const nameColumn = (src: Source): Column | undefined =>
+export const nameColumn = (src: Pick<Source, 'columns'>): Column | undefined =>
 	src.columns.find((c) => same(c.name, 'Name')) ?? src.columns[0];
 
 /** The source column a choice column names rows by: its own name, else the source's names. */

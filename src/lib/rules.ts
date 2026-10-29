@@ -8,9 +8,11 @@ import {
 	newId,
 	tagsIn,
 	valueOf,
+	type Cell,
 	type Character,
 	type Column,
 	type Doc,
+	type Entry,
 	type Field,
 	type LogLine,
 	type Resource,
@@ -38,15 +40,17 @@ import {
 	str,
 	unwritable,
 	type InRow,
+	type Key,
 	type Line,
 	type Name,
+	type Node,
 	type Roll,
 	type Rolled,
 	type Sheet,
 	type Val
 } from './formula';
 import { mapSource, nameIn } from './map';
-import { follow } from './source';
+import { choose, follow, nameColumn, sourceOf } from './source';
 import { apply, equal, get, revert, type Op, type Path } from './sync';
 
 /**
@@ -91,12 +95,19 @@ class Stop extends Error {}
 /** Each path written once, with what it held before, so taking an act back is exact. */
 class Writes {
 	readonly first = new Map<string, { p: Path; was: unknown }>();
+	/** Each list's ids before a row left it or it was reordered, so a row comes back in place. */
+	readonly orders = new Map<string, { p: Path; was: string[] }>();
 
 	constructor(private doc: Doc) {}
 
-	op(op: Exclude<Op, { k: 'order' }>) {
+	op(op: Op) {
+		const list = op.k === 'order' ? op.p : op.k === 'del' ? op.p.slice(0, -1) : [];
+		const rows = get(this.doc, list);
+		if (Array.isArray(rows) && !this.orders.has(JSON.stringify(list))) {
+			this.orders.set(JSON.stringify(list), { p: list, was: rows.map((r: Row) => r.id) });
+		}
 		const key = JSON.stringify(op.p);
-		if (!this.first.has(key)) {
+		if (op.k !== 'order' && !this.first.has(key)) {
 			this.first.set(key, { p: op.p, was: structuredClone(get(this.doc, op.p)) });
 		}
 		apply(this.doc, op);
@@ -106,22 +117,33 @@ class Writes {
 		this.op({ k: 'set', p, v });
 	}
 
-	/** Puts back what each path held before. */
+	/** Puts back what each path held before, the last first, so a row is back before its cells. */
 	undo() {
-		for (const { p, was } of this.first.values()) {
+		for (const { p, was } of [...this.first.values()].reverse()) {
 			apply(this.doc, was === undefined ? { k: 'del', p } : { k: 'set', p, v: was });
 		}
+		for (const { p, was } of this.orders.values()) apply(this.doc, { k: 'order', p, ids: was });
 	}
 
 	/** Takes in writes made after this one's. */
 	add(w: Writes) {
 		for (const [key, e] of w.first) if (!this.first.has(key)) this.first.set(key, e);
+		for (const [key, e] of w.orders) if (!this.orders.has(key)) this.orders.set(key, e);
 	}
 
 	changed() {
 		return [...this.first.values()]
 			.map(({ p, was }) => ({ p, was, now: structuredClone(get(this.doc, p)) }))
 			.filter(({ was, now }) => !equal(was, now));
+	}
+
+	/** The lists whose order changed, with their ids now and before. */
+	reordered() {
+		return [...this.orders.values()].flatMap(({ p, was }) => {
+			const rows = get(this.doc, p);
+			const now = Array.isArray(rows) ? rows.map((r: Row) => r.id) : [];
+			return equal(now, was) ? [] : [{ p, now, was }];
+		});
 	}
 }
 
@@ -140,7 +162,16 @@ const listensTo = (r: Rule, w: When) =>
 type Listener = { rule: Rule; owner: string; row?: InRow };
 
 /** The kinds a rule can change, and so the only fields and columns whose rules run. */
-export const ruled: Field['kind'][] = ['number', 'resource', 'track', 'text', 'choice', 'tags'];
+export const ruled: Field['kind'][] = [
+	'number',
+	'resource',
+	'track',
+	'text',
+	'choice',
+	'tags',
+	'table',
+	'entries'
+];
 export const ruledColumns: Column['kind'][] = [
 	'number',
 	'resource',
@@ -156,7 +187,8 @@ function rowName(table: Field, row: Row, rows: Row[]) {
 		const v = (col.kind === 'text' || col.kind === 'choice') && cellOf(row, col);
 		if (v !== undefined && v !== false && String(v).trim()) return String(v).trim();
 	}
-	return `row ${rows.indexOf(row) + 1}`;
+	const i = rows.indexOf(row);
+	return i < 0 ? 'a row' : `row ${i + 1}`;
 }
 
 /**
@@ -306,10 +338,15 @@ function line(
 	rolled: Rolled[],
 	row?: InRow
 ) {
-	const { target, op, expr } = parseLine(text);
+	const l = parseLine(text);
+	const { target, op } = l;
 	const sheet = sheetOf(doc, c);
-	const v = evaluate(expr, sheet, roll, rolled, row);
-	if (isErr(v)) throw new Stop(why(v));
+	const value = (expr: Node) => {
+		const v = evaluate(expr, sheet, roll, rolled, row);
+		if (isErr(v)) throw new Stop(why(v));
+		return v;
+	};
+	const v = l.cells ? undefined : value(l.expr);
 
 	const byRef = (id: string) => target.t === 'ref' && target.id === id;
 	const named = (s: string) => target.t === 'name' && same(s, target.s);
@@ -327,8 +364,14 @@ function line(
 		);
 	}
 	const refused =
-		target.col !== undefined ? "can't be changed by a rule" : unwritable(kind, target.prop, op);
+		target.col !== undefined
+			? "can't be changed by a rule"
+			: unwritable(kind, target.prop, op, !!l.cells);
 	if (refused) throw new Stop(`${col?.name ?? field?.label ?? clock!.name} ${refused}`);
+	if (field?.kind === 'table' || field?.kind === 'entries') {
+		const cells = l.cells?.map(({ key, expr }) => ({ key, v: value(expr) }));
+		return list(doc, c, field, w, op, v, cells);
+	}
 
 	const prop = target.prop?.toLowerCase();
 	const [p, now] = col
@@ -337,9 +380,88 @@ function line(
 				cellOf(row!.row, col)
 			]
 		: [['characters', c.id, 'values', field!.id], valueOf(c, field!)];
-	const next = changed(kind, now, op, v, prop);
+	const next = changed(kind, now, op, v!, prop);
 	// A blank value reads as its kind's blank, so writing that would only store it.
 	if (!equal(now, next)) w.set(p, next);
+}
+
+/**
+ * Adds to a table or entries list a row named `v`, or filled from `cells`, or takes out every
+ * one named `v`. A table drawing on a source adds the source's row of that name, following it.
+ */
+function list(
+	doc: Doc,
+	c: Character,
+	f: Field,
+	w: Writes,
+	op: Line['op'],
+	v: Val | undefined,
+	cells: { key: Key; v: Val }[] = []
+) {
+	const p = ['characters', c.id, 'values', f.id];
+	const name = v === undefined ? undefined : text(v).trim();
+	if (op === '+=' && name === '') {
+		throw new Stop(
+			`${f.kind === 'entries' ? 'an entry' : 'a row'} added to ${f.label} needs a name`
+		);
+	}
+	if (f.kind === 'entries') {
+		const now = valueOf(c, f) as Entry[];
+		if (op === '-=') {
+			const next = now.filter((e) => !same(e.name, name!));
+			if (name && next.length < now.length) w.set(p, next);
+			return;
+		}
+		const e: Entry = { name: name ?? '', text: '' };
+		for (const { key, v } of cells) {
+			const part = key.t === 'name' && (['name', 'text'] as const).find((k) => same(k, key.s));
+			if (!part) throw new Stop('an entry has only a Name and a Text');
+			e[part] = text(v);
+		}
+		w.set(p, [...now, e]);
+		return;
+	}
+	if (f.follows) throw new Stop(`${f.label} keeps only its map's current place`);
+	const cols = f.columns ?? [];
+	const key = nameColumn({ columns: cols });
+	const named = (r: Row, k: Column | undefined, s: string) =>
+		!!k && same(String(r.cells[k.id] ?? ''), s);
+	if (op === '-=') {
+		for (const r of valueOf(c, f) as Row[]) {
+			if (name && named(r, key, name)) w.op({ k: 'del', p: [...p, r.id] });
+		}
+		return;
+	}
+	let row: Row = { id: newId(), cells: {} };
+	if (name !== undefined) {
+		if (!key) throw new Stop(`${f.label} has no column to name a row by`);
+		row.cells[key.id] = name;
+	}
+	for (const { key: k, v } of cells) {
+		const col = cols.find((x) => (k.t === 'ref' ? x.id === k.id : same(x.name, k.s)));
+		if (!col) {
+			throw new Stop(
+				k.t === 'name' ? `${f.label} has no column "${k.s}"` : `a column of ${f.label} was deleted`
+			);
+		}
+		const no = unwritable(col.kind, undefined, '=');
+		if (no) throw new Stop(`${col.name} ${no}`);
+		const cell = changed(col.kind, cellOf(row, col), '=', v) as Cell | undefined;
+		if (cell === undefined || cell === '') delete row.cells[col.id];
+		else row.cells[col.id] = cell;
+	}
+	const src = sourceOf(doc, f.from);
+	const given = key && row.cells[key.id];
+	if (src && given !== undefined) {
+		const item = src.rows.find((r) => named(r, nameColumn(src), String(given)));
+		if (!item) throw new Stop(`${src.name} has no "${given}"`);
+		row = choose(src, item, row, cols);
+	}
+	w.op(
+		Array.isArray(c.values[f.id])
+			? { k: 'set', p: [...p, row.id], v: row }
+			: { k: 'set', p, v: [row] }
+	);
 }
 
 type Report = { fired: number; notes: string[]; rolled: Rolled[] };
@@ -397,19 +519,51 @@ function change(kind: Name['kind'], was: unknown, now: unknown): string {
 		: `${a} → ${b}`;
 }
 
+/** What `a` has that `b` lacks, one for one. */
+function extra<T>(a: T[], b: T[], eq: (x: T, y: T) => boolean): T[] {
+	const left = [...b];
+	return a.filter((x) => {
+		const i = left.findIndex((y) => eq(x, y));
+		if (i >= 0) left.splice(i, 1);
+		return i < 0;
+	});
+}
+
+/** The rows or entries a change added to a list and took out of it, as the log names them. */
+function moves(f: Field, was: unknown, now: unknown, rows: Row[]): string[] {
+	const all = (v: unknown) => (Array.isArray(v) ? v : v === undefined ? [] : [v]);
+	const entries = f.kind === 'entries';
+	const eq = (x: unknown, y: unknown) => (entries ? equal(x, y) : (x as Row).id === (y as Row).id);
+	const name = (x: unknown) =>
+		entries ? (x as Entry).name.trim() || 'an entry' : rowName(f, x as Row, rows);
+	return [
+		...extra(all(now), all(was), eq).map((x) => `${f.label} + ${name(x)}`),
+		...extra(all(was), all(now), eq).map((x) => `${f.label} - ${name(x)}`)
+	];
+}
+
+type Changes = ReturnType<Writes['changed']>;
+
 /** What changed, one part per character. The clock that moved is the title's. */
-function describe(doc: Doc, w: Writes, reports: Map<string, Report>): string[] {
+function describe(doc: Doc, changes: Changes, reports: Map<string, Report>): string[] {
 	const parts = new Map<string, string[]>();
 	const add = (who: string, s: string) => parts.set(who, [...(parts.get(who) ?? []), s]);
-	for (const { p, was, now } of w.changed()) {
+	// A row added or taken out is told as that, not by its cells.
+	const whole = new Set(changes.filter(({ p }) => p.length === 5).map(({ p }) => p[4]));
+	for (const { p, was, now } of changes) {
 		if (p[0] === 'clocks') continue;
 		const c = doc.characters.find((x) => x.id === p[1])!;
 		const f = c.fields.find((x) => x.id === p[3]);
 		// A map's move is the title's, and a table following the map moves with it.
 		if (f?.kind === 'map' || f?.follows) continue;
+		if (f?.kind === 'entries' || (f?.kind === 'table' && p.length <= 5)) {
+			for (const s of moves(f, was, now, valueOf(c, f) as Row[])) add(c.id, s);
+			continue;
+		}
 		if (f && p[5] === 'cells') {
 			const rows = valueOf(c, f) as Row[];
-			const row = rows.find((r) => r.id === p[4])!;
+			const row = rows.find((r) => r.id === p[4]);
+			if (!row || whole.has(p[4])) continue;
 			const col = f.columns?.find((x) => x.id === p[6]);
 			const label = `${f.label} ${rowName(f, row, rows)}: ${col?.name}`;
 			add(c.id, `${label} ${change(col?.kind, was, now)}`);
@@ -506,9 +660,7 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 			const last = [...(doc.log ?? [])]
 				.reverse()
 				.find((l) => l.tick?.clock === k.id && l.tick.to === from)?.tick;
-			for (const op of last ? revert(doc, last.ops, last.undo) : []) {
-				if (op.k !== 'order') w.op(op);
-			}
+			for (const op of last ? revert(doc, last.ops, last.undo) : []) w.op(op);
 			if (k.now === from) w.set(['clocks', k.id, 'now'], from - 1);
 			title = `Back: ${k.name} ${from} → ${from - 1}`;
 		}
@@ -518,14 +670,26 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 	// take both back.
 	follow(doc, (op) => w.op(op));
 	const changed = w.changed();
+	const moved = w.reordered();
 	// A row a table lost is deleted: a set of nothing cannot take it out of its list.
-	const ops: Op[] = changed.map(({ p, now }) =>
-		now === undefined ? { k: 'del', p } : { k: 'set', p, v: now }
-	);
-	const undo: Op[] = changed.map(({ p, was }) =>
-		was === undefined ? { k: 'del', p } : { k: 'set', p, v: structuredClone(was) }
-	);
-	const text = [title, ...describe(doc, w, reports)].join(' · ');
+	const ops: Op[] = [
+		...changed.map(({ p, now }): Op =>
+			now === undefined ? { k: 'del', p } : { k: 'set', p, v: now }
+		),
+		...moved.map(({ p, now }): Op => ({ k: 'order', p, ids: now }))
+	];
+	// Last first, as `Writes.undo`, then each list back in its order.
+	const undo: Op[] = [
+		...[...changed]
+			.reverse()
+			.map(({ p, was }): Op =>
+				was === undefined ? { k: 'del', p } : { k: 'set', p, v: structuredClone(was) }
+			),
+		...moved.map(({ p, was }): Op => ({ k: 'order', p, ids: was }))
+	];
+	// Back's writes are its tick's backwards, so its line reads them in the tick's order.
+	const told = 'back' in act ? [...changed].reverse() : changed;
+	const text = [title, ...describe(doc, told, reports)].join(' · ');
 	const entry: LogLine = { id: newId(), at, text, ...(tick && { tick: { ...tick, ops, undo } }) };
 	return { ops: [...ops, ...logged(doc, entry)], undo };
 }

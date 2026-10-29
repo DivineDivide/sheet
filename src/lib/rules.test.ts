@@ -13,6 +13,7 @@ import {
 	type When
 } from './doc';
 import { names, rowNames } from './formula';
+const names_ = (doc: Doc, c: Character) => names(sheetOf(doc, c));
 import { LOG, compileRule, fire, hint, isAct, ready, sheetOf, type Act } from './rules';
 import { apply, equal } from './sync';
 
@@ -431,5 +432,172 @@ describe('a track flipped between odd and even boxes, and tags added and taken',
 		lib.columns![1].rules = [];
 		press('r1');
 		expect(cell(0, ids.marks)).toBeUndefined();
+	});
+});
+
+describe('rows and entries a rule adds and takes out', () => {
+	function setup() {
+		const doc = newDoc();
+		const turn = doc.clocks[0];
+		const gm = newCharacter('GM');
+		const effect = { id: newId(), name: 'Effect', kind: 'text' as const };
+		const kinds = add(gm, 'Conditions', 'table', [
+			{ id: 'poison', cells: { n: 'Poison', [effect.id]: 'Lose HP' } },
+			{ id: 'stun', cells: { n: 'Stun', [effect.id]: 'Lose a turn' } }
+		]);
+		kinds.columns = [{ id: 'n', name: 'Name', kind: 'text' }, effect];
+		const c = newCharacter('Ash');
+		doc.characters.push(gm, c);
+		const statuses = add(c, 'Statuses', 'table', []);
+		const ids = { name: newId(), stacks: newId(), left: newId(), effect: newId() };
+		statuses.columns = [
+			{ id: ids.name, name: 'Name', kind: 'text' },
+			{ id: ids.stacks, name: 'Stacks', kind: 'number' },
+			{ id: ids.left, name: 'Left', kind: 'number' },
+			{ id: ids.effect, name: 'Effect', kind: 'text' }
+		];
+		statuses.from = globalId(gm, kinds);
+		const skills = add(c, 'Skills', 'entries', [{ name: 'Fire', text: 'Hot' }]);
+		const press = (b: Field) => fire(doc, { press: { character: c.id, field: b.id } }, dice(4));
+		const rows = () => get(c, statuses) as Row[];
+		const names = () => rows().map((r) => r.cells[ids.name]);
+		return { doc, turn, gm, kinds, c, statuses, ids, skills, press, rows, names };
+	}
+
+	it("adds a source's row by its name, with cells of its own, following it after every act", () => {
+		const { doc, gm, kinds, c, statuses, ids, press, rows } = setup();
+		const bite = add(c, 'Bite', 'button');
+		rule(doc, c, statuses, { press: bite.id }, '', 'Statuses += {Name: "Poison", Stacks: 1d6}');
+		expect(statuses.rules![0].then[0]).toBe(
+			`@${statuses.id} += {@${ids.name}: "Poison", @${ids.stacks}: 1d6}`
+		);
+		press(bite);
+		expect(rows()[0]).toMatchObject({
+			cells: { [ids.name]: 'Poison', [ids.stacks]: 4, [ids.effect]: 'Lose HP' },
+			link: { table: globalId(gm, kinds), row: 'poison' }
+		});
+		expect(doc.log!.at(-1)!.text).toBe('Bite · Ash: Statuses + Poison (1d6: 4)');
+		(get(gm, kinds) as Row[])[0].cells[kinds.columns![1].id] = 'Lose 2 HP';
+		press(bite);
+		expect(rows().map((r) => r.cells[ids.effect])).toEqual(['Lose 2 HP', 'Lose 2 HP']);
+	});
+
+	it('refuses a name its source lacks, or none, taking the whole rule back', () => {
+		const { doc, c, statuses, press, rows } = setup();
+		const bite = add(c, 'Bite', 'button');
+		rule(doc, c, statuses, { press: bite.id }, '', 'Statuses += "Poison"', 'Statuses += "Plague"');
+		press(bite);
+		expect(rows()).toEqual([]);
+		expect(doc.log!.at(-1)!.text).toBe(
+			`Bite · Ash: Statuses's rule stopped: GM: Conditions has no "Plague"`
+		);
+		statuses.rules = [];
+		rule(doc, c, statuses, { press: bite.id }, '', 'Statuses += ""');
+		press(bite);
+		expect(doc.log!.at(-1)!.text).toMatch(/a row added to Statuses needs a name$/);
+	});
+
+	it('takes out every row of a name, and puts them back in place, even when its rule fails', () => {
+		const { doc, c, statuses, ids, press, names } = setup();
+		const row = (id: string, name: string) => ({ id, cells: { [ids.name]: name } });
+		c.values[statuses.id] = [
+			row('a', 'Poison'),
+			row('b', 'Stun'),
+			row('c', 'poison'),
+			row('d', 'Sad')
+		];
+		const before = structuredClone(get(c, statuses));
+		const cure = add(c, 'Cure', 'button');
+		rule(doc, c, statuses, { press: cure.id }, '', 'Statuses -= "Poison"');
+		const done = press(cure);
+		expect(names()).toEqual(['Stun', 'Sad']);
+		expect(doc.log!.at(-1)!.text).toBe('Cure · Ash: Statuses - Poison, Statuses - poison');
+		for (const op of done.undo) apply(doc, op);
+		expect(get(c, statuses)).toEqual(before);
+		// The room's own doc stays as everyone's: a rule taken back leaves no row moved.
+		statuses.rules = [];
+		rule(doc, c, statuses, { press: cure.id }, '', 'Statuses -= "Stun"', 'Statuses += "Plague"');
+		expect(press(cure).undo).toEqual([]);
+		expect(names()).toEqual(['Poison', 'Stun', 'poison', 'Sad']);
+	});
+
+	it('lets a status take itself out as it runs out, and Back puts it back where it was', () => {
+		const { doc, turn, c, statuses, ids, names, rows } = setup();
+		c.values[statuses.id] = [
+			{ id: 'p', cells: { [ids.name]: 'Poison', [ids.left]: 2 } },
+			{ id: 's', cells: { [ids.name]: 'Stun' } }
+		];
+		const known = [...rowNames(statuses), ...names_(doc, c)];
+		const typed = (cond: string, ...then: string[]) =>
+			compileRule({ id: newId(), when: { tick: turn.id }, if: cond, then }, known);
+		statuses.columns![2].rules = [
+			typed('Left > 0', 'Left -= 1'),
+			typed('Left = 1', 'Statuses -= Name')
+		];
+		const next = () => fire(doc, { tick: { clock: turn.id, at: turn.now } }, dice(1));
+		next();
+		expect(rows()[0].cells[ids.left]).toBe(1);
+		next();
+		expect(names()).toEqual(['Stun']);
+		expect(doc.log!.at(-1)!.text).toBe('Turn 2 → 3 · Ash: Statuses - Poison');
+		fire(doc, { back: { clock: turn.id, at: 3 } }, dice(1));
+		expect(names()).toEqual(['Poison', 'Stun']);
+		expect(rows()[0].cells[ids.left]).toBe(1);
+		expect(doc.log!.at(-1)!.text).toBe('Back: Turn 3 → 2 · Ash: Statuses + Poison');
+	});
+
+	it('adds a row to a table with no source and no rows yet, its name in its first column', () => {
+		const { doc, c, press } = setup();
+		const loot = add(c, 'Loot', 'table');
+		loot.columns = [
+			{ id: 'item', name: 'Item', kind: 'text' },
+			{ id: 'qty', name: 'Qty', kind: 'number' },
+			{ id: 'tags', name: 'Marks', kind: 'tags' }
+		];
+		const open = add(c, 'Open', 'button');
+		rule(
+			doc,
+			c,
+			loot,
+			{ press: open.id },
+			'',
+			'Loot += "Rope"',
+			'Loot += {Item: "Gem", Qty: 2, Marks: ""}'
+		);
+		const done = press(open);
+		expect((get(c, loot) as Row[]).map((r) => r.cells)).toEqual([
+			{ item: 'Rope' },
+			{ item: 'Gem', qty: 2 }
+		]);
+		for (const op of done.undo) apply(doc, op);
+		expect(get(c, loot)).toBeUndefined();
+	});
+
+	it('adds an entry by its name or its parts, and takes entries by name', () => {
+		const { doc, c, skills, press } = setup();
+		const learn = add(c, 'Learn', 'button');
+		rule(
+			doc,
+			c,
+			skills,
+			{ press: learn.id },
+			'',
+			'Skills += "Ice"',
+			'Skills += {Name: "Wind", text: "Fast"}'
+		);
+		const done = press(learn);
+		expect(get(c, skills)).toEqual([
+			{ name: 'Fire', text: 'Hot' },
+			{ name: 'Ice', text: '' },
+			{ name: 'Wind', text: 'Fast' }
+		]);
+		expect(doc.log!.at(-1)!.text).toBe('Learn · Ash: Skills + Ice, Skills + Wind');
+		for (const op of done.undo) apply(doc, op);
+		expect(get(c, skills)).toEqual([{ name: 'Fire', text: 'Hot' }]);
+		skills.rules = [];
+		rule(doc, c, skills, { press: learn.id }, '', 'Skills -= "fire"');
+		press(learn);
+		expect(get(c, skills)).toEqual([]);
+		expect(doc.log!.at(-1)!.text).toBe('Learn · Ash: Skills - Fire');
 	});
 });

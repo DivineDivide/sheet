@@ -67,7 +67,28 @@ const DICE = /^(\d+)d(\d+)(?![\w.])/i;
 // Dots allowed, for Excel's `_xlfn.CONCAT(` and `FLOOR.MATH(`.
 const FN = /^[A-Za-z_][A-Za-z0-9_.]*(?=\s*\()/;
 const ERR = /^#(DIV\/0!|N\/A|NAME\?|NULL!|NUM!|REF!|VALUE!|CYCLE!|ERROR!)/i;
-const OPS = ['<=', '>=', '<>', '+', '-', '*', '/', '^', '&', '=', '<', '>', '%', '(', ')', ','];
+// Braces and colons only write the cells a rule's line adds, as in `T += {Name: "x"}`.
+const OPS = [
+	'<=',
+	'>=',
+	'<>',
+	'+',
+	'-',
+	'*',
+	'/',
+	'^',
+	'&',
+	'=',
+	'<',
+	'>',
+	'%',
+	'(',
+	')',
+	',',
+	'{',
+	'}',
+	':'
+];
 // Ids are UUIDs, whose dashes must not swallow the minus in `@id-1`; any other id that
 // is not one word goes in braces.
 const REF =
@@ -1100,11 +1121,61 @@ export function compile(text: string, names: Name[]): string {
 	return out;
 }
 
+const opIs = (t: Tok | undefined, s: string) => t?.k === 'op' && t.s === s;
+
+/**
+ * Whether the token at `i` of a line would name a column of the row it adds, as `Name` in
+ * `T += {Name: "x", Stacks: 2}`: right after its brace, or a comma outside parentheses.
+ */
+function keyAt(toks: Tok[], i: number): boolean {
+	const open = toks.findIndex((t) => opIs(t, '{'));
+	if (open < 1 || i <= open || !(opIs(toks[i - 1], '{') || opIs(toks[i - 1], ','))) return false;
+	let depth = 0;
+	for (let j = open + 1; j < i; j++) depth += opIs(toks[j], '(') ? 1 : opIs(toks[j], ')') ? -1 : 0;
+	return depth === 0;
+}
+
+/** The tokens naming the columns of the row a line adds, each before its colon. */
+const keysIn = (toks: Tok[]) =>
+	new Set(
+		toks.filter(
+			(t, i) => (t.k === 'name' || t.k === 'ref') && opIs(toks[i + 1], ':') && keyAt(toks, i)
+		)
+	);
+
+/** What a line changes, when it is one of this character's own fields. */
+function targetOf(toks: Tok[], names: Name[]): Name | undefined {
+	const t = toks[0];
+	if (t?.k === 'ref') return names.find((f) => f.id === t.id);
+	if (t?.k !== 'name' || t.of !== undefined) return undefined;
+	return names.find((f) => f.of === undefined && !f.row && same(f.label, t.s));
+}
+
+/** What a key of the row a line adds can be: a table's columns, or an entry's two parts. */
+const keysOf = (target: Name | undefined): { id?: string; name: string }[] =>
+	target?.kind === 'entries'
+		? [{ name: 'Name' }, { name: 'Text' }]
+		: target?.kind === 'table'
+			? (target.columns ?? []).map((c) => ({ id: c.id, name: c.name }))
+			: [];
+
 function swap(src: string, names: Name[]): string {
 	let out = '';
 	let last = 0;
-	for (const t of lex(src)) {
+	const toks = lex(src);
+	const keys = keysIn(toks);
+	const target = keys.size ? targetOf(toks, names) : undefined;
+	for (const t of toks) {
 		if (t.k !== 'name') continue;
+		// A table's columns are stored by id, so a rename breaks nothing; an entry's parts as typed.
+		if (keys.has(t)) {
+			const col = target?.kind === 'table' && keysOf(target).find((k) => same(k.name, t.s));
+			if (col) {
+				out += `${src.slice(last, t.at)}${refText(col.id!)}`;
+				last = t.end;
+			}
+			continue;
+		}
 		// A row's own columns come first; Excel's [@Column] names only them.
 		const at = t.s.startsWith('@');
 		// A bare label names only this character's own; another's is written `Name!Label`.
@@ -1135,11 +1206,13 @@ function swap(src: string, names: Name[]): string {
 	return out + src.slice(last);
 }
 
+/** A column of the row a line adds: a table's by id, an entry's Name or Text as typed. */
+export type Key = { t: 'ref'; id: string } | { t: 'name'; s: string };
+
 export type Line = {
 	target: Extract<Node, { t: 'ref' }> | Extract<Node, { t: 'name' }>;
 	op: '=' | '+=' | '-=';
-	expr: Node;
-};
+} & ({ expr: Node; cells?: undefined } | { expr?: undefined; cells: { key: Key; expr: Node }[] });
 
 /** Reads a rule's line: what it changes, then =, += or -=, then a formula. */
 export function parseLine(text: string): Line {
@@ -1165,16 +1238,57 @@ export function parseLine(text: string): Line {
 		t.k === 'ref'
 			? { t: 'ref', id: t.id, prop: t.prop, col: t.col }
 			: { t: 'name', s: t.s, of: t.of, prop: t.prop, col: t.col };
-	return { target, op, expr: parse(src.slice(end)) };
+	const rest = src.slice(end);
+	if (!/^\s*\{/.test(rest)) return { target, op, expr: parse(rest) };
+	if (op !== '+=') throw new FormulaError('only += takes { }, the cells of a row it adds');
+	return { target, op, cells: record(rest) };
+}
+
+/** `{Column: formula, …}`: the cells of the row or entry a line adds. */
+function record(src: string): { key: Key; expr: Node }[] {
+	const toks = lex(src);
+	const out: { key: Key; expr: Node }[] = [];
+	let p = 1;
+	for (;;) {
+		const k = toks[p];
+		if (
+			(k?.k !== 'name' && k?.k !== 'ref') ||
+			k.prop ||
+			k.col !== undefined ||
+			(k.k === 'name' && k.of !== undefined) ||
+			!opIs(toks[p + 1], ':')
+		)
+			throw new FormulaError(
+				'each cell in { } is a column, a colon and a value, as in {Name: "Poison"}'
+			);
+		const from = (p += 2);
+		let depth = 0;
+		while (p < toks.length && (depth || !(opIs(toks[p], ',') || opIs(toks[p], '}')))) {
+			depth += opIs(toks[p], '(') ? 1 : opIs(toks[p], ')') ? -1 : 0;
+			p++;
+		}
+		if (p >= toks.length) throw new FormulaError('a { is never closed');
+		if (p === from)
+			throw new FormulaError(`${src.slice(k.at, k.end)} has no value after its colon`);
+		const key: Key = k.k === 'ref' ? { t: 'ref', id: k.id } : { t: 'name', s: k.s };
+		out.push({ key, expr: parse(src.slice(toks[from].at, toks[p - 1].end)) });
+		if (opIs(toks[p++], '}')) break;
+	}
+	if (p < toks.length)
+		throw new FormulaError(`unexpected "${src.slice(toks[p].at, toks[p].end)}" after the }`);
+	return out;
 }
 
 /** Why a rule cannot change something of this kind, or null when it can. */
 export function unwritable(
 	kind: Name['kind'],
 	prop: string | undefined,
-	op: Line['op']
+	op: Line['op'],
+	cells = false
 ): string | null {
 	const p = prop?.toLowerCase();
+	if (cells && kind !== 'table' && kind !== 'entries')
+		return 'takes no { }: only a table or an entries list adds a row';
 	switch (kind) {
 		case 'clock':
 			return 'moves only when someone presses Next';
@@ -1190,6 +1304,9 @@ export function unwritable(
 		case 'text':
 		case 'choice':
 			return p ? `has no .${prop}` : op === '=' ? null : 'takes only =';
+		case 'table':
+		case 'entries':
+			return p ? `has no .${prop}` : op === '=' ? 'takes only += and -=' : null;
 		default:
 			return "can't be changed by a rule";
 	}
@@ -1201,7 +1318,8 @@ export function unwritable(
  */
 export function compileLine(text: string, names: Name[]): string {
 	const out = swap(text.trim(), names);
-	const { target, op } = parseLine(out);
+	const line = parseLine(out);
+	const { target, op } = line;
 	const who = target.t === 'ref' ? names.find((x) => x.id === target.id) : undefined;
 	if (!who) {
 		throw new FormulaError(
@@ -1213,8 +1331,21 @@ export function compileLine(text: string, names: Name[]): string {
 			? 'is on another character, which a rule only reads'
 			: target.col !== undefined
 				? "can't be changed by a rule"
-				: unwritable(who.kind, target.prop, op);
+				: unwritable(who.kind, target.prop, op, !!line.cells);
 	if (why) throw new FormulaError(`${nameOf(who)} ${why}`);
+	const keys = keysOf(who);
+	for (const { key } of line.cells ?? []) {
+		const k = keys.find((x) => (key.t === 'ref' ? x.id === key.id : !x.id && same(x.name, key.s)));
+		if (!k) {
+			const has = keys.map((x) => word(x.name)).join(', ') || 'no columns';
+			throw new FormulaError(
+				`${nameOf(who)} has ${has}, not ${key.t === 'name' ? word(key.s) : '#REF!'}`
+			);
+		}
+		const col = who.columns?.find((c) => c.id === k.id);
+		const no = col && unwritable(col.kind, undefined, '=');
+		if (no) throw new FormulaError(`${word(col.name)} ${no}`);
+	}
 	return out;
 }
 
@@ -1228,8 +1359,16 @@ export function render(stored: string, fields: Name[]): string {
 	}
 	let out = '';
 	let last = 0;
+	const keys = keysIn(toks);
+	const target = keys.size ? targetOf(toks, fields) : undefined;
 	for (const t of toks) {
 		if (t.k !== 'ref') continue;
+		if (keys.has(t)) {
+			const col = keysOf(target).find((k) => k.id === t.id);
+			out += `${stored.slice(last, t.at)}${col ? word(col.name) : '#REF!'}`;
+			last = t.end;
+			continue;
+		}
 		const f = fields.find((x) => x.id === t.id);
 		out += stored.slice(last, t.at);
 		// A column that was deleted leaves its id, which shows as #REF!; a name never found stays.
@@ -1246,11 +1385,28 @@ export function render(stored: string, fields: Name[]): string {
 // A label as written: in brackets, or one word.
 const PART = `(?:\\[[^\\]]*\\]|[^\\s+\\-*/^&=<>%(),"[\\]{}.:;!@#']+)`;
 
+/** Inside the { } of a line that adds a row, the columns it could fill, or null elsewhere. */
+function cellHints(before: string, fields: Name[]) {
+	const toks = lex(before, true);
+	const last = toks.at(-1);
+	const typing =
+		last?.k === 'name' && last.end === before.length && !last.prop && last.col === undefined;
+	if (!keyAt(toks, typing ? toks.length - 1 : toks.length)) return null;
+	const typed = typing ? last.s.toLowerCase() : '';
+	const cols = keysOf(targetOf(toks, fields)).filter((k) => k.name.toLowerCase().includes(typed));
+	return {
+		from: typing ? last.at : before.length,
+		options: cols.map((k) => `${word(k.name)}: `).slice(0, 8)
+	};
+}
+
 /** Labels and functions that could finish the name typed just before `caret`. */
 export function suggest(text: string, caret: number, fields: Name[]) {
 	const before = text.slice(0, caret);
 	const none = { from: caret, options: [] as string[] };
 	if ((before.match(/"/g)?.length ?? 0) % 2) return none;
+	const cells = cellHints(before, fields);
+	if (cells) return cells;
 	const m = /\[([^\]]*)$/.exec(before) ?? /[^\s+\-*/^&=<>%(),"[\]{}.:;!@#']+$/.exec(before);
 	if (!m) return none;
 	const bracket = m[0].startsWith('[');
@@ -1295,7 +1451,10 @@ export function highlight(text: string, fields: Name[]) {
 	const labels = new Set(fields.filter((f) => !f.of).map((f) => f.label.trim().toLowerCase()));
 	let last = 0;
 	let depth = 0;
-	for (const t of lex(text, true)) {
+	const toks = lex(text, true);
+	const keys = keysIn(toks);
+	const target = keys.size ? targetOf(toks, fields) : undefined;
+	for (const t of toks) {
 		if (t.at > last) out.push({ text: text.slice(last, t.at), paint: 'plain' });
 		const piece = text.slice(t.at, t.end);
 		last = t.end;
@@ -1308,13 +1467,17 @@ export function highlight(text: string, fields: Name[]) {
 		const known =
 			t.k === 'fn'
 				? key(t.s) in FNS
-				: t.k === 'name'
-					? t.of === undefined
-						? labels.has(t.s.toLowerCase())
-						: fields.some((f) => f.of !== undefined && same(f.of, t.of!) && same(f.label, t.s))
-					: t.k === 'ref'
-						? fields.some((f) => f.id === t.id)
-						: true;
+				: keys.has(t)
+					? keysOf(target).some((k) =>
+							t.k === 'ref' ? k.id === t.id : t.k === 'name' && same(k.name, t.s)
+						)
+					: t.k === 'name'
+						? t.of === undefined
+							? labels.has(t.s.toLowerCase())
+							: fields.some((f) => f.of !== undefined && same(f.of, t.of!) && same(f.label, t.s))
+						: t.k === 'ref'
+							? fields.some((f) => f.id === t.id)
+							: true;
 		const paint =
 			t.k === 'fn'
 				? 'fn'

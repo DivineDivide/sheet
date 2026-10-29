@@ -113,7 +113,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   both, so Back takes the last tick to this reading back, its rules' effects with it. No
   rule sets off another event, so every event ends. A line sets a track by its count, ticked
   from the left, or by its `.boxes`, text of `x` and `.`; tags take `+=` and `-=` a tag at a
-  time. Dice roll only in rules: a formula
+  time. A rule on a table or entries field adds a row with `+=` a name or `{Column: …}`, its
+  keys stored by column id, and `-=` a name takes out every row of it. `Writes` keeps each
+  list's order, so a row taken out comes back in place. Dice roll only in rules: a formula
   field that rolls shows #VALUE!. Its spec is the map-step cooldown and poison, a rule on
   the Statuses table.
 - **`src/lib/agent/`** — the chat's draft tools, from `notes/trpg/plan-sheet-agent.md`.
@@ -142,7 +144,7 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   column there (`Table` owns its headers: rename, drag the icon to move, press it to open
   `ColumnPanel` in the inspector). A table draws rows from another, usually a GM-only
   character's (`source.ts`): a choice column's `from` offers that table's rows by name, and
-  a table's `from` its +. Such a row keeps a `link` and follows its source row, since
+  a table's `from` its + and a rule's `+=`. Such a row keeps a `link` and follows its source row, since
   `session.change` runs `follow` after every edit and `fire` after every event, through its
   own writes so Back and ⌘Z take both; its cells from the source are read-only. A `choice`
   field is a dropdown on its own, of typed `choices` or of a `from` table's rows by name
