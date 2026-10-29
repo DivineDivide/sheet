@@ -1089,8 +1089,11 @@
 		display: grid;
 		gap: 0.75rem;
 	}
+	/* Relative for what floats on its edge; its box's x and y would shift it off the stage. */
 	.stacked .slot {
 		position: relative;
+		left: auto;
+		top: auto;
 		width: auto;
 		height: auto;
 	}
