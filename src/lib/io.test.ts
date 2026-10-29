@@ -91,6 +91,24 @@ describe('parse', () => {
 		);
 	});
 
+	it('keeps the map a table follows, and refuses one not named by text', () => {
+		const kept = parse(mangle((d) => (d.characters[0].fields[0].follows = 'gm!map')));
+		expect(kept.characters[0].fields[0].follows).toBe('gm!map');
+		expect(() => parse(mangle((d) => (d.characters[0].fields[0].follows = 1)))).toThrow(
+			/the map it follows/
+		);
+	});
+
+	it("keeps a map's tree, and refuses one whose parents are not row ids", () => {
+		const tree = { r1: '', r2: 'r1' };
+		const kept = parse(mangle((d) => (d.characters[0].fields[0].parents = tree)));
+		expect(kept.characters[0].fields[0].parents).toEqual(tree);
+		for (const bad of [['r1'], { r1: 1 }, 'r1'])
+			expect(() => parse(mangle((d) => (d.characters[0].fields[0].parents = bad)))).toThrow(
+				/malformed tree/
+			);
+	});
+
 	it('keeps a hidden label, and refuses any other setting', () => {
 		const kept = parse(mangle((d) => (d.characters[0].fields[0].hideLabel = true)));
 		expect(kept.characters[0].fields[0].hideLabel).toBe(true);

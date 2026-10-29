@@ -13,7 +13,8 @@
 		tags: 'a list of short labels',
 		entries: 'titled items, described in Markdown',
 		table: 'rows under columns: drop kinds onto it',
-		image: 'a picture: pick, drop or paste one'
+		image: 'a picture: pick, drop or paste one',
+		map: "a table's rows as a tree: press one to go there"
 	};
 </script>
 

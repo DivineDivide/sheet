@@ -289,6 +289,14 @@ describe('tables', () => {
 	it('offers columns after a table name and a bracket', () => {
 		expect(suggest('COUNTA(碎片库[状', 12, s.fields)).toEqual({ from: 10, options: ['[状态]'] });
 	});
+
+	it('reads a picture column as #VALUE!, as a picture field', () => {
+		const pics = {
+			fields: [{ ...lib, columns: [{ id: 'p', name: 'Pic', kind: 'image' as const }] }],
+			values: { lib: [{ id: 'r1', cells: { p: 'data:image/webp;base64,AAAA' } }] }
+		};
+		expect(code('CONCAT(碎片库[Pic])', pics)).toBe('#VALUE!');
+	});
 });
 
 describe('columns of every kind, worked out row by row', () => {
@@ -623,6 +631,21 @@ describe('another character, as Name!Label', () => {
 		expect(calcIn('XLOOKUP("Dagger", GM!Weapons[Name], GM!Weapons[Damage])')).toBe('1d4');
 		expect(calcIn('GM!Bonus + Weapons')).toBe(7);
 		expect(calcIn('[Nobody]!HP')).toMatchObject({ err: '#NAME?' });
+	});
+
+	it("reads a map as its current node's name, and an unset one as blank", () => {
+		const { gm, bea } = room();
+		const map: Field = { id: 'map', label: 'Map', kind: 'map', tab: 't', box, from: 'gm!weapons' };
+		const at = (row: string) => {
+			const g = { ...gm, fields: [...gm.fields, map], values: { ...gm.values, map: row } };
+			const s = { ...bea, others: [g, bea] };
+			const out: Field = { id: 'out', label: 'Out', kind: 'formula', tab: 't', box };
+			out.formula = compile('GM!Map & "!"', names(s));
+			return result({ ...s, fields: [...s.fields, out] }, 'out');
+		};
+		expect(at('r2')).toBe('Dagger!');
+		expect(at('')).toBe('!');
+		expect(at('gone')).toBe('!');
 	});
 
 	it('lets a character name its own field as Name!Label too, as Excel names its own sheet', () => {

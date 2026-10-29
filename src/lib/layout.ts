@@ -20,7 +20,8 @@ const sizes: Record<Kind, Pick<Box, 'w' | 'h'>> = {
 	tags: { w: 480, h: 104 },
 	entries: { w: 480, h: 240 },
 	table: { w: 560, h: 240 },
-	image: { w: 240, h: 240 }
+	image: { w: 240, h: 240 },
+	map: { w: 560, h: 320 }
 };
 export const defaultSize = (kind: Kind) => sizes[kind];
 

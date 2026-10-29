@@ -118,11 +118,30 @@ describe('forAgent', () => {
 			tab: ash.tabs[0].id,
 			box: { x: 0, y: 0, w: 48, h: 48 }
 		});
+		ash.fields.push({
+			id: 't',
+			label: 'Places',
+			kind: 'table',
+			tab: ash.tabs[0].id,
+			box: { x: 0, y: 0, w: 48, h: 48 },
+			columns: [
+				{ id: 'n', name: 'Name', kind: 'text' },
+				{ id: 'pic', name: 'Picture', kind: 'image' }
+			]
+		});
 		ash.values.p = 'data:image/webp;base64,AAAA';
+		ash.values.t = [
+			{ id: 'r1', cells: { n: 'Town', pic: 'data:image/webp;base64,BBBB' } },
+			{ id: 'r2', cells: { n: 'Hut' } }
+		];
 		doc.log = [{ id: 'l', at: 0, text: 'Turn 1 → 2' }];
 		const seen = forAgent(doc);
 		expect(seen.log).toBeUndefined();
 		expect(seen.characters[0].values.p).toBe('[picture]');
+		expect(seen.characters[0].values.t).toEqual([
+			{ id: 'r1', cells: { n: 'Town', pic: '[picture]' } },
+			{ id: 'r2', cells: { n: 'Hut' } }
+		]);
 		expect(ash.values.p).toBe('data:image/webp;base64,AAAA');
 	});
 });

@@ -1,7 +1,7 @@
 // One prompt of the chat: the model and the draft tools taking turns until it replies.
 
 import type Anthropic from '@anthropic-ai/sdk';
-import type { Doc } from '../doc';
+import type { Doc, Row } from '../doc';
 import type { Op } from '../sync';
 import { runTool } from './tools';
 
@@ -28,8 +28,13 @@ export type Step = (history: Turn[], onText: (text: string) => void) => Promise<
 export function forAgent(doc: Doc): Doc {
 	const { log: _, ...rest } = structuredClone(doc);
 	for (const c of rest.characters)
-		for (const f of c.fields)
+		for (const f of c.fields) {
 			if (f.kind === 'image' && c.values[f.id]) c.values[f.id] = '[picture]';
+			const pics = f.kind === 'table' ? (f.columns ?? []).filter((x) => x.kind === 'image') : [];
+			if (!pics.length || !Array.isArray(c.values[f.id])) continue;
+			for (const row of c.values[f.id] as Row[])
+				for (const col of pics) if (row.cells[col.id]) row.cells[col.id] = '[picture]';
+		}
 	return rest;
 }
 

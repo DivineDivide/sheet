@@ -12,7 +12,9 @@
 	} from '../lib/doc';
 	import { cellResult, result, show } from '../lib/formula';
 	import { bounds, settle } from '../lib/layout';
+	import { mapSource, nameIn } from '../lib/map';
 	import { markdown } from '../lib/markdown';
+	import { session } from '../lib/session.svelte';
 
 	// What gets pasted into a chat: every tab, every value in full. Each box keeps its place
 	// and width from the sheet but grows to its whole value, because an image cannot scroll.
@@ -28,6 +30,13 @@
 	);
 	// The sheet runs left of 0,0 too; the card starts at its leftmost field.
 	const span = $derived(bounds(character.fields.map((f) => f.box)));
+
+	// A picture cannot be pressed, so a map shows only where it is.
+	function mapHere(f: Field, id: string) {
+		const src = mapSource(session.doc, f);
+		const row = src?.rows.find((r) => r.id === id);
+		return src && row ? nameIn(src, row) : '';
+	}
 
 	// Per tab, known only once the grown boxes have been measured.
 	let laid = $state<Record<string, { tops: Record<string, number>; h: number }>>({});
@@ -93,6 +102,9 @@
 								>{/if}
 						{:else if f.kind === 'choice'}
 							{#if v}<span>{v}</span>{:else}<span class="none">—</span>{/if}
+						{:else if f.kind === 'map'}
+							{@const here = mapHere(f, v as string)}
+							{#if here}<span>{here}</span>{:else}<span class="none">—</span>{/if}
 						{:else if f.kind === 'image'}
 							<!-- Its box's own height, unlike the rest: known before the picture loads. -->
 							{#if v}<img class="pic" src={v as string} alt={f.label} />{:else}<span class="none"
@@ -135,6 +147,12 @@
 															{(cell as Resource).cur} / {(cell as Resource).max}
 														{:else if c.kind === 'tags'}
 															{((cell as string[] | undefined) ?? []).join(', ')}
+														{:else if c.kind === 'image'}
+															{#if cell}<img
+																	class="cellpic"
+																	src={cell as string}
+																	alt={c.name}
+																/>{/if}
 														{:else}
 															{@html markdown(String(cell ?? ''))}
 														{/if}
@@ -318,6 +336,11 @@
 		min-height: 0;
 		width: 100%;
 		object-fit: contain;
+	}
+	.cellpic {
+		display: block;
+		max-width: 8rem;
+		max-height: 6rem;
 	}
 	.none {
 		color: var(--muted);

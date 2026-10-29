@@ -17,6 +17,7 @@ import {
 import { mates } from '../bind';
 import { cellResult, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
+import { mapSource, treeOf } from '../map';
 import { sheetOf } from '../rules';
 import { choicesOf, keyOf, nameColumn, sourceOf } from '../source';
 
@@ -72,6 +73,7 @@ function cellText(doc: Doc, c: Character, table: Field, row: Row, col: Column) {
 	if (col.kind === 'button') return undefined;
 	const v = cellOf(row, col);
 	if (v === undefined) return undefined;
+	if (col.kind === 'image') return '[picture]';
 	if (col.kind === 'resource') return `${(v as Resource).cur}/${(v as Resource).max}`;
 	if (col.kind === 'track') return ticked(v as boolean[]);
 	if (col.kind === 'tags') return (v as string[]).join(', ');
@@ -125,6 +127,19 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 		}
 		case 'image':
 			return [v ? '[picture]' : 'no picture'];
+		case 'map': {
+			const src = mapSource(doc, f);
+			if (!src) return ['no table yet'];
+			const tree = treeOf(src, f.parents);
+			const here = tree.spots.find((s) => s.row.id === v);
+			return [
+				`at ${here ? JSON.stringify(here.name) : 'no node'}, of ${tableName(doc, src.id)}'s rows`,
+				...tree.spots.map((s) => `${'  '.repeat(s.depth + 1)}· ${s.name}`),
+				...(tree.unplaced.length
+					? [`  unplaced: ${tree.unplaced.map((u) => u.name).join(', ')}`]
+					: [])
+			];
+		}
 		case 'tags':
 			return [(v as string[]).join(', ') || 'no tags'];
 		case 'entries': {
@@ -143,6 +158,7 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 				`${rows.length} rows`,
 				`  columns: ${cols.map((col) => columnText(doc, col, known)).join(', ') || 'none'}`,
 				...(f.from ? [`  rows from: ${tableName(doc, f.from)}`] : []),
+				...(f.follows ? [`  follows map: ${tableName(doc, f.follows)}, keeping one row`] : []),
 				...cols.flatMap((col) =>
 					(col.rules ?? []).map((r) => `  rule on ${col.name}: ${ruleText(doc, c, r, known)}`)
 				),

@@ -144,6 +144,18 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   own writes so Back and ⌘Z take both; its cells from the source are read-only. A `choice`
   field is a dropdown on its own, of typed `choices` or of a `from` table's rows by name
   (`choicesOf`); it keeps only the name, since a field has no row to follow.
+- **Maps** — from `notes/trpg/plan-sheet-map.md`. A `map` field draws a table's rows (its
+  `from`, usually a GM-only character's) as a tree, left to right by depth (`map.ts`), so
+  all it stores of the shape is `parents`, each placed row's parent and `''` for a root. A
+  row with none waits in Edit layout's Unplaced tray until dragged onto a node. Its value
+  is the current row's id, and a formula reads it as that row's name. Pressing a node is an
+  act, as a button's is: `fire` moves the map first, so the rules that hear its press read
+  the node pressed, and logs the move by name. Several maps may share a table. A table that
+  `follows` a map keeps one row, linked to the current node (`track` in `source.ts`, which
+  `follow` runs first), so a shared page shows the place's own cells, picture and all, and
+  the press's ⌘Z takes both back. The row stays from node to node, so its cells the place
+  has no column for stay. The chat hangs nodes with `arrange_map` and moves a map with
+  `set_value`, which runs no rules: only a person's press is an act.
 - **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
   not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically
@@ -211,7 +223,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   the source by `data-at` for `setPick`, and elsewhere it shows the choice. It names its table by
   name, not id, so a rename leaves it showing as typed.
 - **`src/lib/picture.ts`** — an image field's value is a data URL inside the document, so
-  `shrink` caps a picture at 1024px as WebP (JPEG in Safari) before it is stored. A
+  `shrink` caps a picture at 1024px as WebP (JPEG in Safari) before it is stored, and an
+  image column's at 512px (`CELL`), since a table holds many. A
   character row has a 2MB limit, and a change that would overflow it is rejected with
   a notice.
 - **Copy image** — `Sheet` mounts `ShareCard` off screen, draws it with `html-to-image`

@@ -153,7 +153,7 @@ describe('a mistake comes back in words, and changes nothing', () => {
 				target: 'Notes',
 				rules: [{ press: 'HP', then: ['Notes = "x"'] }]
 			})
-		).toBe('HP is not a button');
+		).toBe('HP is not a button or a map');
 	});
 
 	it('refuses a value of the wrong shape', () => {
@@ -545,5 +545,115 @@ describe('a choice field', () => {
 		expect(refused(doc, 'edit_field', { character: 'Ash', field: 'HP', choices: ['a'] })).toMatch(
 			/only a choice field has choices/
 		);
+	});
+});
+
+describe('a map, built by a scripted chat', () => {
+	const doc = newDoc();
+	ok(doc, 'add_character', { name: 'GM', gm_only: true });
+	ok(doc, 'add_field', {
+		character: 'GM',
+		label: '地點',
+		kind: 'table',
+		columns: [
+			{ name: 'Name', kind: 'text' },
+			{ name: '描述', kind: 'text' },
+			{ name: '圖', kind: 'image' }
+		]
+	});
+	ok(doc, 'edit_table', {
+		character: 'GM',
+		table: '地點',
+		add_rows: [
+			{ Name: '城鎮', 描述: '鐘聲。' },
+			{ Name: '黑森林', 描述: '樹影。' },
+			{ Name: '小屋', 描述: '炊煙。' },
+			{ Name: '港口', 描述: '海風。' }
+		]
+	});
+	ok(doc, 'add_character', { name: '冒險' });
+	const map = () => ok(doc, 'read', { character: 'GM', field: '地圖' });
+
+	it('builds a map from 地點 with 城鎮 at the root, leaving the rest unplaced', () => {
+		ok(doc, 'add_field', { character: 'GM', label: '地圖', kind: 'map', from: 'GM!地點' });
+		ok(doc, 'arrange_map', {
+			character: 'GM',
+			map: '地圖',
+			place: [
+				{ node: '城鎮' },
+				{ node: '黑森林', under: '城鎮' },
+				{ node: '小屋', under: '黑森林' }
+			]
+		});
+		expect(map()).toContain(
+			"35×20: at no node, of GM!地點's rows\n  · 城鎮\n    · 黑森林\n      · 小屋\n  unplaced: 港口"
+		);
+	});
+
+	it('refuses a loop, and takes a node off the map', () => {
+		expect(
+			refused(doc, 'arrange_map', {
+				character: 'GM',
+				map: '地圖',
+				place: [{ node: '城鎮', under: '小屋' }]
+			})
+		).toBe('城鎮 cannot go under 小屋, which is 城鎮 or below it');
+		ok(doc, 'arrange_map', { character: 'GM', map: '地圖', unplace: ['小屋'] });
+		expect(map()).toContain('unplaced: 小屋, 港口');
+		expect(
+			refused(doc, 'arrange_map', { character: 'GM', map: '地圖', place: [{ node: '洞窟' }] })
+		).toBe('GM!地點 has 城鎮, 黑森林, 小屋, 港口, not "洞窟"');
+	});
+
+	it('sets the current node by name, which a following table and a formula show', () => {
+		ok(doc, 'add_field', {
+			character: '冒險',
+			label: '此處',
+			kind: 'table',
+			columns: [
+				{ name: 'Name', kind: 'text' },
+				{ name: '描述', kind: 'text' },
+				{ name: '筆記', kind: 'text' }
+			]
+		});
+		const text = ok(doc, 'edit_table', { character: '冒險', table: '此處', follows: 'GM!地圖' });
+		expect(text).toContain('follows map: GM!地圖, keeping one row');
+		expect(text).toContain('0 rows');
+		ok(doc, 'set_value', { character: 'GM', field: '地圖', value: '黑森林' });
+		expect(map()).toContain('at "黑森林"');
+		const here = ok(doc, 'read', { character: '冒險', field: '此處' });
+		expect(here).toContain('1. Name=黑森林; 描述=樹影。 (follows GM!地點: 黑森林)');
+		expect(
+			refused(doc, 'edit_table', { character: '冒險', table: '此處', add_rows: [{ Name: 'x' }] })
+		).toBe('此處 follows GM!地圖, which keeps its one row');
+		const where = ok(doc, 'add_field', {
+			character: '冒險',
+			label: '位置',
+			kind: 'formula',
+			formula: 'XLOOKUP(GM!地圖, GM!地點[Name], GM!地點[描述])'
+		});
+		expect(where).toContain('It shows 樹影。');
+	});
+
+	it('lets a rule hear the map, and refuses a picture typed into a cell', () => {
+		ok(doc, 'add_field', { character: 'GM', label: '步數', kind: 'number' });
+		ok(doc, 'set_rules', {
+			character: 'GM',
+			target: '步數',
+			rules: [{ press: '地圖', then: ['步數 += 1'] }]
+		});
+		const gm = doc.characters[0];
+		const f = (label: string) => gm.fields.find((x) => x.label === label)!;
+		const harbour = (valueOf(gm, f('地點')) as Row[])[3];
+		fire(doc, { press: { character: gm.id, field: f('地圖').id, row: harbour.id } }, () => 1);
+		expect(valueOf(gm, f('步數'))).toBe(1);
+		expect(
+			refused(doc, 'edit_table', {
+				character: 'GM',
+				table: '地點',
+				change_rows: [{ row: 1, cells: { 圖: 'data:image/png;base64,AAAA' } }]
+			})
+		).toBe('圖 takes a picture, which only a person can add');
+		expect(() => validate(JSON.parse(JSON.stringify(doc)))).not.toThrow();
 	});
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	newCharacter,
 	newDoc,
+	globalId,
 	newId,
 	type Character,
 	type Doc,
@@ -215,6 +216,7 @@ describe('firing', () => {
 		const row = { character: 'c', field: 't', column: 'b', row: 'r' };
 		expect(isAct({ id: 'a', act: { press: row } })).toBe(true);
 		expect(isAct({ id: 'a', act: { press: { ...row, row: undefined } } })).toBe(false);
+		expect(isAct({ id: 'a', act: { press: { ...row, column: undefined } } })).toBe(true);
 	});
 
 	it('runs no rules on a field whose kind cannot hold them', () => {
@@ -224,6 +226,60 @@ describe('firing', () => {
 		rule(doc, c, n, { press: go.id }, '', 'N += 1');
 		n.kind = 'formula';
 		expect(ready(doc, c, go.id)).toMatch(/No rule listens/);
+	});
+});
+
+describe('a map: a press moves it, and its rules count steps', () => {
+	function setup() {
+		const doc = newDoc();
+		const gm = newCharacter('GM');
+		doc.characters.push(gm);
+		const name = { id: newId(), name: 'Name', kind: 'text' as const };
+		const rows: Row[] = ['Town', 'Forest', 'Hut'].map((n) => ({
+			id: n.toLowerCase(),
+			cells: { [name.id]: n }
+		}));
+		const places = add(gm, 'Places', 'table', rows);
+		places.columns = [name];
+		const map = add(gm, 'Map', 'map', 'town');
+		map.from = globalId(gm, places);
+		map.parents = { town: '', forest: 'town', hut: 'forest' };
+		const steps = add(gm, 'Steps', 'number', 0);
+		const visits = add(gm, 'Visits', 'number', 0);
+		rule(doc, gm, steps, { press: map.id }, '', 'Steps += 1');
+		rule(doc, gm, visits, { press: map.id }, 'Map = "Hut"', 'Visits += 1');
+		const press = (row: string) =>
+			fire(doc, { press: { character: gm.id, field: map.id, row } }, dice(1));
+		return { doc, gm, map, steps, visits, places, press };
+	}
+
+	it('moves to the node pressed, any node, and logs the move with its rules', () => {
+		const { doc, gm, map, steps, visits, press } = setup();
+		press('hut');
+		expect(get(gm, map)).toBe('hut');
+		expect(get(gm, steps)).toBe(1);
+		expect(get(gm, visits)).toBe(1);
+		expect(doc.log!.at(-1)!.text).toBe('Map Town → Hut · GM: Steps 0 → 1, Visits 0 → 1');
+	});
+
+	it('moves even when no rule listens, and takes the move back with its rules', () => {
+		const { doc, gm, map, steps, press } = setup();
+		const before = structuredClone(doc.characters);
+		const done = press('forest');
+		expect(get(gm, steps)).toBe(1);
+		for (const op of done.undo) apply(doc, op);
+		expect(equal(doc.characters, before)).toBe(true);
+		steps.rules = [];
+		press('forest');
+		expect(get(gm, map)).toBe('forest');
+		expect(doc.log!.at(-1)!.text).toBe('Map Town → Forest');
+	});
+
+	it('does nothing for the node already current, or a row that is gone', () => {
+		const { gm, steps, press } = setup();
+		expect(press('town').ops).toEqual([]);
+		expect(press('cave').why).toBe('that place is gone');
+		expect(get(gm, steps)).toBe(0);
 	});
 });
 

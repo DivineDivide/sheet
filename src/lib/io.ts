@@ -154,6 +154,12 @@ function checkLayout(owner: Record<string, unknown>, name: string) {
 		if (f.choices !== undefined && !(Array.isArray(f.choices) && f.choices.every(isStr))) {
 			throw new ImportError(`"${f.label}" on ${name} has choices that are not all text`);
 		}
+		if (f.parents !== undefined && !(isObj(f.parents) && Object.values(f.parents).every(isStr))) {
+			throw new ImportError(`"${f.label}" on ${name} has a malformed tree`);
+		}
+		if (f.follows !== undefined && !isStr(f.follows)) {
+			throw new ImportError(`"${f.label}" on ${name} names the map it follows wrongly`);
+		}
 		if (f.pages !== undefined && f.pages !== true) {
 			throw new ImportError(`"${f.label}" on ${name} says wrongly whether it has pages`);
 		}

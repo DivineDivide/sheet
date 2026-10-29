@@ -12,6 +12,7 @@ export default {
 	table: '表格',
 	image: '圖片',
 	choice: '選項',
+	map: '地圖',
 
 	'Copied {what}. {mod}V pastes in Edit layout, on any character.':
 		'已複製 {what}。在編輯版面中按 {mod}V 可貼到任何角色上。',
@@ -79,6 +80,7 @@ export default {
 	"press it to run fields' rules": '按下就執行欄位的規則',
 	'free text, in Markdown': '自由文字，使用 Markdown',
 	'one of a list, typed or from a table': '從清單選一個，自行輸入或取自表格',
+	"a table's rows as a tree: press one to go there": '把表格的列排成樹狀：按下一個就前往那裡',
 	'a list of short labels': '一串簡短的標籤',
 	'titled items, described in Markdown': '有標題的項目，以 Markdown 描述',
 	'rows under columns: drop kinds onto it': '各欄下的多列資料：可把類型拖到上面',
@@ -113,8 +115,21 @@ export default {
 	"The table whose rows this one's + offers; a row added from it follows that row":
 		'這個表格的 + 從哪個表格提供列；從中加入的列會跟著原本那一列更新',
 	'Rows from': '列的來源',
+	"Keeps one row, on the map's current node: its columns named as the map's table's fill from it":
+		'只保留一列，跟著地圖目前的節點：與地圖表格同名的欄會從那裡填入',
+	'Follows map': '跟隨地圖',
+	'Replace the picture': '更換圖片',
+	'Pick or drop a picture': '選取或拖入圖片',
+	'No map': '無地圖',
 	"Another table's rows, by name, as the choices": '以另一個表格各列的名稱作為選項',
 	'No table': '無表格',
+	"The table whose rows are this map's nodes": '以哪個表格的列作為這張地圖的節點',
+	'Set From in Edit layout to a table: its rows become the nodes.':
+		'在編輯版面中把「來源」設為一個表格，它的列就會成為節點。',
+	'Drag a row onto the map to make it the root, then others onto it.':
+		'把一列拖到地圖上作為根節點，再把其他列拖到它上面。',
+	'Arrange the map in Edit layout.': '在編輯版面中排列地圖。',
+	Unplaced: '未放置',
 	Rules: '規則',
 	Tab: '分頁',
 	'Delete field': '刪除欄位',
