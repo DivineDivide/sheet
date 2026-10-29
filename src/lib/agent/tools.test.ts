@@ -845,6 +845,43 @@ describe('a rule that adds a row, set by a scripted chat', () => {
 	});
 });
 
+describe("a rule on the GM's table that a player's button runs", () => {
+	const doc = newDoc();
+	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' }, true);
+	runTool(doc, 'add_character', { name: 'GM', gm_only: true }, true);
+	runTool(
+		doc,
+		'add_field',
+		{ character: 'GM', label: 'Loot', kind: 'table', columns: [{ name: 'Item', kind: 'text' }] },
+		true
+	);
+	runTool(doc, 'add_field', { character: 'Ash', label: 'Buy', kind: 'button' }, true);
+	runTool(doc, 'add_field', { character: 'Ash', label: 'Item', kind: 'text' }, true);
+	runTool(doc, 'set_value', { character: 'Ash', field: 'Item', value: 'Rope' }, true);
+
+	it('refuses a line on the GM from a rule on Ash, saying where the rule goes instead', () => {
+		const out = refused(doc, 'set_rules', {
+			character: 'Ash',
+			target: 'Item',
+			rules: [{ press: 'Buy', then: ['GM!Loot += "Gem"'] }]
+		});
+		expect(out).toMatch(/GM!Loot is on another character, which a rule only reads/);
+		expect(out).toMatch(/put the rule on GM's Loot instead, which can run on a button here/);
+	});
+
+	it("adds the row there, filled from Ash's sheet, when Ash's button is pressed", () => {
+		ok(doc, 'set_rules', {
+			character: 'GM',
+			target: 'Loot',
+			rules: [{ press: 'Ash!Buy', then: ['Loot += {Item: Ash!Item}'] }]
+		});
+		const ash = doc.characters.find((c) => c.name === 'Ash')!;
+		const buy = ash.fields.find((f) => f.label === 'Buy')!;
+		fire(doc, { press: { character: ash.id, field: buy.id } }, () => 1);
+		expect(ok(doc, 'read', { character: 'GM', field: 'Loot' })).toContain('1. Item=Rope');
+	});
+});
+
 describe("a rule on a player's sheet that hears the GM's press", () => {
 	const doc = newDoc();
 	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' }, true);

@@ -1328,7 +1328,7 @@ export function compileLine(text: string, names: Name[]): string {
 	}
 	const why =
 		who.of !== undefined
-			? 'is on another character, which a rule only reads'
+			? `is on another character, which a rule only reads: put the rule on ${who.of}'s ${who.label} instead, which can run on a button here as Name!Button`
 			: target.col !== undefined
 				? "can't be changed by a rule"
 				: unwritable(who.kind, target.prop, op, !!line.cells);

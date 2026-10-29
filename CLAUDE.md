@@ -113,7 +113,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   them back, which the presser's ⌘Z sends as an ordinary edit. A rule may hear another
   character's button or map, stored by `globalId`, so every player's may hear the GM's: a
   press runs each character's rules that hear it (`heard`), each on its own character, which
-  its lines still never leave. A tick's log line keeps
+  its lines still never leave. To change another character the rule goes there, run by the
+  button here, and a line naming another character is refused with that advice. A tick's log line keeps
   both, so Back takes the last tick to this reading back, its rules' effects with it. No
   rule sets off another event, so every event ends. A line sets a track by its count, ticked
   from the left, or by its `.boxes`, text of `x` and `.`; tags take `+=` and `-=` a tag at a
