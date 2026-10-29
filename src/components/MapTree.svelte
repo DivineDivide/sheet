@@ -21,11 +21,9 @@
 	const at = $derived(new Map(tree?.spots.map((s) => [s.row.id, s]) ?? []));
 	const width = $derived(Math.max(0, ...(tree?.spots.map((s) => s.depth + 1) ?? [])) * COL - 40);
 
-	function press(row: string) {
-		session.change((d) => {
-			d.characters.find((c) => c.id === character.id)!.values[field.id] = row;
-		});
-	}
+	// The room runs it, as a button press: logged, heard by rules, taken back by ⌘Z.
+	const press = (row: string) =>
+		session.act({ press: { character: character.id, field: field.id, row } });
 
 	/** One write per drop: `parent` null makes a root, undefined takes the row off the map. */
 	function hang(row: string, parent: string | null | undefined) {

@@ -44,12 +44,13 @@ import {
 	type Sheet,
 	type Val
 } from './formula';
+import { mapSource, nameIn } from './map';
 import { follow } from './source';
 import { apply, equal, get, revert, type Op, type Path } from './sync';
 
 /**
- * What a client asks the room to do. A button in a table names its column and row. A tick
- * or a step back names the reading it saw.
+ * What a client asks the room to do. A button in a table names its column and row, a map
+ * the row of the node pressed. A tick or a step back names the reading it saw.
  */
 export type Act =
 	| { press: { character: string; field: string; column?: string; row?: string } }
@@ -71,7 +72,7 @@ export function isAct(v: unknown): v is { id: string; act: Act } {
 			typeof press.field === 'string' &&
 			opt(press.column) &&
 			opt(press.row) &&
-			(press.column === undefined) === (press.row === undefined)
+			(press.column === undefined || press.row !== undefined)
 		);
 	}
 	const t = tick ?? back;
@@ -405,6 +406,8 @@ function describe(doc: Doc, w: Writes, reports: Map<string, Report>): string[] {
 		if (p[0] === 'clocks') continue;
 		const c = doc.characters.find((x) => x.id === p[1])!;
 		const f = c.fields.find((x) => x.id === p[3]);
+		// A map's move is the title's.
+		if (f?.kind === 'map') continue;
 		if (f && p[5] === 'cells') {
 			const rows = valueOf(c, f) as Row[];
 			const row = rows.find((r) => r.id === p[4])!;
@@ -456,7 +459,20 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 		const f = c?.fields.find((x) => x.id === field);
 		let b: { id: string; label: string } | undefined;
 		let r: Report | undefined;
-		if (c && f?.kind === 'button') {
+		let moved = false;
+		if (c && f?.kind === 'map') {
+			// The move comes first, so its rules read the node pressed.
+			const src = mapSource(doc, f);
+			const to = src?.rows.find((x) => x.id === row);
+			if (!src || !to) return none('that place is gone');
+			if (valueOf(c, f) === to.id) return none();
+			const from = src.rows.find((x) => x.id === valueOf(c, f));
+			w.set(['characters', c.id, 'values', f.id], to.id);
+			b = f;
+			r = run(doc, listeners(c, { press: f.id }), c, w, roll);
+			title = `${f.label} ${from ? nameIn(src, from) : '—'} → ${nameIn(src, to)}`;
+			moved = true;
+		} else if (c && f?.kind === 'button') {
 			b = f;
 			r = run(doc, listeners(c, { press: f.id }), c, w, roll);
 			title = f.label;
@@ -471,7 +487,7 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 			}
 		}
 		if (!c || !b || !r) return none('that button is gone');
-		if (!r.fired && !r.notes.length) {
+		if (!moved && !r.fired && !r.notes.length) {
 			return none(`${b.label}: none of its rules' conditions hold now`);
 		}
 		reports.set(c.id, r);

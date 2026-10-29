@@ -61,9 +61,10 @@
 		(t.columns ?? [])
 			.filter((c) => c.kind === 'button')
 			.map((c) => ({ when: { press: c.id }, text: text(c) }));
+	// A map is pressed too: its rules hear any node, and read which by the map's name.
 	const buttons = $derived<Whens>(
 		character.fields
-			.filter((f) => f.kind === 'button')
+			.filter((f) => f.kind === 'button' || f.kind === 'map')
 			.map((b) => ({ when: { press: b.id }, text: t('{label} pressed', { label: b.label }) }))
 	);
 	const ticks = $derived<Whens>(

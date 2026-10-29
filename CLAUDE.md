@@ -146,8 +146,10 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
 - **Maps** — a `map` field draws a table's rows (its `from`, usually a GM-only
   character's) as a tree, left to right by depth (`map.ts`), so all it stores of the shape
   is `parents`, each placed row's parent and `''` for a root. A row with none waits in Edit
-  layout's Unplaced tray until dragged onto a node. Its value is the current row's id, which
-  a press sets, and a formula reads it as that row's name. Several maps may share a table.
+  layout's Unplaced tray until dragged onto a node. Its value is the current row's id, and a
+  formula reads it as that row's name. Pressing a node is an act, as a button's is: `fire`
+  moves the map first, so its rules (`when: { press: <map id> }`) read the node pressed, and
+  logs the move by name. Several maps may share a table.
 - **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
   not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically
