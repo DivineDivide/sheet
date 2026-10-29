@@ -433,3 +433,74 @@ describe('a track flipped between odd and even boxes, and tags added and taken',
 		expect(cell(0, ids.marks)).toBeUndefined();
 	});
 });
+
+describe("a press heard on other characters' sheets", () => {
+	function setup() {
+		const doc = newDoc();
+		const gm = newCharacter('GM');
+		gm.hidden = true;
+		const [ash, bea] = ['Ash', 'Bea'].map((n) => newCharacter(n));
+		doc.characters.push(gm, ash, bea);
+		const gas = add(gm, 'Gas', 'button');
+		// One rule, as a template gives every player the same: it hears the GM's Gas.
+		const heard = { id: newId(), when: { press: globalId(gm, gas) }, then: ['Coughs += 1'] };
+		const coughs = [ash, bea].map((c) => {
+			const f = add(c, 'Coughs', 'number', 0);
+			f.rules = [compileRule(heard, names(sheetOf(doc, c)))];
+			return f;
+		});
+		const press = (c: Character, f: Field, row?: string) =>
+			fire(doc, { press: { character: c.id, field: f.id, row } }, dice(1));
+		return { doc, gm, ash, bea, gas, coughs, press };
+	}
+
+	it('runs every rule that hears it, on its own character, and ⌘Z takes them all back', () => {
+		const { doc, gm, ash, bea, gas, coughs, press } = setup();
+		const gassed = add(gm, 'Gassed', 'number', 0);
+		rule(doc, gm, gassed, { press: gas.id }, '', 'Gassed += 1');
+		const done = press(gm, gas);
+		expect([get(gm, gassed), get(ash, coughs[0]), get(bea, coughs[1])]).toEqual([1, 1, 1]);
+		expect(doc.log!.at(-1)!.text).toBe(
+			'Gas · GM: Gassed 0 → 1 · Ash: Coughs 0 → 1 · Bea: Coughs 0 → 1'
+		);
+		for (const op of done.undo) apply(doc, op);
+		expect([get(gm, gassed), get(ash, coughs[0]), get(bea, coughs[1])]).toEqual([0, 0, 0]);
+	});
+
+	it('is ready when only another character hears it, and its hint names who', () => {
+		const { doc, gm, bea, gas, coughs } = setup();
+		expect(ready(doc, gm, gas.id)).toBe(true);
+		expect(hint(doc, gm, gas.id, true)).toBe('Ash, Bea: Coughs += 1');
+		for (const f of coughs) f.rules![0].if = 'Coughs < 1';
+		bea.values[coughs[1].id] = 1;
+		expect(ready(doc, gm, gas.id)).toBe(true);
+		doc.characters[1].values[coughs[0].id] = 1;
+		expect(ready(doc, gm, gas.id)).toMatch(/None of its rules/);
+	});
+
+	it("hears the GM's map move, reading the node pressed", () => {
+		const { doc, gm, ash, press } = setup();
+		const name = { id: newId(), name: 'Name', kind: 'text' as const };
+		const places = add(gm, 'Places', 'table', [
+			{ id: 'town', cells: { [name.id]: 'Town' } },
+			{ id: 'hut', cells: { [name.id]: 'Hut' } }
+		]);
+		places.columns = [name];
+		const map = add(gm, 'Map', 'map', 'town');
+		map.from = globalId(gm, places);
+		map.parents = { town: '', hut: 'town' };
+		const visits = add(ash, 'Visits', 'number', 0);
+		rule(doc, ash, visits, { press: globalId(gm, map) }, 'GM!Map = "Hut"', 'Visits += 1');
+		press(gm, map, 'hut');
+		expect(get(ash, visits)).toBe(1);
+		expect(doc.log!.at(-1)!.text).toBe('Map Town → Hut · Ash: Visits 0 → 1');
+	});
+
+	it('runs a rule that hears its own button by its global name, once', () => {
+		const { doc, gm, gas, press } = setup();
+		const gassed = add(gm, 'Gassed', 'number', 0);
+		rule(doc, gm, gassed, { press: globalId(gm, gas) }, '', 'Gassed += 1');
+		press(gm, gas);
+		expect(get(gm, gassed)).toBe(1);
+	});
+});

@@ -67,6 +67,19 @@
 			.filter((f) => f.kind === 'button' || f.kind === 'map')
 			.map((b) => ({ when: { press: b.id }, text: t('{label} pressed', { label: b.label }) }))
 	);
+	// Another character's press sets off this one's rules too, as a GM's button may a player's.
+	const theirs = $derived<Whens>(
+		session.doc.characters
+			.filter((o) => o.id !== character.id)
+			.flatMap((o) =>
+				o.fields
+					.filter((f) => f.kind === 'button' || f.kind === 'map')
+					.map((b) => ({
+						when: { press: globalId(o, b) },
+						text: t('{label} pressed', { label: nameOf({ label: b.label, of: o.name }) })
+					}))
+			)
+	);
 	const ticks = $derived<Whens>(
 		session.doc.clocks.map((k) => ({
 			when: { tick: k.id },
@@ -80,7 +93,8 @@
 			.flatMap((f) =>
 				pressed(f, (c) => t('{table} {column} pressed', { table: f.label, column: c.name }))
 			),
-		...ticks
+		...ticks,
+		...theirs
 	]);
 	// A column's rules hear only its own table's buttons, each in the row pressed.
 	const columnWhens = $derived<Whens>(
@@ -88,7 +102,8 @@
 			? [
 					...pressed(field, (c) => t('{column} pressed, in its row', { column: c.name })),
 					...buttons,
-					...ticks
+					...ticks,
+					...theirs
 				]
 			: []
 	);

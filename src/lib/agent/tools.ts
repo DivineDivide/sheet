@@ -436,7 +436,7 @@ function setBar(on: { kind: string; bar?: true }, name: string, shown: boolean) 
 const ruleSpec = obj(
 	{
 		press: text(
-			'Runs when this is pressed: a button field, Table[Column] for a button column, or a map, at any of its nodes'
+			"Runs when this is pressed: a button field, Table[Column] for a button column, or a map, at any of its nodes; another character's button or map as Name!Label"
 		),
 		tick: text('Runs when this clock ticks'),
 		if: text('Runs only when this formula holds'),
@@ -1053,6 +1053,20 @@ export const tools: Tool[] = [
 				fail(`rules change ${ruledColumns.join(', ')} columns, and ${col.name} is ${col.kind}`);
 			const known = knownOn(doc, c, table);
 			const button = (name: string) => {
+				const other = /^(.+?)!(.+)$/.exec(name);
+				if (other) {
+					const plain = (s: string) => s.trim().replace(/^\[(.*)\]$/, '$1');
+					// A GM-only character's maps show on every page, its buttons only on a GM's.
+					const owners = doc.characters.filter(
+						(x) => gm || !x.hidden || x.fields.some((f) => f.kind === 'map')
+					);
+					const o = named(owners, plain(other[1]), (x) => x.name, 'character');
+					const held = o.fields.filter(
+						(f) => f.kind === 'map' || (f.kind === 'button' && (gm || !o.hidden))
+					);
+					const b = named(held, plain(other[2]), (f) => f.label, `button or map on ${o.name}`);
+					return o.id === c.id ? b.id : globalId(o, b);
+				}
 				const ref = columnRef(c, name);
 				const b = ref ? ref[1] : fieldOf(c, name);
 				return b.kind === 'button' || b.kind === 'map'

@@ -109,7 +109,10 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   with its own dice, so a press counts once and nobody rolls again. `fire` tests every
   condition before any rule's lines run, takes a rule that fails part-way back whole, and
   logs each event. It returns the ops and the ops that take
-  them back, which the presser's ⌘Z sends as an ordinary edit. A tick's log line keeps
+  them back, which the presser's ⌘Z sends as an ordinary edit. A rule may hear another
+  character's button or map, stored by `globalId`, so every player's may hear the GM's: a
+  press runs each character's rules that hear it (`heard`), each on its own character, which
+  its lines still never leave. A tick's log line keeps
   both, so Back takes the last tick to this reading back, its rules' effects with it. No
   rule sets off another event, so every event ends. A line sets a track by its count, ticked
   from the left, or by its `.boxes`, text of `x` and `.`; tags take `+=` and `-=` a tag at a
