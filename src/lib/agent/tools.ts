@@ -129,22 +129,21 @@ function columnRef(c: Character, ref: string): [Field, Column] | undefined {
 	return [table, named(table.columns ?? [], m[2], (x) => x.name, `column of ${table.label}`)];
 }
 
-/** A table anywhere in the room as Character!Table, as a formula names it, or `c`'s own. */
-function tableIn(doc: Doc, c: Character, ref: string): string {
+/**
+ * A table or map anywhere in the room as Character!Name, as a formula names it, or `c`'s own.
+ * A GM-only character's counts, since sheets draw on its tables, but a miss names of it only
+ * what every page's picker shows: its tables or maps.
+ */
+function holdingIn(doc: Doc, c: Character, ref: string, kind: 'table' | 'map'): string {
 	const plain = (s: string) => s.trim().replace(/^\[(.*)\]$/, '$1');
 	const m = /^(.+?)!(.+)$/.exec(ref);
-	const owner = m ? named(doc.characters, plain(m[1]), (x) => x.name, 'character') : c;
-	const f = fieldOf(owner, plain(m ? m[2] : ref));
-	return f.kind === 'table' ? globalId(owner, f) : fail(`${f.label} is a ${f.kind}, not a table`);
-}
-
-/** A map anywhere in the room as Character!Map, or `c`'s own. */
-function mapIn(doc: Doc, c: Character, ref: string): string {
-	const plain = (s: string) => s.trim().replace(/^\[(.*)\]$/, '$1');
-	const m = /^(.+?)!(.+)$/.exec(ref);
-	const owner = m ? named(doc.characters, plain(m[1]), (x) => x.name, 'character') : c;
-	const f = fieldOf(owner, plain(m ? m[2] : ref));
-	return f.kind === 'map' ? globalId(owner, f) : fail(`${f.label} is a ${f.kind}, not a map`);
+	const owners = doc.characters.filter((x) => !x.hidden || x.fields.some((f) => f.kind === kind));
+	const owner = m ? named(owners, plain(m[1]), (x) => x.name, 'character') : c;
+	const held = owner.fields.filter((f) => f.kind === kind);
+	return globalId(
+		owner,
+		named(held, plain(m ? m[2] : ref), (f) => f.label, kind)
+	);
 }
 
 /** A map's table, or the reason it has none. */
@@ -156,7 +155,7 @@ const nodeOf = (doc: Doc, src: Source, name: unknown) => itemOf(doc, src, nameCo
 
 /** The source a table or choice column names by `from`, set or, when empty, cleared. */
 function setFrom(doc: Doc, c: Character, on: { from?: string }, ref: string) {
-	if (ref) on.from = tableIn(doc, c, ref);
+	if (ref) on.from = holdingIn(doc, c, ref, 'table');
 	else delete on.from;
 }
 
@@ -991,7 +990,7 @@ export const tools: Tool[] = [
 			const rowsFrom = opt(i, 'rows_from');
 			if (rowsFrom !== undefined) setFrom(doc, c, f, rowsFrom);
 			const follows = opt(i, 'follows');
-			if (follows) f.follows = mapIn(doc, c, follows);
+			if (follows) f.follows = holdingIn(doc, c, follows, 'map');
 			else if (follows !== undefined) delete f.follows;
 			if (f.follows) {
 				if (

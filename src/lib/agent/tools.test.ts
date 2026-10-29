@@ -242,6 +242,15 @@ describe("a GM's page, as each asker's chat sees it", () => {
 		);
 	});
 
+	it("names nothing of a GM-only character to a player's chat but its tables", () => {
+		const room = structuredClone(doc);
+		ok(room, 'add_character', { name: 'Spy', gm_only: true });
+		const from = (ref: string) =>
+			refused(room, 'edit_table', { character: 'Bea', table: 'Statuses', rows_from: ref }, false);
+		expect(from('Nobody!Weapons')).toBe('no character is called "Nobody" (there are: GM, Bea)');
+		expect(from('GM!Party bonus')).toBe('no table is called "Party bonus" (there are: Weapons)');
+	});
+
 	it("draws a player's rows from the GM's table, which they then follow", () => {
 		const base = structuredClone(doc);
 		ok(
