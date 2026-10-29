@@ -2,6 +2,7 @@
 
 import {
 	cellOf,
+	globalId,
 	shown,
 	valueOf,
 	type Character,
@@ -15,7 +16,7 @@ import {
 	type Rule
 } from '../doc';
 import { mates } from '../bind';
-import { cellResult, names, render, result, rowNames, show, type Name } from '../formula';
+import { cellResult, nameOf, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
 import { mapSource, treeOf } from '../map';
 import { picksIn } from '../markdown';
@@ -48,8 +49,12 @@ export function knownOn(doc: Doc, c: Character, table?: Field): Name[] {
 	return table ? [...rowNames(table), ...known] : known;
 }
 
-/** A button as a rule names it: a field's label, or `Table[Column]`. */
-export function buttonName(c: Character, id: string): string | undefined {
+/** A button as a rule names it: a field's label, `Table[Column]`, or another's `Name!Label`. */
+export function buttonName(doc: Doc, c: Character, id: string): string | undefined {
+	for (const o of doc.characters) {
+		const f = o.fields.find((x) => globalId(o, x) === id);
+		if (f) return nameOf({ label: f.label, of: o.name });
+	}
 	for (const f of c.fields) {
 		if (f.id === id) return f.label;
 		const col = f.columns?.find((x) => x.id === id);
@@ -61,7 +66,7 @@ export function ruleText(doc: Doc, c: Character, r: Rule, known: Name[]): string
 	const when =
 		'tick' in r.when
 			? `tick ${doc.clocks.find((k) => k.id === (r.when as { tick: string }).tick)?.name ?? '(a deleted clock)'}`
-			: `press ${buttonName(c, r.when.press) ?? '(a deleted button)'}`;
+			: `press ${buttonName(doc, c, r.when.press) ?? '(a deleted button)'}`;
 	const cond = r.if?.trim() ? `, if ${render(r.if, known)}` : '';
 	return `${when}${cond}: ${r.then.map((l) => render(l, known)).join('; ')}`;
 }

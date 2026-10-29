@@ -792,3 +792,39 @@ describe('a rule that adds a row, set by a scripted chat', () => {
 		).toBe('"Statuses += {Hurt: 1}": Statuses has Name, Stacks, Left, not Hurt');
 	});
 });
+
+describe("a rule on a player's sheet that hears the GM's press", () => {
+	const doc = newDoc();
+	runTool(doc, 'add_character', { name: 'Ash', template: 'Basic' }, true);
+	runTool(doc, 'add_character', { name: 'GM', gm_only: true }, true);
+	runTool(doc, 'add_field', { character: 'GM', label: 'Gas', kind: 'button' }, true);
+	runTool(doc, 'add_field', { character: 'GM', label: 'Map', kind: 'map' }, true);
+	runTool(doc, 'add_field', { character: 'Ash', label: 'Coughs', kind: 'number' }, true);
+
+	it("names the GM's button as GM!Gas, and runs on its press", () => {
+		const text = ok(doc, 'set_rules', {
+			character: 'Ash',
+			target: 'Coughs',
+			rules: [{ press: 'GM!Gas', then: ['Coughs += 1'] }]
+		});
+		expect(text).toBe('Coughs now has:\n- press GM!Gas: Coughs += 1');
+		const [ash, gm] = doc.characters;
+		fire(doc, { press: { character: gm.id, field: gm.fields[0].id } }, () => 1);
+		expect(ok(doc, 'read', { character: 'Ash', field: 'Coughs' })).toContain(': 1');
+		expect(ash.fields.find((f) => f.label === 'Coughs')!.rules![0].when).toEqual({
+			press: `${gm.id}!${gm.fields[0].id}`
+		});
+	});
+
+	it("lets a player's chat hear a GM-only map, but not its buttons", () => {
+		const rules = (press: string) => ({
+			character: 'Ash',
+			target: 'Coughs',
+			rules: [{ press, then: ['Coughs += 1'] }]
+		});
+		expect(refused(doc, 'set_rules', rules('GM!Gas'), false)).toBe(
+			'no button or map on GM is called "Gas" (there are: Map)'
+		);
+		expect(ok(doc, 'set_rules', rules('GM!Map'), false)).toContain('press GM!Map');
+	});
+});

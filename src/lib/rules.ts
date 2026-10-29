@@ -5,6 +5,7 @@
 
 import {
 	cellOf,
+	globalId,
 	newId,
 	tagsIn,
 	valueOf,
@@ -220,6 +221,22 @@ function listeners(c: Character, when: When, only?: InRow): Listener[] {
 	].filter(({ rule }) => listensTo(rule, when));
 }
 
+/**
+ * The rules a press of `c`'s button sets off, each with the character it runs on: `c`'s own,
+ * and any character's that hears it by `globalId`, as a player's may hear the GM's.
+ */
+function heard(doc: Doc, c: Character, button: string, row?: InRow) {
+	return doc.characters
+		.map((on) => ({
+			on,
+			rules: [
+				...(on === c ? listeners(on, { press: button }, row) : []),
+				...listeners(on, { press: globalId(c, { id: button }) })
+			]
+		}))
+		.filter(({ rules }) => rules.length);
+}
+
 const why = (v: Val) => (isErr(v) ? `${v.err}${v.why ? ` (${v.why})` : ''}` : String(v));
 
 function test(rule: Rule, sheet: Sheet, roll?: Roll, rolled?: Rolled[], row?: InRow): boolean {
@@ -231,11 +248,10 @@ function test(rule: Rule, sheet: Sheet, roll?: Roll, rolled?: Rolled[], row?: In
 
 /** Whether pressing a button, or a button column in `row`, would do anything now, or why not. */
 export function ready(doc: Doc, c: Character, button: string, row?: InRow): true | string {
-	const all = listeners(c, { press: button }, row);
+	const all = heard(doc, c, button, row);
 	if (!all.length)
 		return 'No rule listens to it yet: give a field or column a rule for when it is pressed.';
-	const sheet = sheetOf(doc, c);
-	const passes = ({ rule, row }: Listener) => {
+	const passes = (sheet: Sheet, { rule, row }: Listener) => {
 		try {
 			// Dice cannot be known before the room rolls them.
 			return (
@@ -245,10 +261,16 @@ export function ready(doc: Doc, c: Character, button: string, row?: InRow): true
 			return false;
 		}
 	};
-	return all.some(passes) || "None of its rules' conditions hold now.";
+	return (
+		all.some(({ on, rules }) => rules.some((l) => passes(sheetOf(doc, on), l))) ||
+		"None of its rules' conditions hold now."
+	);
 }
 
-/** A button's hover hint: a line for each rule its press sets off, then `why` it can't be. */
+/**
+ * A button's hover hint: a line for each rule its press sets off, after the names of the other
+ * characters it runs on, then `why` it can't be.
+ */
 export function hint(
 	doc: Doc,
 	c: Character,
@@ -256,16 +278,25 @@ export function hint(
 	why: true | string,
 	row?: InRow
 ): string {
-	const known = names(sheetOf(doc, c));
-	const seen = new Set<string>();
-	const lines = listeners(c, { press: button }, row).flatMap(({ rule, row }) => {
-		if (seen.has(rule.id)) return [];
-		seen.add(rule.id);
-		const own = row ? [...rowNames(row.table), ...known] : known;
-		const then = rule.then.map((l) => render(l, own)).join('; ');
-		return [rule.if?.trim() ? `${then} (if ${render(rule.if, own)})` : then];
+	// Characters made from one template share their rules, so each line is shown once.
+	const lines = new Map<string, Set<string>>();
+	for (const { on, rules } of heard(doc, c, button, row)) {
+		const known = names(sheetOf(doc, on));
+		for (const { rule, row } of rules) {
+			const own = row ? [...rowNames(row.table), ...known] : known;
+			const then = rule.then.map((l) => render(l, own)).join('; ');
+			const text = rule.if?.trim() ? `${then} (if ${render(rule.if, own)})` : then;
+			lines.set(text, (lines.get(text) ?? new Set()).add(on === c ? '' : on.name));
+		}
+	}
+	const shown = [...lines].flatMap(([text, who]) => {
+		const others = [...who].filter(Boolean);
+		return [
+			...(who.has('') ? [text] : []),
+			...(others.length ? [`${others.join(', ')}: ${text}`] : [])
+		];
 	});
-	return [...lines, ...(why === true ? [] : [why])].join('\n');
+	return [...shown, ...(why === true ? [] : [why])].join('\n');
 }
 
 const calc = (op: string, base: number, x: number) =>
@@ -611,7 +642,7 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 		const c = doc.characters.find((x) => x.id === character);
 		const f = c?.fields.find((x) => x.id === field);
 		let b: { id: string; label: string } | undefined;
-		let r: Report | undefined;
+		let inRow: InRow | undefined;
 		let moved = false;
 		if (c && f?.kind === 'map') {
 			// The move comes first, so its rules read the node pressed.
@@ -622,12 +653,10 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 			const from = src.rows.find((x) => x.id === valueOf(c, f));
 			w.set(['characters', c.id, 'values', f.id], to.id);
 			b = f;
-			r = run(doc, listeners(c, { press: f.id }), c, w, roll);
 			title = `${f.label} ${from ? nameIn(src, from) : '—'} → ${nameIn(src, to)}`;
 			moved = true;
 		} else if (c && f?.kind === 'button') {
 			b = f;
-			r = run(doc, listeners(c, { press: f.id }), c, w, roll);
 			title = f.label;
 		} else if (c && f?.kind === 'table') {
 			const rows = valueOf(c, f) as Row[];
@@ -635,15 +664,17 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 			const at = rows.find((x) => x.id === row);
 			if (col && at) {
 				b = { id: col.id, label: col.name };
-				r = run(doc, listeners(c, { press: col.id }, { table: f, row: at }), c, w, roll);
+				inRow = { table: f, row: at };
 				title = `${col.name} · ${f.label} ${rowName(f, at, rows)}`;
 			}
 		}
-		if (!c || !b || !r) return none('that button is gone');
-		if (!moved && !r.fired && !r.notes.length) {
+		if (!c || !b) return none('that button is gone');
+		for (const { on, rules } of heard(doc, c, b.id, inRow)) {
+			reports.set(on.id, run(doc, rules, on, w, roll));
+		}
+		if (!moved && ![...reports.values()].some((r) => r.fired || r.notes.length)) {
 			return none(`${b.label}: none of its rules' conditions hold now`);
 		}
-		reports.set(c.id, r);
 	} else {
 		const { clock, at: from } = 'tick' in act ? act.tick : act.back;
 		const k = doc.clocks.find((x) => x.id === clock);

@@ -147,6 +147,21 @@ describe('copying fields together', () => {
 		expect(result(sheetOf(doc, bea), by(bea, 'Hit').id)).toBe(5);
 	});
 
+	it("keeps hearing the GM's button, even where a button of that label is its own", () => {
+		const { doc, ash, bea } = setup();
+		const gm = newCharacter('GM');
+		doc.characters.push(gm);
+		const gas = add(gm, 'Gas', 'button');
+		const coughs = add(ash, 'Coughs', 'number', 0, 0, 600);
+		rule(doc, ash, coughs, { press: globalId(gm, gas) }, 'Coughs += 1');
+		add(bea, 'Gas', 'button');
+		const g = lift(ash, doc.clocks, [coughs.id], false, doc.characters);
+		place(g, bea, doc.clocks, bea.tabs[0].id, { x: 0, y: 0 }, doc.characters);
+		expect(by(bea, 'Coughs').rules![0].when).toEqual({ press: globalId(gm, gas) });
+		fire(doc, { press: { character: gm.id, field: gas.id } }, () => 1);
+		expect([ash.values[coughs.id], bea.values[by(bea, 'Coughs').id]]).toEqual([1, 1]);
+	});
+
 	it('hears a clock of the same name in another room', () => {
 		const { doc, ash } = setup();
 		const charge = add(ash, 'Charge', 'number', 0, 0, 600);

@@ -139,7 +139,13 @@ function make(
 		const n = g.names.find((x) => x.id === whenId(w));
 		if (!n) return w;
 		if ('press' in w) {
-			const b = to.find((x) => x.kind === 'button' && same(x.label, n.label));
+			// Another character's button stays that character's, wherever the rule lands.
+			const b = to.find(
+				(x) =>
+					x.kind === 'button' &&
+					same(x.label, n.label) &&
+					(n.of === undefined ? x.of === undefined : x.of !== undefined && same(x.of, n.of))
+			);
 			return b ? { press: b.id } : w;
 		}
 		const k = clocks.find((x) => x.id === w.tick) ?? clocks.find((x) => same(x.name, n.label));
