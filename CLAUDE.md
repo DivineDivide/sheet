@@ -129,7 +129,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   `clamp`, `compile`), and `runTool` takes a failed or invalid call back whole. A tool's
   error is for the model to read, so say what is wrong and what is there instead.
   `chat.ts` is one prompt's loop. `worker/agent.ts` is one Durable Object per room that
-  calls Claude and keeps each chat's draft for a day. No call may leave from where Claude
+  calls Claude and keeps each chat's draft for a day; a deploy that changes the prompt or
+  tools lets an open chat go on without its earlier thinking (`drop_block`). No call may leave from where Claude
   isn't offered (`worker/regions.ts`): the endpoint checks the asker's country first, and
   the object checks its own. In the browser, `client.svelte.ts` holds the chat, and
   `session.draft` shows its draft in place of the room, holding edits back until it is

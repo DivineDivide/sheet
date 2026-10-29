@@ -110,13 +110,15 @@ export class Agent extends DurableObject<Env & { ANTHROPIC_API_KEY?: string }> {
 			const stream = client.beta.messages.stream({
 				model: MODELS[chat.model],
 				max_tokens: 32000,
-				thinking: { type: 'adaptive' },
+				// A chat's thinking is bound to the prompt and tools it was made under, so a
+				// deploy that changes them would fail every open chat; drop it instead.
+				thinking: { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } },
 				output_config: { effort: 'medium' },
 				system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
 				tools: TOOLS,
 				messages,
 				cache_control: { type: 'ephemeral' },
-				betas: ['server-side-fallback-2026-07-01'],
+				betas: ['server-side-fallback-2026-07-01', 'thinking-binding-controls-2026-08-01'],
 				fallbacks: 'default'
 			});
 			stream.on('text', onText);
