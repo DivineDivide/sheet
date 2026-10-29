@@ -12,4 +12,19 @@ md.renderer.rules.link_open = (tokens, i, options, _env, self) => {
 	return self.renderToken(tokens, i, options);
 };
 
+// With `breaks` nobody wraps a line by hand, so text shows the lines as typed: a line at
+// the start ends the list item above rather than continuing it, and a numbered line after
+// text starts a list at its own number, where CommonMark wants a 1.
+md.block.ruler.before(
+	'paragraph',
+	'line_start',
+	(state, line, _end, silent) => {
+		if (!silent || state.parentType !== 'paragraph') return false;
+		if (state.sCount[line] < state.blkIndent) return true;
+		const text = state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
+		return /^\d{1,9}[.)][ \t]+\S/.test(text);
+	},
+	{ alt: ['paragraph'] }
+);
+
 export const markdown = (text: string) => md.render(text);

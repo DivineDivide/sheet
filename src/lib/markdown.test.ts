@@ -14,6 +14,17 @@ describe('markdown', () => {
 		expect(markdown('first\nsecond')).toContain('first<br>\nsecond');
 	});
 
+	it('ends a list item at a line typed at the start', () => {
+		expect(markdown('1. one\n--')).toBe('<ol>\n<li>one</li>\n</ol>\n<p>--</p>\n');
+		expect(markdown('- one\n  more')).toContain('<li>one<br>\nmore</li>');
+	});
+
+	it('starts a list at the number typed after a line of text', () => {
+		expect(markdown('--\n6. six\n7. seven')).toBe(
+			'<p>--</p>\n<ol start="6">\n<li>six</li>\n<li>seven</li>\n</ol>\n'
+		);
+	});
+
 	it('escapes raw HTML', () => {
 		const html = markdown('<script>alert(1)</script><img src=x onerror=alert(1)>');
 		expect(html).not.toContain('<script');
