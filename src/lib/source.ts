@@ -59,6 +59,14 @@ export function choicesOf(doc: Doc, f: Pick<Field, 'from' | 'choices'>): string[
 	return [...new Set(names.map(String))];
 }
 
+/** What a pick in text naming `Character!Table` offers, or undefined if no table has that name. */
+export function namesFor(doc: Doc, ref: string): string[] | undefined {
+	const m = /^(.+?)!(.+)$/.exec(ref);
+	const c = m ? doc.characters.find((x) => same(x.name, m[1])) : undefined;
+	const f = c?.fields.find((x) => x.kind === 'table' && same(x.label, m![2]));
+	return c && f ? choicesOf(doc, { from: globalId(c, f) }) : undefined;
+}
+
 /** Whether `col` of a row following `src` is filled from it. */
 export const fromSource = (src: Source, col: Column) =>
 	col.from === src.id || src.columns.some((c) => same(c.name, col.name));

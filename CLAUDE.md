@@ -7,7 +7,8 @@ are in `notes/trpg/plan-sheet.md`; phases 1 and 2 and live rooms are built. Form
 tables and Excel import followed, planned in `notes/trpg/plan-sheet-formulas-import.md`,
 then buttons and rules, in `notes/trpg/plan-sheet-rules.md`, which folded statuses into
 tables. A GM's page of data that other sheets draw on is `notes/trpg/plan-sheet-gm-page.md`.
-Long lists that flip pages are `notes/trpg/plan-sheet-pages.md`.
+Long lists that flip pages are `notes/trpg/plan-sheet-pages.md`; picks inside text, and entries
+that run on across pages, `notes/trpg/plan-sheet-picks.md`.
 
 ## Commands
 
@@ -160,7 +161,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   with those controls, while the box is hovered or selected, so the box reads as in play.
   `FieldValue` keeps all else inert there. A table or entries list with `pages` flips
   pages instead (`Pages`): every row stays drawn and measured, `pageStarts` fits whole rows to the box,
-  and rows off the page carry `data-off`. Each browser keeps its own page in `ui.pages`. Narrower than 640px the
+  and rows off the page carry `data-off`. An entries list `flow`s instead: its pages are CSS columns
+  shifted into view, so an entry taller than the box runs on by line, and one that fits stays whole.
+  Each browser keeps its own page in `ui.pages`. Narrower than 640px the
   sheet ignores boxes and stacks fields in `readingOrder`.
 - **`src/lib/view.ts`** — pan and zoom, in play and Edit layout alike. A `View` is the
   sheet point at the middle of the stage plus the zoom, so the window's size never enters
@@ -203,7 +206,10 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   shows Markdown and the source only while it has focus; entry titles too, typed on one
   line, and field labels render the same Markdown wherever they show. `html: false` is
   what makes the `{@html}` safe for an imported file, so keep it. The styles are global
-  (`.md` in `app.css`): scoped ones miss `{@html}`.
+  (`.md` in `app.css`): scoped ones miss `{@html}`. A pick, `{Character!Table}` or `{a|b|c}`,
+  keeps its choice in the text (`{a|b|c=b}`); only `Prose` draws it as a dropdown, finding it in
+  the source by `data-at` for `setPick`, and elsewhere it shows the choice. It names its table by
+  name, not id, so a rename leaves it showing as typed.
 - **`src/lib/picture.ts`** — an image field's value is a data URL inside the document, so
   `shrink` caps a picture at 1024px as WebP (JPEG in Safari) before it is stored. A
   character row has a 2MB limit, and a change that would overflow it is rejected with
