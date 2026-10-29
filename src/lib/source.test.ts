@@ -121,3 +121,76 @@ describe('rows drawn from another table', () => {
 		expect(rows()[0].cells[damage.id]).toBe('1d8');
 	});
 });
+
+describe('a table following a map', () => {
+	/** The GM's Places and Map, and a shared Adventure page whose Here follows the map. */
+	function setup() {
+		const doc = newDoc();
+		const gm = newCharacter('GM');
+		const page = newCharacter('Adventure');
+		doc.characters.push(gm, page);
+		const places = table(
+			gm,
+			'Places',
+			['Name', 'Text'],
+			[
+				['Town', 'Bells.'],
+				['Forest', 'Dark.']
+			]
+		);
+		const [town, forest] = gm.values[places.id] as Row[];
+		const map: Field = {
+			id: newId(),
+			label: 'Map',
+			kind: 'map',
+			tab: gm.tabs[0].id,
+			box: { x: 0, y: 0, w: 320, h: 160 },
+			from: globalId(gm, places),
+			parents: { [town.id]: '', [forest.id]: town.id }
+		};
+		gm.fields.push(map);
+		const here = table(page, 'Here', ['Name', 'Text', 'Notes']);
+		here.follows = globalId(gm, map);
+		const rows = () => page.values[here.id] as Row[];
+		const press = (row: string) =>
+			fire(doc, { press: { character: gm.id, field: map.id, row } }, () => 1);
+		return { doc, gm, map, here, rows, press, town, forest, cols: here.columns! };
+	}
+
+	it('keeps no row while the map has no current node', () => {
+		const { doc, rows } = setup();
+		follow(doc);
+		expect(rows()).toEqual([]);
+	});
+
+	it("keeps one row on the current node, the press's undo taking it back", () => {
+		const { doc, rows, press, town, forest, cols } = setup();
+		press(town.id);
+		expect(rows()).toHaveLength(1);
+		expect(rows()[0].cells[cols[1].id]).toBe('Bells.');
+		const id = rows()[0].id;
+		rows()[0].cells[cols[2].id] = 'met the mayor';
+		const done = press(forest.id);
+		expect(rows()).toHaveLength(1);
+		expect(rows()[0]).toMatchObject({ id, link: { row: forest.id } });
+		expect(rows()[0].cells).toEqual({
+			[cols[0].id]: 'Forest',
+			[cols[1].id]: 'Dark.',
+			[cols[2].id]: 'met the mayor'
+		});
+		expect(doc.log!.at(-1)!.text).toBe('Map Town → Forest');
+		for (const op of done.undo) apply(doc, op);
+		expect(rows()[0].cells[cols[1].id]).toBe('Bells.');
+	});
+
+	it('takes out rows added beside it, sending each as a delete', () => {
+		const { doc, rows, press, town, forest } = setup();
+		press(town.id);
+		rows().push({ id: 'extra', cells: {} });
+		const done = press(forest.id);
+		expect(rows().map((r) => r.id)).not.toContain('extra');
+		expect(done.ops).toContainEqual({ k: 'del', p: expect.arrayContaining(['extra']) });
+		follow(doc);
+		expect(rows()).toHaveLength(1);
+	});
+});

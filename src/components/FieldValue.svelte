@@ -101,7 +101,8 @@
 				to: t('Add an entry to {label}', { label }),
 				run: () => append({ name: '', text: '' })
 			};
-		if (field.kind === 'table' && !laying && field.columns?.length)
+		// A table following a map holds the map's one row.
+		if (field.kind === 'table' && !laying && field.columns?.length && !field.follows)
 			return {
 				what: src ? t('Add a row, or one of {name}', { name: src.name }) : t('Add a row'),
 				to: src

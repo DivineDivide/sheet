@@ -94,6 +94,8 @@ export type Field = {
 	/** A map's tree: each placed row's parent row, '' for a root; see `map.ts`. */
 	parents?: Record<string, string>;
 	/** What a choice field offers when it has no `from`. */
+	/** A table's map, by `globalId`: it keeps one row, following the map's current node. */
+	follows?: string;
 	choices?: string[];
 	/** A table's or entries list's rows flip by page, as many as fit its box, not scroll. */
 	pages?: true;

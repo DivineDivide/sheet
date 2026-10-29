@@ -406,8 +406,8 @@ function describe(doc: Doc, w: Writes, reports: Map<string, Report>): string[] {
 		if (p[0] === 'clocks') continue;
 		const c = doc.characters.find((x) => x.id === p[1])!;
 		const f = c.fields.find((x) => x.id === p[3]);
-		// A map's move is the title's.
-		if (f?.kind === 'map') continue;
+		// A map's move is the title's, and a table following the map moves with it.
+		if (f?.kind === 'map' || f?.follows) continue;
 		if (f && p[5] === 'cells') {
 			const rows = valueOf(c, f) as Row[];
 			const row = rows.find((r) => r.id === p[4])!;
@@ -519,7 +519,10 @@ export function fire(doc: Doc, act: Act, roll: Roll, at = Date.now()): Done {
 	// take both back.
 	follow(doc, (op) => w.op(op));
 	const changed = w.changed();
-	const ops: Op[] = changed.map(({ p, now }) => ({ k: 'set', p, v: now }));
+	// A row a table lost is deleted: a set of nothing cannot take it out of its list.
+	const ops: Op[] = changed.map(({ p, now }) =>
+		now === undefined ? { k: 'del', p } : { k: 'set', p, v: now }
+	);
 	const undo: Op[] = changed.map(({ p, was }) =>
 		was === undefined ? { k: 'del', p } : { k: 'set', p, v: structuredClone(was) }
 	);

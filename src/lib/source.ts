@@ -1,10 +1,11 @@
 // A table's rows drawn from another table, usually a GM-only character's: picked by its +,
-// or chosen in a choice column. Such a row follows its source row: after every change, its
-// cells in the columns the source has too are the source's again.
+// chosen in a choice column, or kept on a map's current node. Such a row follows its source
+// row: after every change, its cells in the columns the source has too are the source's again.
 
 import {
 	globalId,
 	newId,
+	valueOf,
 	type Cell,
 	type Character,
 	type Column,
@@ -98,6 +99,46 @@ export const rowFrom = (src: Source, item: Row, columns: Column[]): Row => ({
 	link: { table: src.id, row: item.id }
 });
 
+/** Every map in the room, as the maps a table may follow. */
+export const maps = (doc: Doc): { id: string; name: string }[] =>
+	doc.characters.flatMap((c) =>
+		c.fields
+			.filter((f) => f.kind === 'map')
+			.map((f) => ({ id: globalId(c, f), name: `${c.name}: ${f.label}` }))
+	);
+
+/**
+ * Keeps each table that follows a map at one row, linked to the map's current node; none
+ * while the map has none. The row is kept from node to node, so cells the node has no column
+ * for stay as they were.
+ */
+function track(doc: Doc, all: Map<string, Source>, write: (op: Write) => void) {
+	for (const c of doc.characters) {
+		for (const f of c.fields) {
+			if (f.kind !== 'table' || !f.follows) continue;
+			const at = ['characters', c.id, 'values', f.id];
+			const [owner, id] = f.follows.split('!');
+			const mc = doc.characters.find((x) => x.id === owner);
+			const map = mc?.fields.find((x) => x.id === id && x.kind === 'map');
+			const src = map && all.get(map.from ?? '');
+			const item = src?.rows.find((r) => r.id === valueOf(mc!, map!));
+			const rows = [...rowsOf(c, f)];
+			const keep = item && rows[0];
+			for (const r of rows) if (r !== keep) write({ k: 'del', p: [...at, r.id] });
+			if (!item) continue;
+			const link = { table: src!.id, row: item.id };
+			if (!keep) {
+				const row = rowFrom(src!, item, f.columns ?? []);
+				write(
+					Array.isArray(c.values[f.id])
+						? { k: 'set', p: [...at, row.id], v: row }
+						: { k: 'set', p: at, v: [row] }
+				);
+			} else if (!equal(keep.link, link)) write({ k: 'set', p: [...at, keep.id, 'link'], v: link });
+		}
+	}
+}
+
 /** An item's words, to show and search it by. */
 export function itemText(src: Source, item: Row): { title: string; rest: string } {
 	const [first, ...others] = src.columns.filter((c) => item.cells[c.id] !== undefined);
@@ -118,6 +159,7 @@ export function itemText(src: Source, item: Row): { title: string; rest: string 
  */
 export function follow(doc: Doc, write: (op: Write) => void = (op) => apply(doc, op)) {
 	const all = new Map(sources(doc).map((s) => [s.id, s]));
+	track(doc, all, write);
 	for (const c of doc.characters) {
 		for (const f of c.fields) {
 			for (const r of rowsOf(c, f)) {

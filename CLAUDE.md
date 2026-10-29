@@ -149,7 +149,9 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   layout's Unplaced tray until dragged onto a node. Its value is the current row's id, and a
   formula reads it as that row's name. Pressing a node is an act, as a button's is: `fire`
   moves the map first, so its rules (`when: { press: <map id> }`) read the node pressed, and
-  logs the move by name. Several maps may share a table.
+  logs the move by name. Several maps may share a table. A table that `follows` a map keeps
+  one row, linked to the current node (`track` in `source.ts`, which `follow` runs first),
+  so a shared page shows the place's own cells, and the press's ⌘Z takes both back. The row stays from node to node, so its cells the place has no column for stay.
 - **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
   not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically

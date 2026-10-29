@@ -14,7 +14,7 @@
 	import { compileLine, nameOf, names as namesOf, rowNames, type Name } from '../lib/formula';
 	import { t } from '../lib/i18n.svelte';
 	import { session } from '../lib/session.svelte';
-	import { sources } from '../lib/source';
+	import { maps, sources } from '../lib/source';
 	import { tip } from '../lib/tip';
 	import { ui, type Panel } from '../lib/ui.svelte';
 	import { ruled, sheetOf } from '../lib/rules';
@@ -194,6 +194,7 @@
 						{@const tables = sources(session.doc).filter(
 							(t) => t.id !== globalId(character, field)
 						)}
+						{@const followable = maps(session.doc)}
 						{#if tables.length}
 							<label
 								{@attach tip(
@@ -212,6 +213,27 @@
 								>
 									<option value="">{t('No table')}</option>
 									{#each tables as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+								</select>
+							</label>
+						{/if}
+						{#if followable.length}
+							<label
+								{@attach tip(
+									t(
+										"Keeps one row, on the map's current node: its columns named as the map's table's fill from it"
+									)
+								)}
+							>
+								<span class="muted">{t('Follows map')}</span>
+								<select
+									value={field.follows ?? ''}
+									onchange={(e) => {
+										const map = e.currentTarget.value;
+										editField(field.id, (f) => (map ? (f.follows = map) : delete f.follows));
+									}}
+								>
+									<option value="">{t('No map')}</option>
+									{#each followable as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
 								</select>
 							</label>
 						{/if}

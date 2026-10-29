@@ -311,7 +311,8 @@
 						</td>
 					{/each}
 					<td class="ends">
-						{#if follows}
+						<!-- A table following a map keeps its one row there. -->
+						{#if follows && !field.follows}
 							<button
 								class="x"
 								aria-label={t('Stop following {name}', { name: follows.name })}
@@ -323,11 +324,13 @@
 								><Icon name="link" /></button
 							>
 						{/if}
-						<button
-							class="x"
-							aria-label={t('Remove this row')}
-							onclick={() => set(rows.filter((r) => r.id !== row.id))}>×</button
-						>
+						{#if !field.follows}
+							<button
+								class="x"
+								aria-label={t('Remove this row')}
+								onclick={() => set(rows.filter((r) => r.id !== row.id))}>×</button
+							>
+						{/if}
 					</td>
 				</tr>
 			{/each}

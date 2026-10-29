@@ -115,6 +115,10 @@ export default {
 	"The table whose rows this one's + offers; a row added from it follows that row":
 		'這個表格的 + 從哪個表格提供列；從中加入的列會跟著原本那一列更新',
 	'Rows from': '列的來源',
+	"Keeps one row, on the map's current node: its columns named as the map's table's fill from it":
+		'只保留一列，跟著地圖目前的節點：與地圖表格同名的欄會從那裡填入',
+	'Follows map': '跟隨地圖',
+	'No map': '無地圖',
 	"Another table's rows, by name, as the choices": '以另一個表格各列的名稱作為選項',
 	'No table': '無表格',
 	"The table whose rows are this map's nodes": '以哪個表格的列作為這張地圖的節點',
