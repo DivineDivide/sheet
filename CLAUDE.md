@@ -143,6 +143,11 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   own writes so Back and ⌘Z take both; its cells from the source are read-only. A `choice`
   field is a dropdown on its own, of typed `choices` or of a `from` table's rows by name
   (`choicesOf`); it keeps only the name, since a field has no row to follow.
+- **Maps** — a `map` field draws a table's rows (its `from`, usually a GM-only
+  character's) as a tree, left to right by depth (`map.ts`), so all it stores of the shape
+  is `parents`, each placed row's parent and `''` for a root. A row with none waits in Edit
+  layout's Unplaced tray until dragged onto a node. Its value is the current row's id, which
+  a press sets, and a formula reads it as that row's name. Several maps may share a table.
 - **The log** — `doc.log` holds the last 50 events. Clients cannot write it, since it is
   not among `isChange`'s roots. It is a row of its own in the room.
 - **Excel import** — `src/lib/xlsx.ts` reads an .xlsx with ExcelJS, imported dynamically

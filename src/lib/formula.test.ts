@@ -625,6 +625,21 @@ describe('another character, as Name!Label', () => {
 		expect(calcIn('[Nobody]!HP')).toMatchObject({ err: '#NAME?' });
 	});
 
+	it("reads a map as its current node's name, and an unset one as blank", () => {
+		const { gm, bea } = room();
+		const map: Field = { id: 'map', label: 'Map', kind: 'map', tab: 't', box, from: 'gm!weapons' };
+		const at = (row: string) => {
+			const g = { ...gm, fields: [...gm.fields, map], values: { ...gm.values, map: row } };
+			const s = { ...bea, others: [g, bea] };
+			const out: Field = { id: 'out', label: 'Out', kind: 'formula', tab: 't', box };
+			out.formula = compile('GM!Map & "!"', names(s));
+			return result({ ...s, fields: [...s.fields, out] }, 'out');
+		};
+		expect(at('r2')).toBe('Dagger!');
+		expect(at('')).toBe('!');
+		expect(at('gone')).toBe('!');
+	});
+
 	it('lets a character name its own field as Name!Label too, as Excel names its own sheet', () => {
 		const { gm, bea } = room();
 		const s = { ...gm, others: [gm, bea] };

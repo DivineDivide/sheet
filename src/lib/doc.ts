@@ -38,7 +38,8 @@ export const kinds = [
 	'tags',
 	'entries',
 	'table',
-	'image'
+	'image',
+	'map'
 ] as const;
 export type Kind = (typeof kinds)[number];
 
@@ -86,9 +87,12 @@ export type Field = {
 	columns?: Column[];
 	/**
 	 * A table's source table, by `globalId`, whose rows its + offers, each following its own;
-	 * or a choice field's, whose rows' names it offers, keeping only the name.
+	 * a choice field's, whose rows' names it offers, keeping only the name; or a map's,
+	 * whose rows are its nodes.
 	 */
 	from?: string;
+	/** A map's tree: each placed row's parent row, '' for a root; see `map.ts`. */
+	parents?: Record<string, string>;
 	/** What a choice field offers when it has no `from`. */
 	choices?: string[];
 	/** A table's or entries list's rows flip by page, as many as fit its box, not scroll. */
@@ -267,6 +271,7 @@ export function blank(kind: Kind): Value {
 		case 'image':
 		case 'formula':
 		case 'button':
+		case 'map':
 			return '';
 		case 'tags':
 		case 'entries':
@@ -293,6 +298,7 @@ function fits(kind: Kind, v: unknown): boolean {
 		case 'image':
 		case 'formula':
 		case 'button':
+		case 'map':
 			return typeof v === 'string';
 		case 'tags':
 			return Array.isArray(v) && v.every((t) => typeof t === 'string');

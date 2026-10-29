@@ -257,6 +257,26 @@
 								/>
 							</label>
 						{/if}
+					{:else if field.kind === 'map'}
+						<label {@attach tip(t("The table whose rows are this map's nodes"))}>
+							<span class="muted">{t('From')}</span>
+							<!-- Another table's rows have other ids, so the old tree goes with the old table. -->
+							<select
+								value={field.from ?? ''}
+								onchange={(e) => {
+									const from = e.currentTarget.value;
+									editField(field.id, (f) => {
+										delete f.parents;
+										if (from) f.from = from;
+										else delete f.from;
+									});
+								}}
+							>
+								<option value="">{t('No table')}</option>
+								{#each sources(session.doc) as t (t.id)}<option value={t.id}>{t.name}</option
+									>{/each}
+							</select>
+						</label>
 					{/if}
 					{#if ruled.includes(field.kind)}
 						<span class="muted">{t('Rules')}</span>

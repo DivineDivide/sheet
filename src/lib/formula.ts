@@ -872,7 +872,23 @@ function read(n: Omit<Extract<Node, { t: 'ref' }>, 't'>, ctx: Ctx): Val {
 			return E('#VALUE!', 'a picture has no value');
 		case 'button':
 			return E('#VALUE!', 'a button has no value');
+		case 'map':
+			return mapName(f, v as string, ctx.sheet) || null;
 	}
+}
+
+/**
+ * A map's current node, named by its source row's Name, else its first column, as
+ * `nameColumn` in `source.ts` picks: that module imports this one, so it cannot be used here.
+ */
+function mapName(f: Field, row: string, sheet: Sheet): string {
+	const [owner, table] = (f.from ?? '').split('!');
+	const c = [sheet, ...(sheet.others ?? [])].find((x) => x.id === owner);
+	const t = c?.fields.find((x) => x.id === table && x.kind === 'table');
+	if (!c || !t || !row) return '';
+	const key = t.columns?.find((x) => same(x.name, 'Name')) ?? t.columns?.[0];
+	const v = key && (valueOf(c, t) as Row[]).find((r) => r.id === row)?.cells[key.id];
+	return v === undefined ? '' : String(v);
 }
 
 /** A track's boxes as text, x for a ticked one and . for an empty one, as `x.x.`. */

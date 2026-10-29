@@ -21,6 +21,7 @@
 	import { pageOf, ui } from '../lib/ui.svelte';
 	import Bar from './Bar.svelte';
 	import Icon from './Icon.svelte';
+	import MapTree from './MapTree.svelte';
 	import Pages from './Pages.svelte';
 	import Picker from './Picker.svelte';
 	import Prose from './Prose.svelte';
@@ -56,8 +57,8 @@
 	);
 
 	// In Edit layout only the label's toggle is live, but a table edits its headers in place
-	// and keeps the rest inert itself.
-	const dead = $derived(laying && field.kind !== 'table');
+	// and keeps the rest inert itself, and a map's nodes are dragged onto their parents.
+	const dead = $derived(laying && field.kind !== 'table' && field.kind !== 'map');
 
 	function toggleLabel() {
 		session.change((d) => {
@@ -313,6 +314,8 @@
 					{#if v && !choices.includes(v as string)}<option>{v}</option>{/if}
 				</select>
 			</div>
+		{:else if field.kind === 'map'}
+			<MapTree {character} {field} {laying} />
 		{:else if field.kind === 'entries'}
 			{@const entries = v as Entry[]}
 			{@const put = (i: number, patch: Partial<Entry>) =>

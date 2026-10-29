@@ -225,7 +225,8 @@ const shapes: Record<Kind | ColumnKind, string> = {
 	formula: 'no value: its formula works it out',
 	button: 'no value',
 	table: 'rows, which edit_table changes',
-	image: 'a picture, which only a person can add'
+	image: 'a picture, which only a person can add',
+	map: 'its current node, which a person presses'
 };
 
 function cellFor(col: Column, v: unknown): Cell | undefined {
@@ -774,7 +775,7 @@ export const tools: Tool[] = [
 		run(doc, i, gm) {
 			const c = characterIn(doc, i, gm);
 			const f = fieldOf(c, need(i, 'field'));
-			if (['formula', 'button', 'table', 'image'].includes(f.kind))
+			if (['formula', 'button', 'table', 'image', 'map'].includes(f.kind))
 				fail(`${f.label} is a ${f.kind}, which takes ${shapes[f.kind]}`);
 			let v = i.value as Value;
 			if (f.kind === 'resource' && isObj(v)) v = { cur: v.cur as number, max: v.max as number };

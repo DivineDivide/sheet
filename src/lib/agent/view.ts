@@ -17,6 +17,7 @@ import {
 import { mates } from '../bind';
 import { cellResult, names, render, result, rowNames, show, type Name } from '../formula';
 import { readingOrder } from '../layout';
+import { mapSource, treeOf } from '../map';
 import { sheetOf } from '../rules';
 import { choicesOf, keyOf, nameColumn, sourceOf } from '../source';
 
@@ -125,6 +126,19 @@ function valueText(doc: Doc, c: Character, f: Field, full: boolean): string[] {
 		}
 		case 'image':
 			return [v ? '[picture]' : 'no picture'];
+		case 'map': {
+			const src = mapSource(doc, f);
+			if (!src) return ['no table yet'];
+			const tree = treeOf(src, f.parents);
+			const here = tree.spots.find((s) => s.row.id === v);
+			return [
+				`at ${here ? JSON.stringify(here.name) : 'no node'}, of ${tableName(doc, src.id)}'s rows`,
+				...tree.spots.map((s) => `${'  '.repeat(s.depth + 1)}· ${s.name}`),
+				...(tree.unplaced.length
+					? [`  unplaced: ${tree.unplaced.map((u) => u.name).join(', ')}`]
+					: [])
+			];
+		}
 		case 'tags':
 			return [(v as string[]).join(', ') || 'no tags'];
 		case 'entries': {
