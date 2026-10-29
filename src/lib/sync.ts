@@ -134,6 +134,8 @@ export function apply(root: unknown, op: Op): boolean {
 		return true;
 	}
 	if (!isObj(parent)) return false;
+	// An item is stored and addressed by its id, so rewriting it would orphan the room's row.
+	if (key === 'id' && Array.isArray(get(root, op.p.slice(0, -2)))) return false;
 	if (op.k === 'del') delete parent[key];
 	else parent[key] = structuredClone(op.v);
 	return true;

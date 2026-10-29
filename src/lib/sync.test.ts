@@ -147,6 +147,21 @@ describe('diff and apply', () => {
 		const gone = { k: 'set' as const, p: ['characters', 'nobody', 'name'], v: 'x' };
 		expect(apply(doc, gone)).toBe(false);
 	});
+
+	it('never changes the id an item in a list is kept by', () => {
+		const doc = party();
+		addRow(doc.characters[0], 'r');
+		const c = doc.characters[0];
+		const table = c.fields.find((f) => f.kind === 'table')!;
+		const before = clone(doc);
+		const ops: Op[] = [
+			{ k: 'set', p: ['characters', c.id, 'id'], v: 'other' },
+			{ k: 'del', p: ['characters', c.id, 'id'] },
+			{ k: 'set', p: ['characters', c.id, 'values', table.id, 'r', 'id'], v: 'other' }
+		];
+		for (const op of ops) expect(apply(doc, op)).toBe(false);
+		expect(doc).toEqual(before);
+	});
 });
 
 describe('Replica', () => {

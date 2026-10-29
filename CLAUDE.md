@@ -49,7 +49,8 @@ server, for checking the page or showing it: the `sheet-room` skill says how.
   edit to a path wins and no locks are needed. `Replica` keeps the room's confirmed doc
   and this client's unconfirmed changes; what shows is always the one with the other on
   top, which the randomised convergence test checks. The room runs `validate` after
-  every change and rejects one that breaks the doc; the client then takes it back.
+  every change and rejects one that breaks the doc; the client then takes it back. `apply`
+  never writes an item's `id`, which the room stores each character's row by.
 - **`src/lib/session.svelte.ts`** — the one store. Every edit goes through
   `session.change(fn)`, which diffs snapshots taken around `fn` into ops and sends them.
   Mutating `session.doc` directly skips that. Undo sends the reverse of this client's
