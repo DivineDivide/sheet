@@ -54,6 +54,23 @@ describe('markdown', () => {
 		expect(setPick(text, 41, 'b').slice(41)).toBe('{a|b=b}');
 	});
 
+	it('tells apart the same pick in two cells of a table row', () => {
+		const tables = () => ['Fire', 'Ice'];
+		const text = '| A | B |\n| - | - |\n| {GM!E} | {GM!E} |';
+		const at = [...markdown(text, tables).matchAll(/data-at="(\d+)"/g)].map((m) => +m[1]);
+		const first = text.indexOf('{GM!E}');
+		expect(at).toEqual([first, text.indexOf('{GM!E}', first + 1)]);
+		expect(setPick(text, at[1], 'Ice')).toBe('| A | B |\n| - | - |\n| {GM!E} | {GM!E=Ice} |');
+	});
+
+	it('finds a pick past lines that end in \\r\\n', () => {
+		const text = 'Weapons:\r\nDeals {a|b}';
+		const [at] = [...markdown(text, () => undefined).matchAll(/data-at="(\d+)"/g)].map(
+			(m) => +m[1]
+		);
+		expect(setPick(text, at, 'b')).toBe('Weapons:\nDeals {a|b=b}');
+	});
+
 	it('lists the picks it draws, with what each offers', () => {
 		const tables = (ref: string) => (ref === 'GM!Elements' ? ['Fire', 'Ice'] : undefined);
 		expect(picksIn('`{a|b}` {GM!Elements=Ice} {near| far} {Nobody!X}', tables)).toEqual([

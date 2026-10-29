@@ -57,21 +57,25 @@ md.inline.ruler.after('text', 'pick', (state, silent) => {
 
 // Where each pick starts in the source, for `setPick`. A block's inline text has lost only
 // its markers (`> `, `- `, indents), never a brace, so the nth copy of a pick there is the
-// nth copy from the block's first line.
+// nth copy from the block's first line. A table's cells share their row's line and have
+// none of their own, so the cells before count too.
 md.core.ruler.after('inline', 'pick_at', (state) => {
 	let line = 0;
+	let earlier = '';
 	for (const block of state.tokens) {
-		if (block.map) line = block.map[0];
+		if (block.map) [line, earlier] = [block.map[0], ''];
 		for (const t of block.children ?? []) {
 			if (t.type !== 'pick') continue;
 			const pick = t.meta as Pick;
 			let at = -1;
 			for (let i = 0; i < line; i++) at = state.src.indexOf('\n', at + 1);
-			const nth = block.content.slice(0, pick.pos).split(t.content).length - 1;
+			const nth = (earlier + block.content.slice(0, pick.pos)).split(t.content).length - 1;
 			for (let i = 0; i <= nth && (i === 0 || at >= 0); i++)
 				at = state.src.indexOf(t.content, at + 1);
 			pick.at = at;
 		}
+		// A pick never holds a line break, so none is counted across two cells.
+		if (block.type === 'inline') earlier += `${block.content}\n`;
 	}
 });
 
@@ -116,9 +120,13 @@ export function picksIn(text: string, tables: Env['tables']) {
 		});
 }
 
-/** `text` with the pick starting at `at` holding `value`, or unchanged if none starts there. */
+/**
+ * `text` with the pick starting at `at` holding `value`, or unchanged if none starts there.
+ * `at` counts in the text as markdown-it reads it, every line ending in `\n`, so it is written so.
+ */
 export function setPick(text: string, at: number, value: string): string {
-	const m = PICK.exec(text.slice(at));
+	const src = text.replace(/\r\n?/g, '\n');
+	const m = PICK.exec(src.slice(at));
 	if (!m || /[{}\n]/.test(value)) return text;
-	return `${text.slice(0, at)}{${m[1]}${value ? `=${value}` : ''}}${text.slice(at + m[0].length)}`;
+	return `${src.slice(0, at)}{${m[1]}${value ? `=${value}` : ''}}${src.slice(at + m[0].length)}`;
 }
