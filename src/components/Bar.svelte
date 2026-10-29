@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { curAt, fullness } from '../lib/bar';
+	import { curAt, curFor, fullness } from '../lib/bar';
 	import type { Resource } from '../lib/doc';
 	import { t } from '../lib/i18n.svelte';
 
@@ -32,22 +32,14 @@
 		dragged = null;
 	}
 
-	const keys: Record<string, (r: Resource) => number> = {
-		ArrowRight: (r) => r.cur + 1,
-		ArrowUp: (r) => r.cur + 1,
-		ArrowLeft: (r) => r.cur - 1,
-		ArrowDown: (r) => r.cur - 1,
-		Home: () => 0,
-		End: (r) => r.max
-	};
-
-	// Kept from the window, where the sheet's own keys listen.
+	// Kept from the window, where the sheet's own keys listen. A key moves the bar as a drag
+	// does, written on its release, so a key held down writes once.
 	function key(e: KeyboardEvent) {
-		const to = keys[e.key];
-		if (!to) return;
+		const to = curFor(e.key, cur, value.max);
+		if (to === undefined) return;
 		e.preventDefault();
 		e.stopPropagation();
-		set({ ...value, cur: to(value) });
+		dragged = to;
 	}
 
 	function typed(e: Event & { currentTarget: HTMLInputElement }, part: 'cur' | 'max') {
@@ -85,6 +77,8 @@
 		onpointerup={up}
 		onpointercancel={() => (dragged = null)}
 		onkeydown={key}
+		onkeyup={up}
+		onblur={up}
 	>
 		<span class="rail"
 			><span class="fill" style:width="{fullness({ cur, max: value.max })}%"></span></span
